@@ -37,8 +37,14 @@ Fill in `configs/settings.toml` (gitignored) with your real values:
 ## Testing
 
 ```bash
-pytest
+python -m pytest
 ```
+
+Use `python -m pytest`, not bare `pytest` — on macOS a system/Homebrew Python
+can put its own `pytest` earlier on `PATH` than `.venv/bin/pytest`, so the
+bare command silently runs against the wrong interpreter and fails with
+`ModuleNotFoundError` for dependencies that are actually installed. `python
+-m pytest` always resolves through the active venv.
 
 18 tests, all pure logic, run anywhere (no microphone, network, or Xiaomi
 device required). For manual verification of the parts that actually need

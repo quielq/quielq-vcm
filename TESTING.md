@@ -28,19 +28,28 @@ pip install -e ".[dev]"
 ### Run everything
 
 ```bash
-pytest
+python -m pytest
 ```
 
 Expected: `18 passed` in a few seconds. No microphone, speaker, network, or
 Xiaomi device is touched — every test uses synthetic input (`np.random`
 arrays, monkeypatched env vars, fake injected modules for `gpiozero`/`sense_hat`).
 
+Always use `python -m pytest`, not the bare `pytest` command. On macOS a
+system or Homebrew Python can install its own `pytest` earlier on `PATH`
+than `.venv/bin/pytest` — running the bare command then silently executes
+against the *wrong* interpreter and fails with `ModuleNotFoundError` for
+packages that are actually installed in `.venv`. Confirm with `which pytest`;
+if it doesn't point inside `.venv/bin/`, that's the shadowing. `python -m
+pytest` sidesteps this entirely by always resolving through whichever
+`python` is active.
+
 ### Run a subset
 
 ```bash
-pytest tests/test_features.py          # one file
-pytest tests/test_dispatch.py -v       # verbose, one file
-pytest -k "platform"                   # any test with "platform" in its name
+python -m pytest tests/test_features.py          # one file
+python -m pytest tests/test_dispatch.py -v       # verbose, one file
+python -m pytest -k "platform"                   # any test with "platform" in its name
 ```
 
 ### What each file covers
@@ -205,7 +214,7 @@ python -c "from vcm.actions import calls; calls.call()"
 
 Run once after any change that touches multiple modules, or before a demo:
 
-- [ ] `pytest` — 18/18 pass
+- [ ] `python -m pytest` — 18/18 pass
 - [ ] `python -m vcm.main` — hold spacebar, speak, see `Heard intent: unknown_background`
 - [ ] TTS audible (2.1)
 - [ ] Bulb on/off/dim responds (2.4)
