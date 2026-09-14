@@ -34,50 +34,17 @@ Fill in `configs/settings.toml` (gitignored) with your real values:
 - An OpenWeatherMap API key (free tier) for `[weather].api_key`.
 - `[music].media_dir` pointed at a local folder of mp3/m4a/flac/wav/ogg files.
 
-## Run the test suite (works anywhere, no hardware needed)
+## Testing
 
 ```bash
 pytest
 ```
 
-18 tests, all pure logic — feature-extraction shape/dtype on synthetic audio,
-dispatch-table completeness, HAL backend selection, config loading. No
-microphone, network, or Xiaomi device required.
-
-## Verify on your Mac
-
-These need real hardware/network and can't be confirmed from this sandbox:
-
-1. **End-to-end push-to-talk loop**:
-   ```bash
-   python -m vcm.main
-   ```
-   Hold spacebar, speak, release. You should see `Heard intent: unknown_background`
-   printed (the stub model always returns that) — this confirms mic capture and
-   feature extraction ran for real. macOS will prompt for microphone permission,
-   and `pynput`'s keyboard listener needs Accessibility/Input Monitoring
-   permission granted to your terminal app.
-
-2. **TTS**: `python -c "from vcm.tts.speak import speak; speak('hello from the VCM')"`
-   should be audible immediately via macOS's built-in `say`.
-
-3. **Xiaomi bulb/plug**, once `configs/settings.toml` has a real host/token:
-   ```bash
-   python -c "from vcm.actions import lights; lights.turn_on()"
-   python -c "from vcm.actions import thermostat; print(thermostat.adjust_to_comfort())"
-   ```
-
-4. **Weather**, once `[weather].api_key` is set:
-   ```bash
-   python -c "from vcm.actions import weather; print(weather.get_weather())"
-   ```
-
-5. **Music**, once `[music].media_dir` has audio files (requires `mpv` —
-   `brew install mpv`):
-   ```bash
-   python -c "from vcm.actions import music; music.play()"
-   python -c "from vcm.actions import media_control; media_control.pause()"
-   ```
+18 tests, all pure logic, run anywhere (no microphone, network, or Xiaomi
+device required). For manual verification of the parts that actually need
+real hardware/network — mic capture, TTS audio, the Xiaomi bulb/plug,
+weather, music — see **[TESTING.md](TESTING.md)**, which walks through each
+one with exact commands, expected output, and troubleshooting.
 
 ## What's deliberately mocked (per Section 8)
 
