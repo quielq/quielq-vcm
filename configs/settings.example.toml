@@ -1,0 +1,34 @@
+# Copy this file to settings.toml (gitignored) and fill in real values.
+# settings.toml is read by src/vcm/config.py.
+
+[platform]
+# "mac" or "rpi". Leave unset to auto-detect via platform.system().
+# override = "mac"
+
+[xiaomi]
+# Obtained via `miiocli cloud` (one-time cloud-authenticated step, then fully local).
+bulb_host = ""
+bulb_token = ""
+# Section 4 flags the exact bulb family as unconfirmed (Xiaomi/Philips
+# co-branded vs. Yeelight-branded) — set this to whichever python-miio
+# device class matches, after checking against its supported-device list.
+bulb_device_class = "miio.Yeelight"
+plug_host = ""
+plug_token = ""
+plug_device_class = "miio.ChuangmiPlug"
+
+[weather]
+provider = "openweathermap"
+api_key = ""
+default_location = "Quezon City,PH"
+
+[music]
+# Local media library root, scanned for playback.
+media_dir = "media"
+
+[reminders]
+storage_path = "data/reminders.json"
+
+[tts]
+# "mac_say" (default, zero-install on macOS), "espeak_ng", or "piper"
+backend = "mac_say"

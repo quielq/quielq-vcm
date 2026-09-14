@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# local secrets/config — copy from settings.example.toml
+configs/settings.toml
+
+# local media library, reminders storage
+media/
+data/reminders.json
