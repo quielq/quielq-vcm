@@ -1,4 +1,4 @@
-# VCM — Voice Command Model (AI222 Machine Exercise)
+# VCM — Voice Command Model (AI222 / AI231 Machine Exercise)
 
 Tiny, on-device spoken-intent classifier. See [VCM_Architecture_Review.md](VCM_Architecture_Review.md)
 for the full design rationale — this README only covers running the code.
