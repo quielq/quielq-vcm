@@ -5,8 +5,7 @@ Drive folder "AI 231 MEX2 Dataset" (which also holds a "1 fixed
 phrase/command_50 speakers" recordings subfolder, suggesting the class
 has already started collecting real audio against this exact schema).
 See VCM_Architecture_Review.md's "Draft Label Taxonomy Review" section
-for the full writeup, including a cell-type bug found in the live sheet
-and flagged back to him.
+for the full writeup.
 
 This is intentionally decoupled from audio: it generates the phrase/value
 spec (what should be said for each label) so it's ready the moment real
@@ -16,13 +15,18 @@ or duplicate the recordings themselves.
 The sheet has three option tables (A/B/C) at increasing phrasing/value
 richness; this module captures Option B, the richest (3 phrasing
 variations and 3 example slot values per intent), as of 2026-09-17.
-Re-sync from the live sheet if Mark Andrian updates it.
+Re-sync from the live sheet if Mark Andrian updates it. `export_csv()`
+below writes this same spec out as a plain CSV, a convenient format for
+anyone who wants to load it with pandas/Excel/etc. without going through
+Sheets at all.
 """
 
 from __future__ import annotations
 
+import csv
 import re
 from dataclasses import dataclass
+from pathlib import Path
 
 FIXED_INTENTS: dict[str, tuple[str, ...]] = {
     "PLAY_MUSIC": ("Play music", "Play a song", "Start the music"),
@@ -51,10 +55,6 @@ SLOTTED_INTENTS: dict[str, dict[str, tuple[str, ...]]] = {
     },
     "ALARM": {
         "templates": ("Alarm {time}", "Wake me up at {time}", "Set an alarm for {time}"),
-        # Stored as literal text here regardless of the live sheet's
-        # cell-type bug (Excel auto-converted these to time objects) —
-        # that bug only affects reading the .xlsx directly, not this
-        # hand-captured copy.
         "values": ("6:00 AM", "8:00 AM", "9:00 PM"),
     },
     "TEMPERATURE": {
@@ -121,3 +121,26 @@ def generate_phrases() -> list[Phrase]:
                 )
 
     return phrases
+
+
+CSV_FIELDS = ("label", "type", "phrase", "slot_value")
+
+
+def export_csv(path: Path) -> None:
+    """Write the full phrase spec to a plain CSV — every value here is a
+    literal string by construction, so nothing downstream needs to worry
+    about a spreadsheet tool auto-formatting a cell as a date/time."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(CSV_FIELDS)
+        for phrase in generate_phrases():
+            writer.writerow(
+                [
+                    phrase.label,
+                    "slotted" if phrase.is_slotted else "fixed",
+                    phrase.text,
+                    phrase.slot_value or "",
+                ]
+            )

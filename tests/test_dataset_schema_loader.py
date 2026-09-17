@@ -1,7 +1,10 @@
+import csv
+
 from vcm.dataset.sources.dataset_schema import (
     FIXED_INTENTS,
     INTENT_LABELS,
     SLOTTED_INTENTS,
+    export_csv,
     generate_phrases,
 )
 
@@ -38,8 +41,26 @@ def test_fixed_phrases_are_not_marked_slotted():
 
 
 def test_alarm_values_are_plain_strings_not_time_objects():
-    # Regression guard for the cell-type bug found in the live sheet
-    # (Excel auto-converted ALARM's example times to datetime.time
-    # objects) — this hand-captured copy must not reintroduce it.
+    # Every value in this module is a Python string literal by
+    # construction; this just guards that ALARM specifically stays that
+    # way, since spreadsheet tools are prone to auto-typing time-like text.
     for value in SLOTTED_INTENTS["ALARM"]["values"]:
         assert isinstance(value, str)
+
+
+def test_export_csv_roundtrips_to_the_same_phrases(tmp_path):
+    csv_path = tmp_path / "dataset_schema.csv"
+    export_csv(csv_path)
+
+    with csv_path.open(newline="") as f:
+        rows = list(csv.DictReader(f))
+
+    phrases = generate_phrases()
+    assert len(rows) == len(phrases)
+    for row, phrase in zip(rows, phrases):
+        assert row["label"] == phrase.label
+        assert row["phrase"] == phrase.text
+        assert row["type"] == ("slotted" if phrase.is_slotted else "fixed")
+        assert row["slot_value"] == (phrase.slot_value or "")
+        # every cell reads back as a plain str via csv, never a time/date type
+        assert all(isinstance(v, str) for v in row.values())

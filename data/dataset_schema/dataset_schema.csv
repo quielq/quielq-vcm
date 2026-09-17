@@ -1,0 +1,94 @@
+label,type,phrase,slot_value
+PLAY_MUSIC,fixed,Play music,
+PLAY_MUSIC,fixed,Play a song,
+PLAY_MUSIC,fixed,Start the music,
+WEATHER,fixed,Weather,
+WEATHER,fixed,What's the weather?,
+WEATHER,fixed,Tell me the weather,
+TIME,fixed,Time,
+TIME,fixed,What time is it?,
+TIME,fixed,Tell me the time,
+LIGHT_ON,fixed,Lights on,
+LIGHT_ON,fixed,Power on the lights,
+LIGHT_ON,fixed,Turn on the lights,
+LIGHT_OFF,fixed,Lights off,
+LIGHT_OFF,fixed,Kill the lights,
+LIGHT_OFF,fixed,Turn off the lights,
+PAUSE,fixed,Pause,
+PAUSE,fixed,Pause the music,
+PAUSE,fixed,Pause this song,
+STOP,fixed,Stop song,
+STOP,fixed,Stop music,
+STOP,fixed,Stop playing music,
+NEXT,fixed,Skip song,
+NEXT,fixed,Next song,
+NEXT,fixed,Play next song,
+VOLUME_UP,fixed,Volume up,
+VOLUME_UP,fixed,Increase the volume,
+VOLUME_UP,fixed,Turn the volume up,
+VOLUME_DOWN,fixed,Volume down,
+VOLUME_DOWN,fixed,Decrease the volume,
+VOLUME_DOWN,fixed,Turn the volume down,
+CALL,fixed,Call,
+CALL,fixed,Make a call,
+CALL,fixed,Make a phone call,
+MESSAGE,fixed,Message,
+MESSAGE,fixed,Send a message,
+MESSAGE,fixed,Send my message,
+LIST_REMINDERS,fixed,Reminders,
+LIST_REMINDERS,fixed,Show my reminders,
+LIST_REMINDERS,fixed,List my reminders,
+TIMER,slotted,Timer 10 seconds,10 seconds
+TIMER,slotted,Timer 30 seconds,30 seconds
+TIMER,slotted,Timer 1 minute,1 minute
+TIMER,slotted,Countdown for 10 seconds,10 seconds
+TIMER,slotted,Countdown for 30 seconds,30 seconds
+TIMER,slotted,Countdown for 1 minute,1 minute
+TIMER,slotted,Start a timer for 10 seconds,10 seconds
+TIMER,slotted,Start a timer for 30 seconds,30 seconds
+TIMER,slotted,Start a timer for 1 minute,1 minute
+ALARM,slotted,Alarm 6:00 AM,6:00 AM
+ALARM,slotted,Alarm 8:00 AM,8:00 AM
+ALARM,slotted,Alarm 9:00 PM,9:00 PM
+ALARM,slotted,Wake me up at 6:00 AM,6:00 AM
+ALARM,slotted,Wake me up at 8:00 AM,8:00 AM
+ALARM,slotted,Wake me up at 9:00 PM,9:00 PM
+ALARM,slotted,Set an alarm for 6:00 AM,6:00 AM
+ALARM,slotted,Set an alarm for 8:00 AM,8:00 AM
+ALARM,slotted,Set an alarm for 9:00 PM,9:00 PM
+TEMPERATURE,slotted,Temperature 18 degrees,18 degrees
+TEMPERATURE,slotted,Temperature 22 degrees,22 degrees
+TEMPERATURE,slotted,Temperature 26 degrees,26 degrees
+TEMPERATURE,slotted,Change the temperature to 18 degrees,18 degrees
+TEMPERATURE,slotted,Change the temperature to 22 degrees,22 degrees
+TEMPERATURE,slotted,Change the temperature to 26 degrees,26 degrees
+TEMPERATURE,slotted,Set the temperature to 18 degrees,18 degrees
+TEMPERATURE,slotted,Set the temperature to 22 degrees,22 degrees
+TEMPERATURE,slotted,Set the temperature to 26 degrees,26 degrees
+BRIGHTNESS,slotted,Brightness 20 percent,20 percent
+BRIGHTNESS,slotted,Brightness 60 percent,60 percent
+BRIGHTNESS,slotted,Brightness 100 percent,100 percent
+BRIGHTNESS,slotted,Set the brightness to 20 percent,20 percent
+BRIGHTNESS,slotted,Set the brightness to 60 percent,60 percent
+BRIGHTNESS,slotted,Set the brightness to 100 percent,100 percent
+BRIGHTNESS,slotted,Change the brightness to 20 percent,20 percent
+BRIGHTNESS,slotted,Change the brightness to 60 percent,60 percent
+BRIGHTNESS,slotted,Change the brightness to 100 percent,100 percent
+COLOR,slotted,Color Red,Red
+COLOR,slotted,Color Blue,Blue
+COLOR,slotted,Color Green,Green
+COLOR,slotted,Change the lights to Red,Red
+COLOR,slotted,Change the lights to Blue,Blue
+COLOR,slotted,Change the lights to Green,Green
+COLOR,slotted,Set the lights to Red,Red
+COLOR,slotted,Set the lights to Blue,Blue
+COLOR,slotted,Set the lights to Green,Green
+CREATE_REMINDER,slotted,Reminder Drink water,Drink water
+CREATE_REMINDER,slotted,Reminder Study,Study
+CREATE_REMINDER,slotted,Reminder Call home,Call home
+CREATE_REMINDER,slotted,Remind me to Drink water,Drink water
+CREATE_REMINDER,slotted,Remind me to Study,Study
+CREATE_REMINDER,slotted,Remind me to Call home,Call home
+CREATE_REMINDER,slotted,Create a reminder to Drink water,Drink water
+CREATE_REMINDER,slotted,Create a reminder to Study,Study
+CREATE_REMINDER,slotted,Create a reminder to Call home,Call home
