@@ -46,11 +46,19 @@ bare command silently runs against the wrong interpreter and fails with
 `ModuleNotFoundError` for dependencies that are actually installed. `python
 -m pytest` always resolves through the active venv.
 
-18 tests, all pure logic, run anywhere (no microphone, network, or Xiaomi
+42 tests, all pure logic, run anywhere (no microphone, network, or Xiaomi
 device required). For manual verification of the parts that actually need
 real hardware/network — mic capture, TTS audio, the Xiaomi bulb/plug,
 weather, music — see **[TESTING.md](TESTING.md)**, which walks through each
 one with exact commands, expected output, and troubleshooting.
+
+## Dataset pipeline
+
+Dataset development (Section 9) has started: a taxonomy loader, a
+verified SLURP coverage check against real data, an FSC loader, and a
+generator-agnostic synthetic-audio QA gate, all in `src/vcm/dataset/`.
+See **[DATASET.md](DATASET.md)** for exact commands to reproduce every
+step from a fresh clone, including expected output.
 
 ## What's deliberately mocked (per Section 8)
 
@@ -63,7 +71,8 @@ Both live behind `vcm/hal/`, with an RPi implementation already written
 
 ## Not in this pass
 
-Dataset acquisition, model training/quantization, and the benchmark harness
-(Sections 5, 7, 9) are separate later workstreams — `vcm/inference/model.py`
-has a `TFLiteIntentModel` interface ready for when a trained model exists, but
-nothing trains one yet.
+Model training/quantization and the benchmark harness (Sections 5, 7) are
+still separate later workstreams — `vcm/inference/model.py` has a
+`TFLiteIntentModel` interface ready for when a trained model exists, but
+nothing trains one yet. Dataset development itself (Section 9) has started —
+see the "Dataset pipeline" section above and [DATASET.md](DATASET.md).
