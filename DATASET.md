@@ -83,6 +83,48 @@ Zero SLURP coverage: PAUSE, STOP, NEXT, CALL, TIMER, TEMPERATURE
 Takes under a minute on a normal connection (13MB download + parsing
 16,521 JSON lines).
 
+### What the three columns mean
+
+- **`sentences`** — a "sentence" in SLURP is one unique text+intent
+  annotation, a single prompt someone was asked to say (e.g. `"wake me
+  up at ten"`, labeled `alarm_set`). This column is a count of *distinct
+  prompts* mapped to that taxonomy label.
+- **`recordings`** — each sentence was recorded multiple times, usually
+  by different crowdworkers, often in paired mic setups (a close-mic
+  `-headset` take plus a room-mic take of the same prompt). This column
+  counts *actual audio files*, always ≥ the sentence count. Concretely:
+  one SLURP sentence (`slurp_id 9024`, text `"event"`, intent
+  `calendar_set`) has 12+ separate recordings in the raw data — that's
+  one sentence contributing 12+ to a `recordings` total.
+- **`matched intents`** — SLURP has its own internal vocabulary of 93
+  intents, finer-grained (and messier) than this taxonomy's 19 labels.
+  This is how many of SLURP's raw intents got mapped onto one canonical
+  label. Most are 1-to-1; `LIGHT_OFF` is 2 because SLURP has two
+  overlapping intents for it (`iot_hue_lightoff` and a legacy
+  `hue_lightoff`), and `BRIGHTNESS` is 4 for the same reason across
+  dim-up/dim-down and two legacy naming schemes. See `LABEL_MAPPING` in
+  `sources/slurp.py` for exactly which raw intents feed each label.
+
+**A phrasing-looseness caveat worth knowing before trusting this data
+blindly**: SLURP's crowdsourced sentences aren't clean scripted commands
+the way this project's own taxonomy phrases are — e.g. `"open clock"` is
+labeled `alarm_set` (→ `ALARM`), and `"olly brighten the lights"` maps to
+`BRIGHTNESS`. Real, spoken-in-the-wild phrasing is part of why SLURP is
+useful (Section 9 already notes its sentences run long/natural), but it
+means a "covered" label here doesn't guarantee phrasing anywhere close to
+this project's own command set.
+
+**Listening to real examples**: `scripts/slurp_coverage.py` only reports
+counts from the text annotations, it doesn't touch audio. To actually
+hear samples, the real `.flac` audio lives on Zenodo as a 3.9GB archive
+(too large to fetch a handful of files from directly), but a HuggingFace
+mirror (`yhfang/slurp_dataset_audio_subset`, parquet format) supports
+streaming individual rows by `slurp_id` without downloading the whole
+thing — that's how the 39-sample set (3 per covered label) shared in
+this project's own discussion was pulled, using the `datasets` library's
+streaming mode filtered against `slurp_id`s already known from the local
+jsonl files.
+
 **If the mapping looks wrong for a label**: the raw SLURP→taxonomy
 mapping is the `LABEL_MAPPING` dict at the top of `sources/slurp.py`,
 built by inspecting every one of SLURP's 93 actual `intent` values (not
