@@ -94,8 +94,8 @@ Takes under a minute on a normal connection (13MB download + parsing
   `-headset` take plus a room-mic take of the same prompt). This column
   counts *actual audio files*, always ≥ the sentence count. Concretely:
   one SLURP sentence (`slurp_id 9024`, text `"event"`, intent
-  `calendar_set`) has 12+ separate recordings in the raw data — that's
-  one sentence contributing 12+ to a `recordings` total.
+  `calendar_set`) has 9 separate recordings in the raw data — that's
+  one sentence contributing 9 to a `recordings` total.
 - **`matched intents`** — SLURP has its own internal vocabulary of 93
   intents, finer-grained (and messier) than this taxonomy's 19 labels.
   This is how many of SLURP's raw intents got mapped onto one canonical
