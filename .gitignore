@@ -13,3 +13,6 @@ configs/settings.toml
 # local media library, reminders storage
 media/
 data/reminders.json
+
+# downloaded dataset caches (SLURP/FSC/etc. raw metadata+audio) — re-fetch, don't commit
+data/external/
