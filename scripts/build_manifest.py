@@ -9,6 +9,8 @@ Currently combines:
 - The class-shared "Option B" synthetic dataset (all 19 labels) —
   data/external/option_b/{manifest.csv,audio/}. See DATASET.md for the
   source repo and how to pull it locally.
+- Google Speech Commands v2 background noise -> unknown_background —
+  data/external/gsc/manifest.csv, produced by scripts/fetch_gsc_background.py.
 
 Usage:
     python scripts/build_manifest.py [--out data/dataset_manifest.csv]
@@ -33,6 +35,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SLURP_MANIFEST = REPO_ROOT / "data/external/slurp_audio/manifest.csv"
 OPTION_B_MANIFEST = REPO_ROOT / "data/external/option_b/manifest.csv"
 OPTION_B_AUDIO_ROOT = REPO_ROOT / "data/external/option_b/audio"
+GSC_BACKGROUND_MANIFEST = REPO_ROOT / "data/external/gsc/manifest.csv"
 
 
 def main() -> None:
@@ -56,6 +59,13 @@ def main() -> None:
         print(f"Option B:   {len(option_b_rows)} rows (synthetic, 19 labels)")
     else:
         print(f"Option B:   skipped, {OPTION_B_MANIFEST} not found")
+
+    if GSC_BACKGROUND_MANIFEST.exists():
+        gsc_rows = read_manifest(GSC_BACKGROUND_MANIFEST)
+        rows.extend(gsc_rows)
+        print(f"GSC bg:     {len(gsc_rows)} rows (real, unknown_background)")
+    else:
+        print(f"GSC bg:     skipped, {GSC_BACKGROUND_MANIFEST} not found (run scripts/fetch_gsc_background.py first)")
 
     write_manifest(rows, args.out)
 
