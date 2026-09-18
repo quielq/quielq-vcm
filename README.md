@@ -75,9 +75,11 @@ Quantization/export and the benchmark harness (Sections 5, 7) are still
 separate later workstreams — `vcm/inference/model.py` has a
 `TFLiteIntentModel` interface ready for when an exported model exists.
 Model **training** has started for real, though: **see
-[EXPERIMENTS.md](EXPERIMENTS.md)** for real training-run results (first
-baseline: DS-CNN, 65.29% val accuracy) and **[MODEL.md](MODEL.md)** for
-the technology choices and research behind the training pipeline.
+[EXPERIMENTS.md](EXPERIMENTS.md)** for real training-run results (best
+so far: DS-CNN + warmup/cosine LR schedule, 65.96% val accuracy, across
+7 experiments comparing architectures, augmentation, and LR schedules)
+and **[MODEL.md](MODEL.md)** for the technology choices and research
+behind the training pipeline.
 Dataset development itself (Section 9) has started — see the "Dataset
 pipeline" section above and [DATASET.md](DATASET.md).
 For Raspberry Pi hardware setup and testing (unverified, prospective

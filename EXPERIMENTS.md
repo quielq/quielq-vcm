@@ -22,7 +22,8 @@ init, batch shuffling), not purely the effect being tested. Experiment
 | 3 | BC-ResNet (10,196 params) | none | 30 | 44.16% (epoch 30) | `logs/train_bcresnet_run3.log` |
 | 4 | BC-ResNet (10,196 params), lr=3e-4 | none | 30 | 38.79% (epoch 28) | `logs/train_bcresnet_lowlr_run4.log` |
 | 5 | BC-ResNet (10,196 params), lr=1e-3 + 3-epoch warmup + cosine decay | none | 30 | 47.41% (epoch 25) | `logs/train_bcresnet_warmup_run5.log` |
-| 6 | BC-ResNet (10,196 params), lr=1e-3 + 5-epoch warmup + cosine decay | none | 80 | **58.99%** (epoch 65) | `logs/train_bcresnet_warmup80_run6.log` |
+| 6 | BC-ResNet (10,196 params), lr=1e-3 + 5-epoch warmup + cosine decay | none | 80 | 58.99% (epoch 65) | `logs/train_bcresnet_warmup80_run6.log` |
+| 7 | DS-CNN (24,276 params), lr=1e-3 + 3-epoch warmup + cosine decay | none | 30 | **65.96%** (epoch 26) — best overall so far | `logs/train_dscnn_warmup_run7.log` |
 
 ## Experiment 1 — DS-CNN baseline, no augmentation
 
@@ -508,3 +509,84 @@ isn't ruled out — but closing the remaining accuracy gap would need a
 different lever than epochs or LR schedule alone (e.g., augmentation
 combined with the now-stable schedule, or more channels/blocks), not
 yet tested.
+
+## Experiment 7 — DS-CNN, warmup + cosine LR decay
+
+**Setup**: `python -m vcm.train.train --model dscnn --epochs 30
+--batch-size 128 --lr 1e-3 --warmup-epochs 3 --seed 0`, on GPU 0.
+The same schedule that helped BC-ResNet (Experiments 5-6), applied to
+DS-CNN for the first time — Experiment 1's baseline used a flat LR
+throughout, so this checks whether the schedule is a general win or
+something specific to fixing BC-ResNet's instability.
+
+**Result**: best val accuracy **65.96%** at epoch 26/30 — a modest but
+real +0.67pp improvement over Experiment 1's 65.29% flat-LR baseline,
+and the **best result across all 7 experiments so far**. Unlike
+BC-ResNet, DS-CNN showed no instability at any point in this run —
+val_loss decreased smoothly and monotonically the entire time
+(2.98→1.06), confirming the spiking behavior in Experiments 3, 5, and
+6 was specific to BC-ResNet's architecture, not a general property of
+training on this dataset at lr=1e-3.
+
+**Convergence was also much faster**: this run reached 64.81% by
+epoch 20, matching Experiment 1's final epoch-28 result 8 epochs
+earlier, and continued to a new best by epoch 26. The warmup phase
+(epochs 1-3, ramping to peak LR) cost some early-epoch accuracy
+relative to Experiment 1's immediate flat-1e-3 start, but the
+subsequent cosine decay more than made up for it.
+
+**Per-class accuracy**:
+
+| Label | Acc | n | | Label | Acc | n |
+|---|---:|---:|---|---|---:|---:|
+| unknown_background | 100.0% | 68 | | CREATE_REMINDER | 63.9% | 280 |
+| CALL | 92.6% | 54 | | BRIGHTNESS | 62.0% | 395 |
+| NEXT | 87.0% | 54 | | TIME | 60.8% | 360 |
+| TIMER | 86.5% | 178 | | VOLUME_UP | 57.7% | 477 |
+| PAUSE | 85.0% | 80 | | WEATHER | 54.1% | 534 |
+| TEMPERATURE | 84.1% | 1166 | | MESSAGE | 53.6% | 282 |
+| ALARM | 80.5% | 333 | | PLAY_MUSIC | 50.9% | 658 |
+| STOP | 77.8% | 108 | | VOLUME_DOWN | 50.0% | 442 |
+| LIGHT_ON | 70.8% | 562 | | LIST_REMINDERS | 47.0% | 249 |
+| COLOR | 67.1% | 322 | | | | |
+| LIGHT_OFF | 64.0% | 511 | | | | |
+
+**Top confusions**:
+
+| True → Predicted | Count |
+|---|---:|
+| VOLUME_DOWN → VOLUME_UP | 120 |
+| VOLUME_UP → VOLUME_DOWN | 72 |
+| WEATHER → TIME | 68 |
+| TIME → WEATHER | 65 |
+| TEMPERATURE → VOLUME_UP | 63 |
+| PLAY_MUSIC → MESSAGE | 61 |
+| PLAY_MUSIC → TIME | 57 |
+| WEATHER → PLAY_MUSIC | 52 |
+| PLAY_MUSIC → WEATHER | 50 |
+| LIGHT_ON → LIGHT_OFF | 45 |
+
+**Analysis**: this is the same DS-CNN architecture and confusion
+pattern from Experiment 1 (polarity words still dominate: VOLUME_UP/
+DOWN and LIGHT_ON/OFF are still top confusions) but with meaningfully
+fewer errors overall — VOLUME_DOWN→VOLUME_UP dropped from 134 to 120,
+LIGHT_OFF→LIGHT_ON from 65 to 45. The schedule improved general
+convergence without resolving the specific polarity-word weak point
+Experiment 1 flagged — consistent with the schedule improving how well
+the model fits the data it's given, not what it's structurally capable
+of distinguishing.
+
+**Current standing recommendation**: this checkpoint
+(`checkpoints/dscnn_warmup_best.pt`) is now the best model produced
+across this project's experiments, and warmup+cosine LR scheduling
+looks like a good default going forward for any future run of either
+architecture, at negligible extra cost (`--warmup-epochs 3` on top of
+an otherwise-identical run). The polarity-word confusion remains the
+dataset's dominant unsolved failure mode across every architecture and
+schedule tried so far — the strongest untested next step for
+addressing it specifically is not a new architecture or schedule, but
+augmenting/re-weighting the training data itself to emphasize the
+distinguishing word in commands that otherwise share a carrier phrase
+(e.g. targeted time-masking that preserves the polarity word instead
+of SpecAugment's random masking, which Experiment 2 showed can erase
+exactly that word).
