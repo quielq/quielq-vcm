@@ -21,7 +21,8 @@ init, batch shuffling), not purely the effect being tested. Experiment
 | 2 | DS-CNN (24,276 params) | SpecAugment | 30 | 63.21% (epoch 28) | `logs/train_dscnn_augment_run2.log` |
 | 3 | BC-ResNet (10,196 params) | none | 30 | 44.16% (epoch 30) | `logs/train_bcresnet_run3.log` |
 | 4 | BC-ResNet (10,196 params), lr=3e-4 | none | 30 | 38.79% (epoch 28) | `logs/train_bcresnet_lowlr_run4.log` |
-| 5 | BC-ResNet (10,196 params), lr=1e-3 + 3-epoch warmup + cosine decay | none | 30 | **47.41%** (epoch 25) | `logs/train_bcresnet_warmup_run5.log` |
+| 5 | BC-ResNet (10,196 params), lr=1e-3 + 3-epoch warmup + cosine decay | none | 30 | 47.41% (epoch 25) | `logs/train_bcresnet_warmup_run5.log` |
+| 6 | BC-ResNet (10,196 params), lr=1e-3 + 5-epoch warmup + cosine decay | none | 80 | **58.99%** (epoch 65) | `logs/train_bcresnet_warmup80_run6.log` |
 
 ## Experiment 1 — DS-CNN baseline, no augmentation
 
@@ -414,3 +415,96 @@ likely next lever to close the remaining gap**, not a further
 architecture or optimizer change. The next test worth running is the
 same warmup+cosine config extended to 60-80 epochs before concluding
 anything final about BC-ResNet vs. DS-CNN on this dataset.
+
+## Experiment 6 — BC-ResNet, warmup + cosine LR decay, 80 epochs
+
+**Setup**: `python -m vcm.train.train --model bcresnet --epochs 80
+--batch-size 128 --lr 1e-3 --warmup-epochs 5 --seed 0`, on GPU 0.
+Direct follow-up to Experiment 5's own recommendation: same schedule
+shape (linear warmup then cosine decay to ~0), extended from 30 to 80
+total epochs (warmup lengthened from 3→5 epochs, keeping it roughly
+proportional) since Experiment 5's loss curve hadn't plateaued and
+showed no overfitting signal by epoch 30.
+
+**Result**: best val accuracy **58.99%** at epoch 65/80 — a real
++11.58pp jump over Experiment 5's 47.41%, confirming more training
+time was the right next lever, not a further architecture or
+optimizer change. Still below DS-CNN's 65.29% (Experiment 1), a
+-6.3pp gap, but far closer than any prior BC-ResNet run.
+
+**Instability recurred at high LR just as before, at the same
+absolute epochs proportionally**: a severe spike at epoch 10 (val_loss
+8.37, matching the LR level `Experiment 5` was at around its own
+epoch ~4, since the cosine schedule here decays over 75 epochs instead
+of 27) and continued bumpiness through roughly epoch 35, tracking
+LR staying above ~6e-4. From epoch 45 onward, as LR dropped below
+~5e-4, the curve settled into smooth, steady improvement with no
+further spikes — val_loss fell monotonically from 1.38 (epoch 45) to
+1.22 (epoch 75/80), and val_acc climbed from 54% to a 59% plateau.
+This is the same LR-magnitude-driven pattern as Experiment 5, just
+stretched over more epochs because the cosine schedule here decays
+more slowly in absolute terms — further evidence the instability is
+tied to LR magnitude specifically, not epoch count.
+
+**Per-class accuracy**:
+
+| Label | Acc | n | | Label | Acc | n |
+|---|---:|---:|---|---|---:|---:|
+| unknown_background | 97.1% | 68 | | MESSAGE | 55.0% | 282 |
+| PAUSE | 95.0% | 80 | | CREATE_REMINDER | 51.1% | 280 |
+| CALL | 94.4% | 54 | | BRIGHTNESS | 50.6% | 395 |
+| NEXT | 90.7% | 54 | | PLAY_MUSIC | 42.4% | 658 |
+| TEMPERATURE | 85.8% | 1166 | | WEATHER | 41.8% | 534 |
+| STOP | 83.3% | 108 | | LIGHT_OFF | 40.3% | 511 |
+| TIMER | 82.6% | 178 | | VOLUME_UP | 38.8% | 477 |
+| ALARM | 67.9% | 333 | | LIST_REMINDERS | 37.4% | 249 |
+| LIGHT_ON | 64.2% | 562 | | | | |
+| COLOR | 62.4% | 322 | | | | |
+| TIME | 56.1% | 360 | | | | |
+| VOLUME_DOWN | 55.0% | 442 | | | | |
+
+**Top confusions**:
+
+| True → Predicted | Count |
+|---|---:|
+| VOLUME_UP → VOLUME_DOWN | 115 |
+| LIGHT_OFF → LIGHT_ON | 110 |
+| WEATHER → TIME | 100 |
+| PLAY_MUSIC → WEATHER | 87 |
+| WEATHER → PLAY_MUSIC | 72 |
+| WEATHER → MESSAGE | 69 |
+| PLAY_MUSIC → MESSAGE | 66 |
+| PLAY_MUSIC → TIME | 65 |
+| VOLUME_UP → TEMPERATURE | 63 |
+| LIGHT_ON → TEMPERATURE | 61 |
+
+**Analysis**: this is the strongest BC-ResNet result so far by a wide
+margin, and its per-class profile now looks much more like DS-CNN's
+(Experiment 1) than its own earlier attempts — TEMPERATURE (85.8%),
+CALL (94.4%), TIMER (82.6%), PAUSE (95.0%) are all close to or above
+DS-CNN's numbers for the same classes. But the polarity confusions
+DS-CNN struggled with are **back at the top of the list** here
+(VOLUME_UP→VOLUME_DOWN, LIGHT_OFF→LIGHT_ON), which BC-ResNet's dual
+time/frequency path was originally chosen to fix — at this accuracy
+level it has *not* solved that specific problem any better than
+DS-CNN did. LIST_REMINDERS (37.4%) and VOLUME_UP (38.8%) are now the
+weakest classes.
+
+**Conclusion across Experiments 3-6**: with enough training (80
+epochs, correct LR schedule), BC-ResNet gets close to DS-CNN
+(58.99% vs 65.29%, a 6.3pp gap that has been closing steadily with
+more epochs: 44%→47%→59% across Experiments 3/5/6) but still hasn't
+matched or beaten it on this dataset, and it has not resolved the
+polarity-confusion problem that motivated trying it in the first
+place. Given DS-CNN reaches a higher number in 30 epochs (roughly 8.5
+GPU-minutes) than BC-ResNet needs 65+ epochs (roughly 65 GPU-minutes)
+to approach, **DS-CNN remains the recommended model for this dataset**
+under the current setup — both on accuracy and on training-time
+efficiency, which also matters for MODEL.md's stated goal of keeping
+the whole pipeline (not just inference) practical on available
+compute. BC-ResNet's smaller size (10,196 vs DS-CNN's 24,276 params)
+remains a real advantage for the on-device deployment target, so it
+isn't ruled out — but closing the remaining accuracy gap would need a
+different lever than epochs or LR schedule alone (e.g., augmentation
+combined with the now-stable schedule, or more channels/blocks), not
+yet tested.
