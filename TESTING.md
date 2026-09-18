@@ -31,7 +31,7 @@ pip install -e ".[dev]"
 python -m pytest
 ```
 
-Expected: `18 passed` in a few seconds. No microphone, speaker, network, or
+Expected: `46 passed` in a few seconds. No microphone, speaker, network, or
 Xiaomi device is touched — every test uses synthetic input (`np.random`
 arrays, monkeypatched env vars, fake injected modules for `gpiozero`/`sense_hat`).
 
@@ -214,7 +214,7 @@ python -c "from vcm.actions import calls; calls.call()"
 
 Run once after any change that touches multiple modules, or before a demo:
 
-- [ ] `python -m pytest` — 18/18 pass
+- [ ] `python -m pytest` — 46/46 pass
 - [ ] `python -m vcm.main` — hold spacebar, speak, see `Heard intent: unknown_background`
 - [ ] TTS audible (2.1)
 - [ ] Bulb on/off/dim responds (2.4)
@@ -225,13 +225,193 @@ Run once after any change that touches multiple modules, or before a demo:
 - [ ] Reminder add/list round-trips (2.7)
 - [ ] Mocked call speaks "Calling Mom" (2.7)
 
+---
+
+## Part 3 — Raspberry Pi 5 hardware setup and testing
+
+**Honesty note before anything else**: everything in this Part is written
+from the architecture doc's own hardware/circuit sections (Section 4, 10)
+and this project's existing HAL design (`vcm/hal/`), not verified against
+a physical Raspberry Pi from this session — there's no RPi hardware
+reachable from here. Treat this as a runbook to follow and correct once
+the actual Cytron kit is in hand, the same way Part 2 is real, tested
+instructions and Part 1 is real, passing output. If a step doesn't match
+reality on the actual board, that's this doc being wrong, not you.
+
+### 3.1 Flash the OS (out of the box)
+
+What you need: the RPi5 board, official PSU, a microSD card (the Cytron
+kit bundles one, pre-loaded — reflashing it is fine and recommended so
+you control the OS version), the kit's bundled USB microSD reader, and
+[Raspberry Pi Imager](https://www.raspberrypi.com/software/) on another
+computer.
+
+1. Open Raspberry Pi Imager, choose **Raspberry Pi 5** as the device and
+   **Raspberry Pi OS (64-bit)** as the OS (Section 5 requires 64-bit).
+2. Click the gear icon (or `Ctrl+Shift+X`) for **Advanced Options**
+   *before* writing, and set: hostname, enable SSH (password or your
+   public key), Wi-Fi SSID/password, locale/timezone. This is the
+   headless setup path the architecture doc already flagged (Section 4:
+   "can skip a monitor entirely via Raspberry Pi Imager's headless
+   setup") — no monitor/keyboard needed for the rest of this doc.
+3. Write the image, insert the card, power on. First boot takes longer
+   than normal (filesystem resize) — give it 1-2 extra minutes.
+4. Find it on your network and SSH in:
+   ```bash
+   ssh <your-username>@<hostname>.local
+   ```
+   (mDNS `.local` resolution works out of the box from a Mac; if it
+   doesn't resolve, check your router's connected-devices list for the
+   IP instead.)
+
+**Alternative (monitor-attached) path**: if you'd rather not do headless
+setup, use the kit's bundled micro-HDMI→HDMI cable, complete the
+on-screen first-boot wizard, then `sudo raspi-config` → Interface
+Options → SSH → enable, and proceed with the rest of this doc over SSH
+from here.
+
+### 3.2 Base system packages
+
+```bash
+sudo apt update && sudo apt full-upgrade -y
+sudo apt install -y python3-venv python3-pip git portaudio19-dev libatlas-base-dev mpv espeak-ng
+```
+- `portaudio19-dev` — needed for `sounddevice` (mic capture) to build/import correctly.
+- `libatlas-base-dev` — common RPi BLAS backend numpy/scipy expect.
+- `mpv`, `espeak-ng` — music playback and TTS backends (same roles as on Mac, see 2.6/2.1).
+
+**A real RPi5-specific gotcha worth knowing before it wastes your time**:
+the Pi 5 moved to a new GPIO controller chip, and the classic `RPi.GPIO`
+library **does not work on it**. `gpiozero` (already a project
+dependency via the `rpi` extra) handles this automatically on a
+reasonably recent version by using the `lgpio` pin factory instead — but
+if `hal/button.py`'s RPi path throws a pin-factory error, this is the
+first thing to check (`pip install -U gpiozero lgpio`).
+
+### 3.3 Clone and set up the project
+
+```bash
+git clone https://github.com/quielq/quielq-vcm.git
+cd quielq-vcm
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev,rpi]"
+cp configs/settings.example.toml configs/settings.toml
+```
+The `rpi` extra (`gpiozero`, `sense-hat`) is what activates the real
+GPIO/Sense HAT code paths in `vcm/hal/` instead of the Mac mocks.
+
+### 3.4 Configure `settings.toml`
+
+Same fields as Part 2 (Xiaomi host/token, weather API key, media dir),
+with one platform-specific change: set `[tts].backend = "espeak_ng"`
+(the `mac_say` backend is Mac-only and will fail here). Platform
+detection is automatic (`config.py` reads `/proc/device-tree/model`),
+confirm it:
+```bash
+python -c "from vcm.config import get_platform; print(get_platform())"
+```
+**Expect**: `rpi`. If it prints `mac` instead, force it for testing with
+`VCM_PLATFORM=rpi python -c "..."` and check why auto-detection didn't
+pick it up (the device-tree model string should contain "raspberry pi").
+
+### 3.5 Wire the pushbutton
+
+Per Section 10's circuit diagram: two jumper wires only, no breadboard
+or external resistor needed (the Pi's software pull-up handles it) —
+GPIO 17 to one leg of the button, a GND pin to the other leg. The
+Cytron kit bundles both the pushbutton and the jumper wires.
+
+### 3.6 Connect audio hardware
+
+Plug in the Mini USB Microphone and the powered speaker (USB or 3.5mm).
+Confirm Linux sees them before testing the Python side:
+```bash
+arecord -l   # should list the USB mic as a capture device
+aplay -l     # should list the speaker as a playback device
+```
+If the wrong device ends up default, `raspi-config` → System Options →
+Audio lets you pick the output; for the mic, `sounddevice` picks the
+system default input, same as on Mac.
+
+### 3.7 Run the automated suite on the Pi itself
+
+```bash
+python -m pytest
+```
+**Expect**: `46 passed`, same as Mac/sandbox (pure logic, no hardware
+touched) — worth running here anyway once, to catch any RPi-OS-specific
+Python/numpy build issue early rather than during manual testing.
+
+### 3.8 Manual verification — same checklist as Part 2, on real hardware
+
+Re-run 2.1 through 2.7 directly on the Pi. The commands are identical;
+what's different is what's actually behind them now that
+`get_platform()` returns `rpi`:
+- **2.1 TTS** — via `espeak_ng`, not `mac_say`.
+- **2.2 mic capture** — the real USB mic, not the Mac's built-in.
+- **2.3 full loop** — hold the **real pushbutton** (GPIO 17), not spacebar.
+- **2.4 bulb/plug** — identical calls; confirm the Pi and the Xiaomi
+  devices are actually on the same Wi-Fi network (a real, common gotcha
+  — double-check this before assuming the code is broken).
+- **2.5–2.7** — identical to Mac.
+
+**Tier 2 only**: if the Sense HAT is seated, confirm `hal/temperature.py`
+returns a real sensor reading instead of the Mac path's fixed 27.0°C:
+```bash
+python -c "from vcm.hal.temperature import read_temperature; print(read_temperature())"
+```
+
+### 3.9 Latency — the one thing that can *only* be validated here
+
+Section 8 is explicit that Mac (M2) timing isn't representative of
+RPi-class CPU performance. Once a trained, quantized model exists (see
+[MODEL.md](MODEL.md)), measure real inference latency on the Pi:
+```bash
+python -c "
+import time
+import numpy as np
+from vcm.inference.model import load_default_model
+from vcm.audio.features import extract_log_mel
+
+model = load_default_model()
+features = extract_log_mel(np.random.randn(16000).astype('float32'))
+start = time.perf_counter()
+for _ in range(20):
+    model.predict(features)
+elapsed = (time.perf_counter() - start) / 20
+print(f'{elapsed * 1000:.1f} ms per inference')
+"
+```
+**Right now this only measures the stub model** (near-zero, meaningless
+latency) — it's a template to re-run once `TFLiteIntentModel` or an
+ONNX-backed model exists, not a real number yet. Don't report this
+script's current output as a latency benchmark.
+
+### 3.10 Full Tier-1 hardware smoke-test checklist
+
+- [ ] Fresh RPi OS 64-bit flashed, booted, SSH access confirmed
+- [ ] `get_platform()` returns `rpi`
+- [ ] `python -m pytest` passes on the Pi itself (46/46)
+- [ ] Pushbutton (not spacebar) triggers capture
+- [ ] TTS audible through the real speaker
+- [ ] Mic captures real audio through the USB mic
+- [ ] Bulb/plug control works over the Pi's own Wi-Fi
+- [ ] Weather/music/timers/reminders/calls all pass, same as Mac
+- [ ] (Tier 2 only) Sense HAT temperature reads a real value
+- [ ] Real inference latency measured, once a trained model exists (not yet possible)
+
+---
+
 ## Known gaps (not bugs — future work)
 
 - Every real command currently classifies as `unknown_background` and no-ops
   through `main.py`, because there's no trained model yet. Use `dispatch()`
   directly (2.3.1) to test action code today.
-- No latency measurement here — Section 8 is explicit that this Mac (or this
-  sandbox) is not representative of RPi-class CPU timing; that validation
-  happens only once on the actual Pi.
+- No latency measurement possible yet anywhere — Part 3.9 has the script,
+  but it's only meaningful once a trained, quantized model exists (see
+  [MODEL.md](MODEL.md)).
 - No benchmark harness (macro-F1, FAR/FRR, confusion matrix) yet — depends on
   a trained model and the class-wide benchmark definition (Section 7).
+- Part 3 (RPi hardware setup) is unverified against physical hardware from
+  this session — correct it once you've actually run it on the Cytron kit.

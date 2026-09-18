@@ -74,5 +74,9 @@ Both live behind `vcm/hal/`, with an RPi implementation already written
 Model training/quantization and the benchmark harness (Sections 5, 7) are
 still separate later workstreams — `vcm/inference/model.py` has a
 `TFLiteIntentModel` interface ready for when a trained model exists, but
-nothing trains one yet. Dataset development itself (Section 9) has started —
+nothing trains one yet. **See [MODEL.md](MODEL.md)** for the technology
+choices and research this training pipeline will be built on once that
+work starts. Dataset development itself (Section 9) has started —
 see the "Dataset pipeline" section above and [DATASET.md](DATASET.md).
+For Raspberry Pi hardware setup and testing (unverified, prospective
+instructions), see [TESTING.md](TESTING.md) Part 3.
