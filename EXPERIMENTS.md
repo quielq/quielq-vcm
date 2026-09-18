@@ -19,6 +19,7 @@ init, batch shuffling), not purely the effect being tested. Experiment
 |---|---|---|---:|---:|---|
 | 1 | DS-CNN (24,276 params) | none | 30 | **65.29%** (epoch 28) | `logs/train_dscnn_run1.log` |
 | 2 | DS-CNN (24,276 params) | SpecAugment | 30 | 63.21% (epoch 28) | `logs/train_dscnn_augment_run2.log` |
+| 3 | BC-ResNet (10,196 params) | none | 30 | 44.16% (epoch 30) | `logs/train_bcresnet_run3.log` |
 
 ## Experiment 1 — DS-CNN baseline, no augmentation
 
@@ -154,3 +155,97 @@ useful test isn't "is SpecAugment good or bad" in isolation, but
 whether it changes conclusions once combined with BC-ResNet, whose
 architecture is specifically meant to retain the fine temporal detail
 that masking may currently be erasing.
+
+## Experiment 3 — BC-ResNet, no augmentation
+
+**Setup**: `python -m vcm.train.train --model bcresnet --epochs 30
+--batch-size 128 --seed 0`, on GPU 0 (idle at launch time; GPUs 6/7
+were running someone else's job and were avoided). BC-ResNet (Kim et
+al., "Broadcasted Residual Learning", arXiv:2106.04140), 10,196
+params — less than half of DS-CNN's 24,276 — same class-weighted
+cross-entropy, Adam lr=1e-3, no augmentation, first seed-pinned run
+(`--seed 0`) so this is directly comparable to future experiments.
+Intent: isolate the architecture change on its own, since MODEL.md's
+own recommendation was BC-ResNet, and Experiment 1's confusion
+analysis motivated it specifically for its dual time/frequency path.
+
+**Result**: best val accuracy **44.16%** at epoch 30/30 — well below
+both DS-CNN runs (65.29% and 63.21%). This is a real, honest negative
+result: the architecture MODEL.md recommended as the efficiency-
+accuracy sweet spot underperformed the simpler baseline by over 19
+points in this setup.
+
+**Training was visibly unstable throughout**, unlike either DS-CNN
+run: val_loss repeatedly spiked far above its recent trend (2.3→5.47
+at epoch 6, →15.64 at epoch 11, →9.62 at epoch 19, →14.29 at epoch 25,
+→6.63 at epoch 29) with val_acc collapsing in lockstep each time,
+before partially recovering the following epoch. Train loss, by
+contrast, fell smoothly and monotonically the entire run (2.55→0.995,
+never spiking) — the instability is specific to generalization, not a
+symptom of a broken forward/backward pass. The best epochs (14, 21,
+28, 30) all coincide with a val_loss trough, meaning the final
+"best" checkpoint may simply have gotten lucky landing on a trough at
+epoch 30 rather than reflecting genuine convergence — a run cut off a
+few epochs earlier or later could plausibly report a meaningfully
+different number.
+
+**Per-class accuracy**:
+
+| Label | Acc | n | | Label | Acc | n |
+|---|---:|---:|---|---|---:|---:|
+| unknown_background | 97.1% | 68 | | CALL | 57.4% | 54 |
+| TIMER | 83.7% | 178 | | VOLUME_DOWN | 55.0% | 442 |
+| PAUSE | 81.3% | 80 | | COLOR | 53.4% | 322 |
+| ALARM | 76.3% | 333 | | BRIGHTNESS | 49.9% | 395 |
+| NEXT | 74.1% | 54 | | TEMPERATURE | 38.3% | 1166 |
+| LIGHT_ON | 69.9% | 562 | | MESSAGE | 37.9% | 282 |
+| STOP | 66.7% | 108 | | CREATE_REMINDER | 29.6% | 280 |
+| LIST_REMINDERS | 65.5% | 249 | | LIGHT_OFF | 27.8% | 511 |
+| TIME | 58.6% | 360 | | PLAY_MUSIC | 26.9% | 658 |
+| | | | | WEATHER | 13.5% | 534 |
+| | | | | VOLUME_UP | 12.2% | 477 |
+
+**Top confusions**:
+
+| True → Predicted | Count |
+|---|---:|
+| TEMPERATURE → VOLUME_DOWN | 220 |
+| VOLUME_UP → VOLUME_DOWN | 189 |
+| LIGHT_OFF → LIGHT_ON | 189 |
+| PLAY_MUSIC → TIME | 153 |
+| CREATE_REMINDER → LIST_REMINDERS | 131 |
+| TEMPERATURE → TIME | 128 |
+| TEMPERATURE → PLAY_MUSIC | 127 |
+| WEATHER → TIME | 120 |
+| WEATHER → LIST_REMINDERS | 112 |
+| PLAY_MUSIC → LIST_REMINDERS | 100 |
+
+**Analysis**: BC-ResNet did *not* fix the polarity-word confusion
+Experiment 1 flagged as motivation for trying it — VOLUME_UP↔VOLUME_DOWN
+and LIGHT_OFF→LIGHT_ON are still top confusions here, and VOLUME_UP's
+per-class accuracy (12.2%) is far worse than DS-CNN's baseline (70.9%
+in Experiment 1). WEATHER is also now the weakest class at 13.5%
+(down from 42.3% in Experiment 1). The larger classes with many
+labels sharing vocabulary (PLAY_MUSIC, TEMPERATURE, WEATHER) collapsed
+into each other more than before, suggesting the model never
+stabilized enough in 30 epochs to learn fine-grained distinctions —
+consistent with the recurring val_loss spikes never fully damping out.
+Two labels *did* do reasonably well relative to their Experiment 1
+numbers only by coincidence of overall lower accuracy elsewhere
+(TIMER, PAUSE, ALARM stayed in a similar range), not because
+BC-ResNet handled them specially.
+
+**Working hypothesis, not yet confirmed**: lr=1e-3 with plain Adam may
+simply be too aggressive for BC-ResNet's frequency-pooled residual
+path (`BCResBlock` in `architectures.py`) — the repeated sharp
+val_loss spikes with a smoothly-decreasing train_loss are a classic
+signature of a learning rate that's too high for a specific
+architecture's loss landscape, not of a data or implementation bug.
+The original BC-ResNet paper (arXiv:2106.04140) trains with a warmup +
+cosine LR schedule rather than a flat rate, which this implementation
+doesn't yet have. **Recommended next experiment**: re-run BC-ResNet
+with a lower learning rate (e.g. 3e-4) and/or gradient clipping before
+concluding the architecture itself underperforms DS-CNN on this
+dataset — the current -19pp gap may be an optimization artifact rather
+than a genuine architecture-vs-data mismatch. This has not been tested
+yet; treat the 44.16% figure as provisional until that follow-up runs.
