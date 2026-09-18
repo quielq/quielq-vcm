@@ -6,6 +6,8 @@ for what each --model option is and why.
 Usage:
     python -m vcm.train.train --model dscnn [--epochs 30] [--batch-size 128] [--lr 1e-3]
     python -m vcm.train.train --model bcresnet --augment
+    python -m vcm.train.train --model bcresnet --warmup-epochs 3  # linear warmup + cosine decay,
+                                                                   # per the BC-ResNet paper (arXiv:2106.04140)
 
 Saves the best checkpoint (by val accuracy) to --out, including the
 label list and the model name it was trained with
@@ -54,6 +56,13 @@ def main() -> None:
     parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument(
+        "--warmup-epochs",
+        type=int,
+        default=0,
+        help="Linear LR warmup for this many epochs, then cosine decay to 0 over the rest. "
+        "0 (default) keeps a flat --lr the whole run.",
+    )
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--out", type=Path, default=Path("checkpoints/best.pt"))
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
@@ -85,6 +94,18 @@ def main() -> None:
     model = MODELS[args.model](num_classes=len(LABELS)).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
+    scheduler = None
+    if args.warmup_epochs > 0:
+        warmup = torch.optim.lr_scheduler.LinearLR(
+            optimizer, start_factor=1e-2, end_factor=1.0, total_iters=args.warmup_epochs
+        )
+        cosine = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=max(args.epochs - args.warmup_epochs, 1)
+        )
+        scheduler = torch.optim.lr_scheduler.SequentialLR(
+            optimizer, schedulers=[warmup, cosine], milestones=[args.warmup_epochs]
+        )
+
     args.out.parent.mkdir(parents=True, exist_ok=True)
     best_val_acc = 0.0
 
@@ -106,11 +127,14 @@ def main() -> None:
         train_loss = running_loss / n_seen
         val_loss, val_acc = evaluate(model, val_loader, device, criterion)
         elapsed = time.time() - t0
+        current_lr = optimizer.param_groups[0]["lr"]
         print(
             f"epoch {epoch:3d}/{args.epochs}  train_loss={train_loss:.4f}  "
-            f"val_loss={val_loss:.4f}  val_acc={val_acc:.4f}  ({elapsed:.1f}s)",
+            f"val_loss={val_loss:.4f}  val_acc={val_acc:.4f}  lr={current_lr:.2e}  ({elapsed:.1f}s)",
             flush=True,
         )
+        if scheduler is not None:
+            scheduler.step()
 
         if val_acc > best_val_acc:
             best_val_acc = val_acc
@@ -120,6 +144,7 @@ def main() -> None:
                     "model_name": args.model,
                     "augment": args.augment,
                     "seed": args.seed,
+                    "warmup_epochs": args.warmup_epochs,
                     "labels": LABELS,
                     "epoch": epoch,
                     "val_acc": val_acc,
