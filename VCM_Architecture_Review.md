@@ -221,7 +221,7 @@ The RPi-specific parts of this build are a small fraction of the total pipeline.
 **Accent diversity sources:**
 
 - **Mozilla Common Voice (English subset)**: crowdsourced read speech with self-reported accent tags. A published extraction found roughly 1,895 utterances (2.5 hours) tagged "Philippines," alongside larger England, Indian, and Australian subsets. Read sentences, not command phrases, best used as background/negative audio or accent-robust pretraining rather than as labeled command data directly.
-- **Indian EmoSpeech Command Dataset**: real Indian-accented command-style recordings with authentic background noise. Different keyword set than the target taxonomy, but a useful reference point, and phonologically closer to Philippine English than the North American accents dominating FSC/GSC.
+- **Dropped: "Indian EmoSpeech Command Dataset"**. Never verifiable, no concrete source (repo, HF ID, Kaggle listing) was ever found for it under that name, and it's no longer being pursued.
 
 **The gap, explicitly**: no open dataset provides Filipino-accented *command phrases* at meaningful volume, only ~2.5 hours of unrelated read speech from Common Voice. The class's own recorded data remains the primary way to close this gap; open datasets serve as the seed/pretraining layer.
 
