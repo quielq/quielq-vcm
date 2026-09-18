@@ -15,9 +15,11 @@ label list and the model name it was trained with
 from __future__ import annotations
 
 import argparse
+import random
 import time
 from pathlib import Path
 
+import numpy as np
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
@@ -55,10 +57,16 @@ def main() -> None:
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--out", type=Path, default=Path("checkpoints/best.pt"))
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
+    parser.add_argument("--seed", type=int, default=0, help="Random seed, for comparable experiments")
     args = parser.parse_args()
 
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    torch.cuda.manual_seed_all(args.seed)
+
     device = torch.device(args.device)
-    print(f"Using device: {device}, model: {args.model}, augment: {args.augment}", flush=True)
+    print(f"Using device: {device}, model: {args.model}, augment: {args.augment}, seed: {args.seed}", flush=True)
 
     train_ds = ManifestDataset.from_csv(args.manifest, split="train", augment=args.augment)
     val_ds = ManifestDataset.from_csv(args.manifest, split="val", augment=False)
@@ -111,6 +119,7 @@ def main() -> None:
                     "model_state_dict": model.state_dict(),
                     "model_name": args.model,
                     "augment": args.augment,
+                    "seed": args.seed,
                     "labels": LABELS,
                     "epoch": epoch,
                     "val_acc": val_acc,
