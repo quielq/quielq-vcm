@@ -213,17 +213,16 @@ Runtime and TFLite both come in slower than expected on the actual Pi.
 | Export | ONNX Runtime primary, benchmark TFLite/XNNPACK before committing | Direct PyTorch export; XNNPACK's ARM maturity is a real enough consideration to verify, not assume |
 | Deployment target | Raspberry Pi 5 (BCM2712, Cortex-A76), CPU-only, no NPU | Tier-1 hardware; Hailo AI HAT+ acceleration is Tier-2/future-use only |
 
-## 8. Open question this raises for Section 7 / DATASET.md
+## 8. Dataset gap this raised — now resolved
 
-Building this pipeline surfaced a dataset gap worth flagging explicitly:
-**there is currently no `unknown_background` class data in
-`data/dataset_manifest.csv`.** Section 3 requires an explicit
-background/unknown class and Section 9 already identifies Google Speech
-Commands v2's background-noise clips as the intended source, but that
-source has never actually been pulled into the dataset pipeline. This
-blocks both training a usable background-rejection class and computing
-the FAR/FRR benchmark metric Section 3 proposes — worth prioritizing
-alongside FSC access.
+Writing this doc surfaced a real gap: at the time, there was no
+`unknown_background` class data in `data/dataset_manifest.csv`, despite
+Section 3 requiring an explicit background/unknown class and Section 9
+already naming Google Speech Commands v2's background-noise clips as
+the intended source. **This is now fixed** — `scripts/fetch_gsc_background.py`
+pulls and chops it into 600 `unknown_background` clips (see DATASET.md
+step 5). FSC access remains the one still-open dataset gap of the ones
+checked so far — see DATASET.md step 8.
 
 ## References
 
