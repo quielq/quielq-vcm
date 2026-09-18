@@ -17,6 +17,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest"]
 rpi = ["gpiozero", "sense-hat"]
+train = ["torch"]
 
 [build-system]
 requires = ["setuptools>=68"]
