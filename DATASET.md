@@ -166,12 +166,12 @@ of 18,600 originals flagged and excluded).
 ```bash
 git clone --depth 1 --filter=blob:none --sparse https://github.com/markandrian30/AI231.git /tmp/option_b_repo
 cd /tmp/option_b_repo && git sparse-checkout set MEX2/OptionB
-mkdir -p <repo-root>/data/external/mark_option_b
-mv MEX2/OptionB/manifest.csv <repo-root>/data/external/mark_option_b/
-mkdir -p <repo-root>/data/external/mark_option_b/audio
-mv MEX2/OptionB/*/  <repo-root>/data/external/mark_option_b/audio/
+mkdir -p <repo-root>/data/external/option_b
+mv MEX2/OptionB/manifest.csv <repo-root>/data/external/option_b/
+mkdir -p <repo-root>/data/external/option_b/audio
+mv MEX2/OptionB/*/  <repo-root>/data/external/option_b/audio/
 ```
-[`src/vcm/dataset/sources/mark_option_b.py`](src/vcm/dataset/sources/mark_option_b.py)
+[`src/vcm/dataset/sources/option_b.py`](src/vcm/dataset/sources/option_b.py)
 loads it — no label-mapping layer needed, its `intent` column already
 matches our 19 canonical labels 1:1 (verified against the real
 `manifest.csv`, not assumed).
@@ -250,7 +250,7 @@ python -m pytest
 ```
 46 tests total; the dataset-specific ones are `tests/test_dataset_*.py`,
 `tests/test_slurp_coverage.py`, `tests/test_fsc_coverage.py`,
-`tests/test_mark_option_b.py`, and `tests/test_synthetic_check.py` — all
+`tests/test_option_b.py`, and `tests/test_synthetic_check.py` — all
 pure logic against synthetic fixtures, no network or real data files
 required to pass.
 

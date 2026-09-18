@@ -1,6 +1,6 @@
 import csv
 
-from vcm.dataset.sources.mark_option_b import label_counts, load_manifest, to_manifest_rows
+from vcm.dataset.sources.option_b import label_counts, load_manifest, to_manifest_rows
 
 FIELDS = ["path", "label", "intent", "speaker", "split", "phrase_id", "variant_id", "transcript", "slot", "slot_value", "duration_sec"]
 
@@ -49,7 +49,7 @@ def test_to_manifest_rows_maps_intent_to_label(tmp_path):
     records = load_manifest(csv_path)
     rows = to_manifest_rows(records)
     assert rows[0].label == "ALARM"  # canonical label, not the folder-level "ALARM_6_00AM"
-    assert rows[0].source == "mark_option_b"
+    assert rows[0].source == "option_b"
     assert rows[0].is_synthetic is True
     assert rows[0].audio_path == "ALARM_6_00AM/ALARM_6_00AM_s1_v1_clean.wav"
 

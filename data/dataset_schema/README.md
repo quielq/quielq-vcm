@@ -5,12 +5,15 @@ command taxonomy (19 intents: 13 fixed-phrase, 6 slotted), one row per
 generated phrase (93 total: 13 × 3 phrasing variations + 6 × 3 templates
 × 3 slot values).
 
-**Source & credit**: the taxonomy itself is classmate **Mark Andrian
-Macalalad's** work — the "Dataset Schema" spreadsheet shared in the class
-Drive folder "AI 231 MEX2 Dataset." This CSV doesn't change the taxonomy
-at all, it's the exact same 19 labels and phrasing, just exported to a
-format that's simpler to load directly in pandas, a training script, or
-Excel without going through Sheets.
+**Source**: the taxonomy itself was shared in the class's "Dataset
+Schema" spreadsheet. This CSV doesn't change the taxonomy at all, it's
+the exact same 19 labels and phrasing, just exported to a format that's
+simpler to load directly in pandas, a training script, or Excel without
+going through Sheets.
+
+<!-- Acknowledgment: this taxonomy was shared by a classmate as part of the
+class's collective dataset effort — see DATASET.md's Acknowledgments
+section. -->
 
 **Columns**:
 - `label` — one of the 19 canonical intent labels (e.g. `LIGHT_ON`, `ALARM`)

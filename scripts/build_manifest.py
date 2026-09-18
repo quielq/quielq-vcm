@@ -6,9 +6,9 @@ Currently combines:
   produced by streaming the HuggingFace parquet mirror filtered against
   sources/slurp.py's LABEL_MAPPING (see that module for how the mapping
   was verified). Run this first if that file doesn't exist yet.
-- Mark Andrian Macalalad's Option B (synthetic, all 19 labels) —
-  data/external/mark_option_b/{manifest.csv,audio/}, cloned from
-  github.com/markandrian30/AI231/tree/main/MEX2/OptionB.
+- The class-shared "Option B" synthetic dataset (all 19 labels) —
+  data/external/option_b/{manifest.csv,audio/}. See DATASET.md for the
+  source repo and how to pull it locally.
 
 Usage:
     python scripts/build_manifest.py [--out data/dataset_manifest.csv]
@@ -16,19 +16,23 @@ Usage:
 Writes one combined CSV in the vcm.dataset.manifest.ManifestRow schema.
 """
 
+# Acknowledgment: the Option B dataset combined here was generated and
+# shared by a classmate as part of the class's collective dataset effort
+# — see DATASET.md's Acknowledgments section.
+
 from __future__ import annotations
 
 import argparse
 from pathlib import Path
 
 from vcm.dataset.manifest import read_manifest, write_manifest
-from vcm.dataset.sources.mark_option_b import load_manifest as load_option_b_manifest
-from vcm.dataset.sources.mark_option_b import to_manifest_rows as option_b_to_manifest_rows
+from vcm.dataset.sources.option_b import load_manifest as load_option_b_manifest
+from vcm.dataset.sources.option_b import to_manifest_rows as option_b_to_manifest_rows
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SLURP_MANIFEST = REPO_ROOT / "data/external/slurp_audio/manifest.csv"
-OPTION_B_MANIFEST = REPO_ROOT / "data/external/mark_option_b/manifest.csv"
-OPTION_B_AUDIO_ROOT = REPO_ROOT / "data/external/mark_option_b/audio"
+OPTION_B_MANIFEST = REPO_ROOT / "data/external/option_b/manifest.csv"
+OPTION_B_AUDIO_ROOT = REPO_ROOT / "data/external/option_b/audio"
 
 
 def main() -> None:

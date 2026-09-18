@@ -1,19 +1,21 @@
 """Generic QA gate for synthetic command audio, any generator.
 
-Generalizes the pattern classmate Anthony Navarez built in
-`simple-audio-transcriber` (github.com/Martinnavs/simple-audio-transcriber):
+Generalizes a transcribe-and-compare pattern shared within the class:
 transcribe each generated clip and check whether the transcription
 matches the phrase it was supposed to say, producing a confidence score
 so low-confidence clips get routed to human spot-check instead of being
 blindly trusted. Deliberately generator-agnostic, it screens output from
-Mark Andrian's Chatterbox TTS pipeline, Anthony's own CosyVoice pipeline,
-`SynTTS-Commands-Official`, or anything else, since none of them should
-skip this check.
+any synthesis pipeline (voice-cloning, precedented public datasets, or
+anything else), since none of them should skip this check.
 
 The transcription step here is an **offline dataset-curation tool only**
 (Section 9's own framing) — it never runs at inference time; the deployed
 VCM classifies audio directly into an intent, no transcription step.
 """
+
+# Acknowledgment: this generalizes a transcribe-and-compare QA tool built
+# and shared by a classmate as part of the class's collective dataset
+# effort — see DATASET.md's Acknowledgments section.
 
 from __future__ import annotations
 

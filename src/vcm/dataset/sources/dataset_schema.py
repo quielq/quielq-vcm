@@ -1,11 +1,8 @@
-"""Loader for classmate Mark Andrian Macalalad's fixed-vs-slotted taxonomy.
+"""Loader for the class's shared fixed-vs-slotted command taxonomy.
 
-Source: the "Dataset Schema" Google Sheet he owns, shared into the class
-Drive folder "AI 231 MEX2 Dataset" (which also holds a "1 fixed
-phrase/command_50 speakers" recordings subfolder, suggesting the class
-has already started collecting real audio against this exact schema).
-See VCM_Architecture_Review.md's "Draft Label Taxonomy Review" section
-for the full writeup.
+Source: the class's shared "Dataset Schema" Google Sheet (see
+DATASET.md for current status and how the class's contributions are
+being incorporated).
 
 This is intentionally decoupled from audio: it generates the phrase/value
 spec (what should be said for each label) so it's ready the moment real
@@ -15,11 +12,15 @@ or duplicate the recordings themselves.
 The sheet has three option tables (A/B/C) at increasing phrasing/value
 richness; this module captures Option B, the richest (3 phrasing
 variations and 3 example slot values per intent), as of 2026-09-17.
-Re-sync from the live sheet if Mark Andrian updates it. `export_csv()`
+Re-sync from the live sheet if it's updated upstream. `export_csv()`
 below writes this same spec out as a plain CSV, a convenient format for
 anyone who wants to load it with pandas/Excel/etc. without going through
 Sheets at all.
 """
+
+# Acknowledgment: this taxonomy was shared by a classmate as part of the
+# class's collective dataset effort — see DATASET.md's Acknowledgments
+# section.
 
 from __future__ import annotations
 

@@ -1,8 +1,8 @@
 """SLURP metadata loader and taxonomy coverage check.
 
 Turns Section 9's qualitative "SLURP is the closest match in breadth"
-claim into exact counts against Mark Andrian Macalalad's fixed-vs-slotted
-taxonomy (see dataset_schema.py). Metadata only, no audio download: the
+claim into exact counts against the class's fixed-vs-slotted taxonomy
+(see dataset_schema.py). Metadata only, no audio download: the
 annotation jsonl files (~13-14MB total) are enough to answer "does this
 source cover this label, and how much."
 
@@ -10,12 +10,16 @@ The label mapping below was built empirically, by downloading the real
 train/devel/test.jsonl from github.com/pswietojanski/slurp and inspecting
 every distinct `intent` value that actually occurs (93 of them) and every
 `scenario` (18 of them) — not from memory or the paper's abstract. Several
-of Mark Andrian's 19 labels have **no SLURP match at all**: SLURP has no
+of the taxonomy's 19 labels have **no SLURP match at all**: SLURP has no
 "calls" scenario (CALL, MESSAGE has only a weak email-sendemail proxy), no
 timer domain distinct from alarms (TIMER), and no thermostat/temperature
 domain within its "iot" scenario (TEMPERATURE). These are genuine gaps,
 not omissions in the mapping below.
 """
+
+# Acknowledgment: the taxonomy this checks coverage against was shared by
+# a classmate as part of the class's collective dataset effort — see
+# DATASET.md's Acknowledgments section.
 
 from __future__ import annotations
 

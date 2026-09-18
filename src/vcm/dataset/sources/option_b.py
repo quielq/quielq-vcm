@@ -1,12 +1,11 @@
-"""Loader for classmate Mark Andrian Macalalad's "Option B" synthetic dataset.
+"""Loader for the class-shared "Option B" synthetic dataset.
 
-Source: https://github.com/markandrian30/AI231/tree/main/MEX2/OptionB —
 17,658 QA-filtered synthetic recordings (voice-cloned via Chatterbox TTS
 from 100 real reference speakers: 84 foreign/LibriSpeech, 16 real
 Filipino-English/SilencioPH), speaker-disjoint train/val/test split
 (80/10/10 speakers), clean + noisy acoustic conditions, screened through
-Anthony Navarez's `simple-audio-transcriber` (942/18,600 originals
-flagged and removed).
+a transcribe-and-compare QA tool (942/18,600 originals flagged and
+removed). See DATASET.md for the source repo and how to pull it locally.
 
 Unlike slurp.py and fsc.py, no label mapping is needed here: this
 dataset was generated directly from the same 19-label fixed-vs-slotted
@@ -17,6 +16,10 @@ This closes every one of the 6 labels SLURP had zero coverage for
 (PAUSE, STOP, NEXT, CALL, TIMER, TEMPERATURE) — see slurp.py's module
 docstring for that gap.
 """
+
+# Acknowledgment: this dataset was generated and shared by a classmate as
+# part of the class's collective dataset effort — see DATASET.md's
+# Acknowledgments section.
 
 from __future__ import annotations
 
@@ -71,7 +74,7 @@ def to_manifest_rows(records: list[OptionBRecord], audio_root: Path | None = Non
             ManifestRow(
                 audio_path=audio_path,
                 label=r.intent,
-                source="mark_option_b",
+                source="option_b",
                 is_synthetic=True,
                 speaker_id=r.speaker,
                 split=r.split,

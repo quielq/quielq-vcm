@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 """Download SLURP's annotation files (if not already cached) and print a
-coverage report against the class's 19-label taxonomy (Mark Andrian's
-fixed-vs-slotted Dataset Schema — see src/vcm/dataset/sources/slurp.py
-for how the label mapping was built).
+coverage report against the class's 19-label fixed-vs-slotted taxonomy
+(see src/vcm/dataset/sources/slurp.py for how the label mapping was
+built).
 
 Usage:
     python scripts/slurp_coverage.py [--data-dir data/external/slurp]
@@ -10,6 +10,10 @@ Usage:
 Only downloads the ~13MB of annotation text (train/devel/test.jsonl),
 not any audio.
 """
+
+# Acknowledgment: the taxonomy this checks coverage against was shared
+# by a classmate as part of the class's collective dataset effort — see
+# DATASET.md's Acknowledgments section.
 
 from __future__ import annotations
 

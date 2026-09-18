@@ -1,6 +1,6 @@
 """Common manifest schema every dataset source gets normalized into.
 
-Regardless of which taxonomy wins class-wide (Mark Andrian Macalalad's
+Regardless of which taxonomy wins class-wide (the class-shared
 fixed-vs-slotted schema, the other ~23-class flat draft, or something
 else), every source (SLURP, FSC, the Dataset Schema recordings,
 synthetic batches) ends up as rows of this one shape, with a per-source
