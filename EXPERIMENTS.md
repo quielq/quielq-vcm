@@ -20,6 +20,7 @@ init, batch shuffling), not purely the effect being tested. Experiment
 | 1 | DS-CNN (24,276 params) | none | 30 | **65.29%** (epoch 28) | `logs/train_dscnn_run1.log` |
 | 2 | DS-CNN (24,276 params) | SpecAugment | 30 | 63.21% (epoch 28) | `logs/train_dscnn_augment_run2.log` |
 | 3 | BC-ResNet (10,196 params) | none | 30 | 44.16% (epoch 30) | `logs/train_bcresnet_run3.log` |
+| 4 | BC-ResNet (10,196 params), lr=3e-4 | none | 30 | 38.79% (epoch 28) | `logs/train_bcresnet_lowlr_run4.log` |
 
 ## Experiment 1 — DS-CNN baseline, no augmentation
 
@@ -249,3 +250,81 @@ concluding the architecture itself underperforms DS-CNN on this
 dataset — the current -19pp gap may be an optimization artifact rather
 than a genuine architecture-vs-data mismatch. This has not been tested
 yet; treat the 44.16% figure as provisional until that follow-up runs.
+
+## Experiment 4 — BC-ResNet, lower learning rate (lr=3e-4)
+
+**Setup**: `python -m vcm.train.train --model bcresnet --epochs 30
+--batch-size 128 --lr 3e-4 --seed 0`, on GPU 0. Identical to
+Experiment 3 except `--lr 3e-4` instead of the default `1e-3` (a
+~3.3x reduction), to directly test the LR-instability hypothesis
+raised there.
+
+**Result**: best val accuracy **38.79%** at epoch 28/30 — this is
+*worse* than Experiment 3's 44.16%, not better. The hypothesis that a
+lower learning rate alone would fix BC-ResNet's underperformance is
+**not confirmed** by this run.
+
+**What the lower LR did and didn't fix**: instability was reduced but
+not eliminated — the worst val_loss spike this run peaked at 5.29
+(epoch 21), versus 15.64 in Experiment 3, and spikes were somewhat
+less frequent. But the tradeoff was slower learning: at epoch 14 (the
+point Experiment 3 first reached its 40%+ plateau), this run was only
+at 25.46% val_acc, and it never fully caught up in the remaining 16
+epochs. In other words, the lower LR bought some stability at the cost
+of convergence speed, and 30 epochs wasn't enough for the more
+cautious run to reach where the noisier one landed.
+
+**Per-class accuracy**:
+
+| Label | Acc | n | | Label | Acc | n |
+|---|---:|---:|---|---|---:|---:|
+| unknown_background | 100.0% | 68 | | COLOR | 33.5% | 322 |
+| PAUSE | 98.8% | 80 | | LIST_REMINDERS | 33.3% | 249 |
+| CALL | 81.5% | 54 | | PLAY_MUSIC | 31.9% | 658 |
+| NEXT | 75.9% | 54 | | LIGHT_OFF | 31.5% | 511 |
+| TIMER | 71.4% | 178 | | TIME | 30.0% | 360 |
+| TEMPERATURE | 67.8% | 1166 | | CREATE_REMINDER | 29.3% | 280 |
+| STOP | 65.7% | 108 | | VOLUME_UP | 20.1% | 477 |
+| BRIGHTNESS | 50.4% | 395 | | LIGHT_ON | 14.1% | 562 |
+| ALARM | 41.7% | 333 | | MESSAGE | 11.7% | 282 |
+| VOLUME_DOWN | 41.0% | 442 | | WEATHER | 11.1% | 534 |
+
+**Top confusions**:
+
+| True → Predicted | Count |
+|---|---:|
+| WEATHER → PLAY_MUSIC | 186 |
+| TEMPERATURE → VOLUME_DOWN | 185 |
+| LIGHT_ON → VOLUME_DOWN | 154 |
+| LIGHT_ON → LIGHT_OFF | 132 |
+| VOLUME_UP → VOLUME_DOWN | 120 |
+| PLAY_MUSIC → PAUSE | 113 |
+| PLAY_MUSIC → TIME | 102 |
+| LIGHT_ON → TEMPERATURE | 101 |
+| TIME → PLAY_MUSIC | 100 |
+| LIGHT_OFF → TEMPERATURE | 91 |
+
+**Analysis**: TEMPERATURE improved a lot relative to Experiment 3
+(38.3%→67.8%) and PAUSE is now almost perfect (81.3%→98.8%), but
+LIGHT_ON collapsed badly (69.9%→14.1%, now mostly confused with
+VOLUME_DOWN and TEMPERATURE rather than its natural pair LIGHT_OFF) and
+WEATHER stayed the weakest class (13.5%→11.1%). The confusion pattern
+looks less like "the same errors, smaller" and more like a different,
+still-unconverged model — consistent with 30 epochs simply not being
+enough training budget at this LR for a network this size to settle.
+
+**Conclusion for this pair of runs**: across Experiments 3 and 4,
+BC-ResNet has not beaten DS-CNN on this dataset within a 30-epoch
+budget at either learning rate tried, and neither run reproduces the
+polarity-word fix it was chosen for. The instability is real and
+LR-related (lower LR measurably reduced spike severity), but simply
+lowering LR trades one problem (instability) for another (slow
+convergence) rather than resolving the underlying regression. The
+warmup + cosine-decay schedule the original BC-ResNet paper
+(arXiv:2106.04140) uses — not yet implemented in `train.py` — remains
+untested and is the most promising next lever, since it targets
+exactly this instability-vs-convergence-speed tradeoff (aggressive
+learning once training has stabilized, gentle learning early on)
+rather than picking one flat rate for the whole run. Until that's
+tried, DS-CNN (Experiment 1, 65.29%) remains the best model on this
+dataset by a wide margin.
