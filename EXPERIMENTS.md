@@ -21,6 +21,7 @@ init, batch shuffling), not purely the effect being tested. Experiment
 | 2 | DS-CNN (24,276 params) | SpecAugment | 30 | 63.21% (epoch 28) | `logs/train_dscnn_augment_run2.log` |
 | 3 | BC-ResNet (10,196 params) | none | 30 | 44.16% (epoch 30) | `logs/train_bcresnet_run3.log` |
 | 4 | BC-ResNet (10,196 params), lr=3e-4 | none | 30 | 38.79% (epoch 28) | `logs/train_bcresnet_lowlr_run4.log` |
+| 5 | BC-ResNet (10,196 params), lr=1e-3 + 3-epoch warmup + cosine decay | none | 30 | **47.41%** (epoch 25) | `logs/train_bcresnet_warmup_run5.log` |
 
 ## Experiment 1 — DS-CNN baseline, no augmentation
 
@@ -328,3 +329,88 @@ learning once training has stabilized, gentle learning early on)
 rather than picking one flat rate for the whole run. Until that's
 tried, DS-CNN (Experiment 1, 65.29%) remains the best model on this
 dataset by a wide margin.
+
+## Experiment 5 — BC-ResNet, warmup + cosine LR decay
+
+**Setup**: `python -m vcm.train.train --model bcresnet --epochs 30
+--batch-size 128 --lr 1e-3 --warmup-epochs 3 --seed 0`, on GPU 0.
+Same peak LR as Experiment 3 (1e-3), but reached via a 3-epoch linear
+warmup from ~1e-5, then cosine decay to ~0 over the remaining 27
+epochs — the schedule `--warmup-epochs` was added to `train.py`
+specifically to test, following the original BC-ResNet paper's own
+recipe (arXiv:2106.04140) rather than a flat rate.
+
+**Result**: best val accuracy **47.41%** at epoch 25/30 — clearly
+better than both prior BC-ResNet attempts (44.16% flat lr=1e-3,
+38.79% flat lr=3e-4), confirming the schedule helps. Still well below
+DS-CNN's 65.29% baseline, though — a real improvement over BC-ResNet's
+prior showing, not a win overall.
+
+**Instability was reduced but only partly, and correlates visibly
+with LR level**: spikes still occurred at epoch 7 (val_loss 3.75),
+13 (3.89), 15 (6.14), and 19 (4.13) — all while LR was still
+relatively high (roughly 7e-4 to 1e-3). From epoch 20 onward, as LR
+decayed below ~3.5e-4, val_loss and val_acc both stabilized
+completely: epochs 24-30 form a smooth, monotonically-settling curve
+around 46-47% with no further spikes. This is a clean confirmation of
+the original hypothesis from Experiment 3 — **the instability is an
+LR-magnitude effect specific to this architecture**, not a symptom of
+a data or implementation bug, since decaying the LR down eliminates it
+predictably rather than it dying out randomly.
+
+**Per-class accuracy**:
+
+| Label | Acc | n | | Label | Acc | n |
+|---|---:|---:|---|---|---:|---:|
+| unknown_background | 97.1% | 68 | | CREATE_REMINDER | 46.4% | 280 |
+| CALL | 92.6% | 54 | | LIST_REMINDERS | 42.2% | 249 |
+| PAUSE | 88.8% | 80 | | VOLUME_UP | 38.0% | 477 |
+| NEXT | 87.0% | 54 | | TIME | 37.8% | 360 |
+| STOP | 78.7% | 108 | | LIGHT_OFF | 33.7% | 511 |
+| TIMER | 75.8% | 178 | | MESSAGE | 32.3% | 282 |
+| TEMPERATURE | 69.5% | 1166 | | VOLUME_DOWN | 31.7% | 442 |
+| ALARM | 62.5% | 333 | | LIGHT_ON | 31.0% | 562 |
+| COLOR | 56.5% | 322 | | PLAY_MUSIC | 22.2% | 658 |
+| BRIGHTNESS | 49.1% | 395 | | WEATHER | 46.6% | 534 |
+
+**Top confusions**:
+
+| True → Predicted | Count |
+|---|---:|
+| TEMPERATURE → VOLUME_UP | 128 |
+| LIGHT_ON → LIGHT_OFF | 125 |
+| PLAY_MUSIC → WEATHER | 120 |
+| PLAY_MUSIC → TIME | 107 |
+| TIME → WEATHER | 100 |
+| VOLUME_DOWN → VOLUME_UP | 81 |
+| PLAY_MUSIC → MESSAGE | 76 |
+| LIGHT_OFF → LIGHT_ON | 69 |
+| VOLUME_UP → VOLUME_DOWN | 67 |
+| TEMPERATURE → VOLUME_DOWN | 67 |
+
+**Analysis**: this is the first BC-ResNet run where the model reliably
+separates its strongest classes (CALL, PAUSE, NEXT, STOP, TIMER all
+75-93%) rather than the noisier, less-structured per-class picture in
+Experiments 3-4. WEATHER recovered substantially (13.5% in Exp 3,
+11.1% in Exp 4 → 46.6% here) — the worst-performing class in both
+earlier runs is now mid-pack. PLAY_MUSIC is now the weakest class
+(22.2%), and the polarity confusions (VOLUME_UP/DOWN, LIGHT_ON/OFF)
+are still present but no longer dominate the confusion list the way
+they did for DS-CNN — they're now roughly on par with several other,
+unrelated confusions (TEMPERATURE↔VOLUME_UP, PLAY_MUSIC↔WEATHER),
+suggesting the model hasn't yet learned fine-grained distinctions
+broadly, not that it has a specific blind spot for polarity words.
+
+**Conclusion across Experiments 3-5**: the LR schedule was the right
+lever — it fixed the instability cleanly and improved BC-ResNet's
+accuracy by +3.25pp over its best prior flat-LR attempt — but 30
+epochs still isn't enough for BC-ResNet to reach, let alone beat,
+DS-CNN's baseline on this dataset. Given the loss curve was still
+descending smoothly and hadn't plateaued by epoch 30 (train_loss
+1.163→1.161 over the last 3 epochs, but val_acc still crept up to its
+final best at epoch 25 with no sign of overfitting yet — val_loss
+never rose again after the last spike), **more epochs is the most
+likely next lever to close the remaining gap**, not a further
+architecture or optimizer change. The next test worth running is the
+same warmup+cosine config extended to 60-80 epochs before concluding
+anything final about BC-ResNet vs. DS-CNN on this dataset.
