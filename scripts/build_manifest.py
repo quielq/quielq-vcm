@@ -11,6 +11,9 @@ Currently combines:
   source repo and how to pull it locally.
 - Google Speech Commands v2 background noise -> unknown_background —
   data/external/gsc/manifest.csv, produced by scripts/fetch_gsc_background.py.
+- Snips SLU, lighting-domain subset only (4 labels) —
+  data/external/snips_lights/manifest.csv, produced by
+  scripts/fetch_snips_lights.py.
 
 Usage:
     python scripts/build_manifest.py [--out data/dataset_manifest.csv]
@@ -36,6 +39,7 @@ SLURP_MANIFEST = REPO_ROOT / "data/external/slurp_audio/manifest.csv"
 OPTION_B_MANIFEST = REPO_ROOT / "data/external/option_b/manifest.csv"
 OPTION_B_AUDIO_ROOT = REPO_ROOT / "data/external/option_b/audio"
 GSC_BACKGROUND_MANIFEST = REPO_ROOT / "data/external/gsc/manifest.csv"
+SNIPS_LIGHTS_MANIFEST = REPO_ROOT / "data/external/snips_lights/manifest.csv"
 
 
 def main() -> None:
@@ -66,6 +70,13 @@ def main() -> None:
         print(f"GSC bg:     {len(gsc_rows)} rows (real, unknown_background)")
     else:
         print(f"GSC bg:     skipped, {GSC_BACKGROUND_MANIFEST} not found (run scripts/fetch_gsc_background.py first)")
+
+    if SNIPS_LIGHTS_MANIFEST.exists():
+        snips_rows = read_manifest(SNIPS_LIGHTS_MANIFEST)
+        rows.extend(snips_rows)
+        print(f"Snips:      {len(snips_rows)} rows (real, 4 lighting labels)")
+    else:
+        print(f"Snips:      skipped, {SNIPS_LIGHTS_MANIFEST} not found (run scripts/fetch_snips_lights.py first)")
 
     write_manifest(rows, args.out)
 
