@@ -31,7 +31,7 @@ pip install -e ".[dev]"
 python -m pytest
 ```
 
-Expected: `46 passed` in a few seconds. No microphone, speaker, network, or
+Expected: `57 passed` in a few seconds. No microphone, speaker, network, or
 Xiaomi device is touched — every test uses synthetic input (`np.random`
 arrays, monkeypatched env vars, fake injected modules for `gpiozero`/`sense_hat`).
 
@@ -214,7 +214,7 @@ python -c "from vcm.actions import calls; calls.call()"
 
 Run once after any change that touches multiple modules, or before a demo:
 
-- [ ] `python -m pytest` — 46/46 pass
+- [ ] `python -m pytest` — 57/57 pass
 - [ ] `python -m vcm.main` — hold spacebar, speak, see `Heard intent: unknown_background`
 - [ ] TTS audible (2.1)
 - [ ] Bulb on/off/dim responds (2.4)
@@ -339,7 +339,7 @@ system default input, same as on Mac.
 ```bash
 python -m pytest
 ```
-**Expect**: `46 passed`, same as Mac/sandbox (pure logic, no hardware
+**Expect**: `57 passed`, same as Mac/sandbox (pure logic, no hardware
 touched) — worth running here anyway once, to catch any RPi-OS-specific
 Python/numpy build issue early rather than during manual testing.
 
@@ -392,7 +392,7 @@ script's current output as a latency benchmark.
 
 - [ ] Fresh RPi OS 64-bit flashed, booted, SSH access confirmed
 - [ ] `get_platform()` returns `rpi`
-- [ ] `python -m pytest` passes on the Pi itself (46/46)
+- [ ] `python -m pytest` passes on the Pi itself (57/57)
 - [ ] Pushbutton (not spacebar) triggers capture
 - [ ] TTS audible through the real speaker
 - [ ] Mic captures real audio through the USB mic

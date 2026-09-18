@@ -46,7 +46,7 @@ bare command silently runs against the wrong interpreter and fails with
 `ModuleNotFoundError` for dependencies that are actually installed. `python
 -m pytest` always resolves through the active venv.
 
-42 tests, all pure logic, run anywhere (no microphone, network, or Xiaomi
+57 tests, all pure logic, run anywhere (no microphone, network, or Xiaomi
 device required). For manual verification of the parts that actually need
 real hardware/network — mic capture, TTS audio, the Xiaomi bulb/plug,
 weather, music — see **[TESTING.md](TESTING.md)**, which walks through each
