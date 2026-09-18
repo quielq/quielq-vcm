@@ -25,19 +25,21 @@ from torch.utils.data import Dataset
 from vcm.audio.features import extract_log_mel
 from vcm.dataset.manifest import ManifestRow, read_manifest
 from vcm.dataset.sources.dataset_schema import INTENT_LABELS
+from vcm.train.augment import spec_augment
 
 LABELS: tuple[str, ...] = INTENT_LABELS + ("unknown_background",)
 LABEL_TO_INDEX: dict[str, int] = {label: i for i, label in enumerate(LABELS)}
 
 
 class ManifestDataset(Dataset):
-    def __init__(self, rows: list[ManifestRow]):
+    def __init__(self, rows: list[ManifestRow], augment: bool = False):
         self.rows = rows
+        self.augment = augment
 
     @classmethod
-    def from_csv(cls, csv_path: Path, split: str) -> "ManifestDataset":
+    def from_csv(cls, csv_path: Path, split: str, augment: bool = False) -> "ManifestDataset":
         rows = [r for r in read_manifest(csv_path) if r.split == split]
-        return cls(rows)
+        return cls(rows, augment=augment)
 
     def __len__(self) -> int:
         return len(self.rows)
@@ -47,8 +49,10 @@ class ManifestDataset(Dataset):
         audio, sample_rate = sf.read(row.audio_path, dtype="float32")
         if audio.ndim > 1:
             audio = audio.mean(axis=1)
-        features = extract_log_mel(audio, sample_rate=sample_rate)
-        return torch.from_numpy(features), LABEL_TO_INDEX[row.label]
+        features = torch.from_numpy(extract_log_mel(audio, sample_rate=sample_rate))
+        if self.augment:
+            features = spec_augment(features)
+        return features, LABEL_TO_INDEX[row.label]
 
 
 def class_weights(rows: list[ManifestRow]) -> torch.Tensor:

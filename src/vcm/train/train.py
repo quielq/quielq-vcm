@@ -1,12 +1,15 @@
 #!/usr/bin/env python
-"""Train DS-CNN on data/dataset_manifest.csv.
+"""Train a model on data/dataset_manifest.csv. See EXPERIMENTS.md for
+real results from runs of this script, and MODEL.md/architectures.py
+for what each --model option is and why.
 
 Usage:
-    python -m vcm.train.train [--epochs 30] [--batch-size 128] [--lr 1e-3]
+    python -m vcm.train.train --model dscnn [--epochs 30] [--batch-size 128] [--lr 1e-3]
+    python -m vcm.train.train --model bcresnet --augment
 
 Saves the best checkpoint (by val accuracy) to --out, including the
-label list it was trained against (vcm.train.dataset.LABELS) so the
-checkpoint is self-describing.
+label list and the model name it was trained with
+(vcm.train.dataset.LABELS) so the checkpoint is self-describing.
 """
 
 from __future__ import annotations
@@ -19,8 +22,10 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 
-from vcm.train.architectures import DSCNN
+from vcm.train.architectures import BCResNet, DSCNN
 from vcm.train.dataset import LABELS, ManifestDataset, class_weights
+
+MODELS = {"dscnn": DSCNN, "bcresnet": BCResNet}
 
 
 def evaluate(model: nn.Module, loader: DataLoader, device: torch.device, criterion: nn.Module) -> tuple[float, float]:
@@ -42,19 +47,21 @@ def evaluate(model: nn.Module, loader: DataLoader, device: torch.device, criteri
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest", type=Path, default=Path("data/dataset_manifest.csv"))
+    parser.add_argument("--model", choices=sorted(MODELS), default="dscnn")
+    parser.add_argument("--augment", action="store_true", help="Apply SpecAugment to training data (never val/test)")
     parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--num-workers", type=int, default=4)
-    parser.add_argument("--out", type=Path, default=Path("checkpoints/dscnn_best.pt"))
+    parser.add_argument("--out", type=Path, default=Path("checkpoints/best.pt"))
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = parser.parse_args()
 
     device = torch.device(args.device)
-    print(f"Using device: {device}", flush=True)
+    print(f"Using device: {device}, model: {args.model}, augment: {args.augment}", flush=True)
 
-    train_ds = ManifestDataset.from_csv(args.manifest, split="train")
-    val_ds = ManifestDataset.from_csv(args.manifest, split="val")
+    train_ds = ManifestDataset.from_csv(args.manifest, split="train", augment=args.augment)
+    val_ds = ManifestDataset.from_csv(args.manifest, split="val", augment=False)
     print(f"train: {len(train_ds)} examples, val: {len(val_ds)} examples", flush=True)
 
     train_loader = DataLoader(
@@ -67,7 +74,7 @@ def main() -> None:
     weights = class_weights(train_ds.rows).to(device)
     criterion = nn.CrossEntropyLoss(weight=weights)
 
-    model = DSCNN(num_classes=len(LABELS)).to(device)
+    model = MODELS[args.model](num_classes=len(LABELS)).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
@@ -102,6 +109,8 @@ def main() -> None:
             torch.save(
                 {
                     "model_state_dict": model.state_dict(),
+                    "model_name": args.model,
+                    "augment": args.augment,
                     "labels": LABELS,
                     "epoch": epoch,
                     "val_acc": val_acc,
