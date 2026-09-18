@@ -14,6 +14,9 @@ Currently combines:
 - Snips SLU, lighting-domain subset only (4 labels) —
   data/external/snips_lights/manifest.csv, produced by
   scripts/fetch_snips_lights.py.
+- FSC (8 labels, including TEMPERATURE/STOP/PAUSE which had zero real
+  coverage anywhere else) — data/external/fsc/manifest.csv, produced by
+  scripts/process_fsc.py.
 
 Usage:
     python scripts/build_manifest.py [--out data/dataset_manifest.csv]
@@ -40,6 +43,7 @@ OPTION_B_MANIFEST = REPO_ROOT / "data/external/option_b/manifest.csv"
 OPTION_B_AUDIO_ROOT = REPO_ROOT / "data/external/option_b/audio"
 GSC_BACKGROUND_MANIFEST = REPO_ROOT / "data/external/gsc/manifest.csv"
 SNIPS_LIGHTS_MANIFEST = REPO_ROOT / "data/external/snips_lights/manifest.csv"
+FSC_MANIFEST = REPO_ROOT / "data/external/fsc/manifest.csv"
 
 
 def main() -> None:
@@ -77,6 +81,13 @@ def main() -> None:
         print(f"Snips:      {len(snips_rows)} rows (real, 4 lighting labels)")
     else:
         print(f"Snips:      skipped, {SNIPS_LIGHTS_MANIFEST} not found (run scripts/fetch_snips_lights.py first)")
+
+    if FSC_MANIFEST.exists():
+        fsc_rows = read_manifest(FSC_MANIFEST)
+        rows.extend(fsc_rows)
+        print(f"FSC:        {len(fsc_rows)} rows (real, 8 labels)")
+    else:
+        print(f"FSC:        skipped, {FSC_MANIFEST} not found (run scripts/process_fsc.py first)")
 
     write_manifest(rows, args.out)
 
