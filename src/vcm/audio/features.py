@@ -12,7 +12,13 @@ import numpy as np
 
 from vcm.audio.capture import SAMPLE_RATE
 
-WINDOW_S = 1.5
+WINDOW_S = 3.0
+# 3.0s (not the original 1.5s), sized against the real training corpus:
+# a 500-clip sample across all 5 combined sources had median duration
+# 2.14s and p90 3.33s — at 1.5s, 80% of real clips were getting
+# truncated. 3.0s covers ~83% without truncation at a reasonable
+# compute cost; see MODEL.md / the training pipeline plan for the full
+# percentile breakdown behind this number.
 N_MELS = 40
 N_FFT = 400  # 25ms at 16kHz
 HOP_LENGTH = 160  # 10ms at 16kHz
