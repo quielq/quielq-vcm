@@ -63,6 +63,14 @@ def main() -> None:
         help="Linear LR warmup for this many epochs, then cosine decay to 0 over the rest. "
         "0 (default) keeps a flat --lr the whole run.",
     )
+    parser.add_argument(
+        "--train-fraction",
+        type=float,
+        default=1.0,
+        help="Randomly subsample this fraction of the training split (for data-scaling "
+        "experiments, e.g. EXPERIMENTS.md's learning-curve test). 1.0 (default) uses all "
+        "training rows. Val/test are never subsampled.",
+    )
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--out", type=Path, default=Path("checkpoints/best.pt"))
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
@@ -79,7 +87,14 @@ def main() -> None:
 
     train_ds = ManifestDataset.from_csv(args.manifest, split="train", augment=args.augment)
     val_ds = ManifestDataset.from_csv(args.manifest, split="val", augment=False)
-    print(f"train: {len(train_ds)} examples, val: {len(val_ds)} examples", flush=True)
+    if args.train_fraction < 1.0:
+        n_keep = max(1, int(len(train_ds.rows) * args.train_fraction))
+        train_ds.rows = random.sample(train_ds.rows, n_keep)
+    print(
+        f"train: {len(train_ds)} examples (train_fraction={args.train_fraction}), "
+        f"val: {len(val_ds)} examples",
+        flush=True,
+    )
 
     train_loader = DataLoader(
         train_ds, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, pin_memory=True
@@ -145,6 +160,7 @@ def main() -> None:
                     "augment": args.augment,
                     "seed": args.seed,
                     "warmup_epochs": args.warmup_epochs,
+                    "train_fraction": args.train_fraction,
                     "labels": LABELS,
                     "epoch": epoch,
                     "val_acc": val_acc,
