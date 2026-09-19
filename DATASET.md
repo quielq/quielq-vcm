@@ -387,24 +387,21 @@ required to pass.
 This pipeline is built directly on top of work shared across the class,
 not developed in isolation. Specifically:
 
-- The **working taxonomy** (Section 1 above) was shared by a classmate
-  and is adopted here as-is; this project only added a plain-CSV export
-  alongside it for safer downstream tooling.
-- The **synthetic dataset** used for the six labels with no real
-  coverage (Section 4) was generated and shared by a classmate, using
-  a speaker-disjoint voice-cloning methodology that deliberately
+- **Mark Macalacad** shared the **working taxonomy** (Section 1 above),
+  adopted here as-is (this project only added a plain-CSV export
+  alongside it for safer downstream tooling), and generated and shared
+  the **synthetic "Option B" dataset** (Section 4, all 19 labels),
+  using a speaker-disjoint voice-cloning methodology that deliberately
   includes real Filipino-English reference speakers.
-- The **QA-screening approach** (Section 7) generalizes a
-  transcribe-and-compare tool a classmate built and shared, originally
-  used to filter the synthetic dataset above.
-- A precedented public synthetic-command dataset was identified and
-  shared by a classmate as a resource to check before generating new
-  synthetic data from scratch, avoiding duplicated effort.
+- **Anthony Navarez** built and shared the transcribe-and-compare QA
+  tool that the **QA-screening approach** (Section 9) generalizes,
+  originally used to filter the synthetic dataset above.
+- The idea to check for a precedented public synthetic-command dataset
+  before generating new synthetic data from scratch (avoiding
+  duplicated effort) came from this project's own side, not a shared
+  classmate resource.
 - Several other classmates contributed dataset leads, reference
   implementations, and corpus-sizing corrections that shaped the
   candidate-source research in `VCM_Architecture_Review.md` Section 9.
 
-Names and individual attribution are intentionally kept out of this
-document so it stays a stable, factual reference rather than a running
-log — but the collective nature of this work is real, and everything
-above exists because of it.
+Everything above exists because of this collective effort.

@@ -14,7 +14,7 @@ VCM classifies audio directly into an intent, no transcription step.
 """
 
 # Acknowledgment: this generalizes a transcribe-and-compare QA tool built
-# and shared by a classmate as part of the class's collective dataset
+# and shared by Anthony Navarez as part of the class's collective dataset
 # effort — see DATASET.md's Acknowledgments section.
 
 from __future__ import annotations

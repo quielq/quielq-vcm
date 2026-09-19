@@ -17,8 +17,8 @@ This closes every one of the 6 labels SLURP had zero coverage for
 docstring for that gap.
 """
 
-# Acknowledgment: this dataset was generated and shared by a classmate as
-# part of the class's collective dataset effort — see DATASET.md's
+# Acknowledgment: this dataset was generated and shared by Mark Macalacad
+# as part of the class's collective dataset effort — see DATASET.md's
 # Acknowledgments section.
 
 from __future__ import annotations

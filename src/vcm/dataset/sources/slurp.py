@@ -18,7 +18,7 @@ not omissions in the mapping below.
 """
 
 # Acknowledgment: the taxonomy this checks coverage against was shared by
-# a classmate as part of the class's collective dataset effort — see
+# Mark Macalacad as part of the class's collective dataset effort — see
 # DATASET.md's Acknowledgments section.
 
 from __future__ import annotations

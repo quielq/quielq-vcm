@@ -18,8 +18,8 @@ anyone who wants to load it with pandas/Excel/etc. without going through
 Sheets at all.
 """
 
-# Acknowledgment: this taxonomy was shared by a classmate as part of the
-# class's collective dataset effort — see DATASET.md's Acknowledgments
+# Acknowledgment: this taxonomy was shared by Mark Macalacad as part of
+# the class's collective dataset effort — see DATASET.md's Acknowledgments
 # section.
 
 from __future__ import annotations
