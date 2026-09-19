@@ -24,6 +24,7 @@ init, batch shuffling), not purely the effect being tested. Experiment
 | 5 | BC-ResNet (10,196 params), lr=1e-3 + 3-epoch warmup + cosine decay | none | 30 | 47.41% (epoch 25) | `logs/train_bcresnet_warmup_run5.log` |
 | 6 | BC-ResNet (10,196 params), lr=1e-3 + 5-epoch warmup + cosine decay | none | 80 | 58.99% (epoch 65) | `logs/train_bcresnet_warmup80_run6.log` |
 | 7 | DS-CNN (24,276 params), lr=1e-3 + 3-epoch warmup + cosine decay | none | 30 | **65.96%** (epoch 26) — best overall so far | `logs/train_dscnn_warmup_run7.log` |
+| 8 | DS-CNN (24,276 params), lr=1e-3 + 3-epoch warmup + cosine decay | SpecAugment | 30 | 57.77% (epoch 30) | `logs/train_dscnn_warmup_augment_run8.log` |
 
 ## Experiment 1 — DS-CNN baseline, no augmentation
 
@@ -590,3 +591,79 @@ distinguishing word in commands that otherwise share a carrier phrase
 (e.g. targeted time-masking that preserves the polarity word instead
 of SpecAugment's random masking, which Experiment 2 showed can erase
 exactly that word).
+
+## Experiment 8 — DS-CNN, warmup + cosine LR decay + SpecAugment
+
+**Setup**: `python -m vcm.train.train --model dscnn --augment --epochs
+30 --batch-size 128 --lr 1e-3 --warmup-epochs 3 --seed 0`, on GPU 0.
+Retests SpecAugment (the negative result from Experiment 2) on top of
+Experiment 7's now-proven warmup+cosine schedule, to check whether
+Experiment 2's regression was itself an artifact of the old flat-LR,
+unseeded setup rather than a real property of SpecAugment on this
+dataset.
+
+**Result**: best val accuracy **57.77%** at epoch 30/30 — **8.19
+points below Experiment 7's 65.96%** (same config, no augmentation),
+and even below Experiment 1's original flat-LR baseline (65.29%). The
+regression is confirmed, not explained away: SpecAugment is a genuine
+net-negative for this dataset/architecture combination, independent of
+the LR schedule or seeding used underneath it. Training was still
+gradually improving at epoch 30 but had clearly begun to plateau
+(val_acc 57.7-57.8% across the last 5 epochs) — more epochs alone is
+unlikely to close an 8pp gap the way it helped BC-ResNet's much larger,
+still-descending gap in Experiment 6.
+
+**Per-class accuracy**:
+
+| Label | Acc | n | | Label | Acc | n |
+|---|---:|---:|---|---|---:|---:|
+| unknown_background | 98.5% | 68 | | WEATHER | 56.7% | 534 |
+| CALL | 94.4% | 54 | | CREATE_REMINDER | 56.1% | 280 |
+| TIMER | 89.3% | 178 | | LIGHT_OFF | 49.9% | 511 |
+| NEXT | 88.9% | 54 | | LIST_REMINDERS | 45.4% | 249 |
+| PAUSE | 88.8% | 80 | | MESSAGE | 44.0% | 282 |
+| TEMPERATURE | 81.1% | 1166 | | TIME | 35.3% | 360 |
+| STOP | 76.9% | 108 | | PLAY_MUSIC | 28.0% | 658 |
+| ALARM | 74.5% | 333 | | VOLUME_UP | 23.3% | 477 |
+| LIGHT_ON | 66.6% | 562 | | | | |
+| COLOR | 60.3% | 322 | | | | |
+| BRIGHTNESS | 59.2% | 395 | | | | |
+| VOLUME_DOWN | 58.8% | 442 | | | | |
+
+**Top confusions**:
+
+| True → Predicted | Count |
+|---|---:|
+| VOLUME_UP → VOLUME_DOWN | 167 |
+| PLAY_MUSIC → WEATHER | 132 |
+| TIME → WEATHER | 119 |
+| LIGHT_OFF → LIGHT_ON | 84 |
+| PLAY_MUSIC → MESSAGE | 76 |
+| TEMPERATURE → VOLUME_DOWN | 74 |
+| PLAY_MUSIC → TIME | 70 |
+| LIST_REMINDERS → WEATHER | 68 |
+| WEATHER → TIME | 65 |
+| VOLUME_UP → TEMPERATURE | 62 |
+
+**Analysis**: VOLUME_UP is now the weakest class by far (23.3%, worse
+than any prior experiment for this label), and its top confusion
+(VOLUME_UP→VOLUME_DOWN, 167 — the single largest confusion count seen
+in any experiment) confirms the theory from Experiment 2: masking a
+short command's one distinguishing word (here, "up" vs "down") is
+actively harmful, not neutral, for exactly the classes that already
+depend on a single word to disambiguate. WEATHER is heavily involved
+in confusions again too (both as source and target), similar to its
+behavior without the schedule.
+
+**Conclusion — SpecAugment is now ruled out for this dataset**: across
+two independent tests (Experiment 2 at flat LR, Experiment 8 at the
+proven warmup+cosine schedule), SpecAugment produced a real,
+substantial regression both times. This isn't a schedule or seeding
+artifact — it's specific to how random time/frequency masking
+interacts with short, single-distinguishing-word commands. **DS-CNN +
+warmup+cosine LR schedule, no augmentation (Experiment 7, 65.96%)
+remains the best and recommended configuration** for this dataset.
+Any future augmentation attempt should be targeted (protect the
+distinguishing word) rather than random, per the note at the end of
+Experiment 7 — but that requires word-level alignment infrastructure
+not yet built, and is not a small follow-up.
