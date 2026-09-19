@@ -30,6 +30,9 @@ from vcm.train.architectures import BCResNet, DSCNN
 from vcm.train.dataset import LABELS, ManifestDataset, class_weights
 
 MODELS = {"dscnn": DSCNN, "bcresnet": BCResNet}
+# Generic --width/--depth CLI flags map to each model's own constructor
+# kwarg names (DSCNN: num_filters/num_blocks, BCResNet: channels/num_blocks).
+WIDTH_KWARG = {"dscnn": "num_filters", "bcresnet": "channels"}
 
 
 def evaluate(model: nn.Module, loader: DataLoader, device: torch.device, criterion: nn.Module) -> tuple[float, float]:
@@ -71,6 +74,20 @@ def main() -> None:
         "experiments, e.g. EXPERIMENTS.md's learning-curve test). 1.0 (default) uses all "
         "training rows. Val/test are never subsampled.",
     )
+    parser.add_argument(
+        "--width",
+        type=int,
+        default=None,
+        help="Override the model's channel width (num_filters for dscnn, channels for "
+        "bcresnet). Default: the model class's own default.",
+    )
+    parser.add_argument(
+        "--depth",
+        type=int,
+        default=None,
+        help="Override the model's block count (num_blocks, both models). Default: the "
+        "model class's own default.",
+    )
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--out", type=Path, default=Path("checkpoints/best.pt"))
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
@@ -106,7 +123,14 @@ def main() -> None:
     weights = class_weights(train_ds.rows).to(device)
     criterion = nn.CrossEntropyLoss(weight=weights)
 
-    model = MODELS[args.model](num_classes=len(LABELS)).to(device)
+    model_kwargs: dict[str, int] = {"num_classes": len(LABELS)}
+    if args.width is not None:
+        model_kwargs[WIDTH_KWARG[args.model]] = args.width
+    if args.depth is not None:
+        model_kwargs["num_blocks"] = args.depth
+    model = MODELS[args.model](**model_kwargs).to(device)
+    n_params = sum(p.numel() for p in model.parameters())
+    print(f"Model params: {n_params:,}", flush=True)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
     scheduler = None
@@ -161,6 +185,7 @@ def main() -> None:
                     "seed": args.seed,
                     "warmup_epochs": args.warmup_epochs,
                     "train_fraction": args.train_fraction,
+                    "model_kwargs": model_kwargs,
                     "labels": LABELS,
                     "epoch": epoch,
                     "val_acc": val_acc,
