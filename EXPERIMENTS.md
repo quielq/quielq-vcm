@@ -25,6 +25,9 @@ init, batch shuffling), not purely the effect being tested. Experiment
 | 6 | BC-ResNet (10,196 params), lr=1e-3 + 5-epoch warmup + cosine decay | none | 80 | 58.99% (epoch 65) | `logs/train_bcresnet_warmup80_run6.log` |
 | 7 | DS-CNN (24,276 params), lr=1e-3 + 3-epoch warmup + cosine decay | none | 30 | **65.96%** (epoch 26) — best overall so far | `logs/train_dscnn_warmup_run7.log` |
 | 8 | DS-CNN (24,276 params), lr=1e-3 + 3-epoch warmup + cosine decay | SpecAugment | 30 | 57.77% (epoch 30) | `logs/train_dscnn_warmup_augment_run8.log` |
+| 9a | DS-CNN, same config as #7, `--train-fraction 0.25` | none | 30 | 44.06% (epoch 29) | `logs/train_dscnn_warmup_frac25_run9.log` |
+| 9b | DS-CNN, same config as #7, `--train-fraction 0.50` | none | 30 | 54.77% (epoch 29) | `logs/train_dscnn_warmup_frac50_run10.log` |
+| 9c | DS-CNN, same config as #7, `--train-fraction 0.75` | none | 30 | 60.72% (epoch 28) | `logs/train_dscnn_warmup_frac75_run11.log` |
 
 ## Parked / to-do
 
@@ -32,15 +35,9 @@ Not yet run. Recorded here so they aren't lost, not because they're
 scheduled — pick back up when there's a reason to chase more accuracy
 again.
 
-- **Data-scaling (learning-curve) test**: train the winning config
-  (DS-CNN + warmup/cosine, Experiment 7) on 25%/50%/75%/100% of the
-  current training data and compare val accuracy at each size. This is
-  the direct way to answer "would more/better data raise the ~65%
-  ceiling, or is it structural?" — see the discussion below Experiment
-  8 for the indirect evidence (small classes already perform best,
-  the dominant confusion is a phrasing overlap baked into the source
-  data) that currently points toward "structural," but this hasn't
-  been tested directly.
+- ~~Data-scaling (learning-curve) test~~ — **done, see Experiment 9
+  below.** Result: more data would meaningfully help — the curve has
+  not plateaued at 100%.
 - **Targeted (non-random) time masking** to protect the one
   distinguishing word in polarity-confused commands (VOLUME_UP/DOWN,
   LIGHT_ON/OFF) instead of SpecAugment's random masking (ruled out in
@@ -697,3 +694,66 @@ Any future augmentation attempt should be targeted (protect the
 distinguishing word) rather than random, per the note at the end of
 Experiment 7 — but that requires word-level alignment infrastructure
 not yet built, and is not a small follow-up.
+
+## Experiment 9 — Data-scaling (learning-curve) test
+
+**Motivation**: after 8 experiments, accuracy had settled around
+65-66% regardless of architecture or LR schedule, prompting the
+question of whether the dataset itself is the limiting factor. Indirect
+evidence at the time (small classes like CALL/PAUSE/NEXT already
+scoring 80-95%+, the dominant confusion looking like a phrasing overlap
+baked into the source data) pointed toward "probably structural, not
+data-limited" — but that was inference, not a direct test. This
+experiment is the direct test: added `--train-fraction` to `train.py`
+(randomly subsamples the training split, seeded/reproducible, val/test
+untouched) and trained the winning config (DS-CNN + 3-epoch warmup +
+cosine decay, seed 0) at 25%, 50%, 75%, and 100% (= Experiment 7,
+reused rather than rerun) of the training data.
+
+**Setup**: `python -m vcm.train.train --model dscnn --epochs 30
+--batch-size 128 --lr 1e-3 --warmup-epochs 3 --seed 0 --train-fraction
+{0.25,0.50,0.75}`, three runs launched in parallel on GPUs 0/1/2.
+
+**Result — the curve has not plateaued**:
+
+| Train fraction | Train rows | Best val acc |
+|---:|---:|---:|
+| 25% | 12,151 | 44.06% |
+| 50% | 24,302 | 54.77% |
+| 75% | 36,453 | 60.72% |
+| 100% | 48,605 | **65.96%** (Experiment 7) |
+
+Looking at gain per *doubling* of data (the natural unit for a learning
+curve): 25%→50% gained +10.71pp, and 50%→100% gained +11.19pp — nearly
+identical. A curve that was running out of headroom would show
+shrinking gains per doubling; this one hasn't started to bend yet.
+**Direct answer to "could the dataset be insufficient": yes — more
+data would very likely raise accuracy further**, which revises the
+earlier indirect-evidence-based read toward "probably structural."
+
+**Per-class comparison (25% vs. 100%/Experiment 7) — the gain is
+concentrated exactly where it's needed most**: the classes that
+improve the most from 4x more data are the ones already flagged as the
+dataset's hardest, most-confused classes — VOLUME_UP (18.7%→57.7%,
++39.0pp), LIGHT_OFF (26.0%→64.0%, +38.0pp), PLAY_MUSIC
+(15.4%→50.9%, +35.5pp), TIME (26.4%→60.8%, +34.4pp), COLOR
+(34.8%→67.1%, +32.3pp). Meanwhile the classes that were already easy at
+25% data (CALL, TEMPERATURE, NEXT, TIMER, ALARM, STOP, PAUSE — all
+66%+ even with a quarter of the data) only gained 9-19pp, since they
+had much less room to grow.
+
+**Reconciling this with Experiments 1-8's confusion findings**: both
+things are true at once. The polarity/carrier-phrase confusion
+(VOLUME_UP/DOWN, LIGHT_ON/OFF, TEMPERATURE overlapping VOLUME phrasing)
+is a real structural property of how the source data phrases these
+commands — more of the same phrasing pattern won't teach the model a
+*new* distinguishing cue. But this experiment shows those exact classes
+are also the most data-hungry — they need more examples than the easy
+classes to reach the same accuracy, and they hadn't saturated even at
+the full current dataset size. So the practical, actionable conclusion
+is: **growing the dataset further (more real+synthetic examples for
+the already-covered labels, not necessarily new sources) is a
+legitimate, evidence-backed lever**, not a dead end — it just won't by
+itself eliminate the confusion the way a truly new source of
+information (e.g. protecting the distinguishing word specifically)
+might.
