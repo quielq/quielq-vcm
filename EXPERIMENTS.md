@@ -26,6 +26,36 @@ init, batch shuffling), not purely the effect being tested. Experiment
 | 7 | DS-CNN (24,276 params), lr=1e-3 + 3-epoch warmup + cosine decay | none | 30 | **65.96%** (epoch 26) — best overall so far | `logs/train_dscnn_warmup_run7.log` |
 | 8 | DS-CNN (24,276 params), lr=1e-3 + 3-epoch warmup + cosine decay | SpecAugment | 30 | 57.77% (epoch 30) | `logs/train_dscnn_warmup_augment_run8.log` |
 
+## Parked / to-do
+
+Not yet run. Recorded here so they aren't lost, not because they're
+scheduled — pick back up when there's a reason to chase more accuracy
+again.
+
+- **Data-scaling (learning-curve) test**: train the winning config
+  (DS-CNN + warmup/cosine, Experiment 7) on 25%/50%/75%/100% of the
+  current training data and compare val accuracy at each size. This is
+  the direct way to answer "would more/better data raise the ~65%
+  ceiling, or is it structural?" — see the discussion below Experiment
+  8 for the indirect evidence (small classes already perform best,
+  the dominant confusion is a phrasing overlap baked into the source
+  data) that currently points toward "structural," but this hasn't
+  been tested directly.
+- **Targeted (non-random) time masking** to protect the one
+  distinguishing word in polarity-confused commands (VOLUME_UP/DOWN,
+  LIGHT_ON/OFF) instead of SpecAugment's random masking (ruled out in
+  Experiment 8). Needs word-level time alignment, which the pipeline
+  doesn't have yet — a bigger lift than the other items here.
+- **BC-ResNet with more channels/blocks**, now that its instability is
+  understood and fixed (Experiments 5-6): worth checking whether more
+  capacity closes the remaining gap to DS-CNN, separately from the
+  epoch/schedule tuning already done.
+- Revisit all of the above (and the current 65.96% baseline itself) if
+  the class ends up converging on a different shared dataset — the
+  training pipeline is dataset-agnostic (reads whatever's in
+  `data/dataset_manifest.csv`), so this is a rerun of the same known
+  configs, not new work.
+
 ## Experiment 1 — DS-CNN baseline, no augmentation
 
 **Setup**: `python -m vcm.train.train --epochs 30 --batch-size 128`,

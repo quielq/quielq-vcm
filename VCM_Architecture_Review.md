@@ -233,6 +233,22 @@ The RPi-specific parts of this build are a small fraction of the total pipeline.
 
 **Dataset development is a collective, community effort.** Since this document's initial candidate-source research above, the class has moved into active, collaborative dataset work: a shared working taxonomy has been adopted, real-source coverage has been verified with exact numbers, a class-contributed synthetic dataset and a QA-screening tool are being integrated, and this keeps evolving quickly. Tracking that day-to-day here would turn this architecture document into a moving target instead of a stable reference, so it lives separately. **See [DATASET.md](DATASET.md)** for the current taxonomy, dataset sources in use, exact reproduction steps, and an acknowledgment of the collective contributions this pipeline is built on.
 
+**Project size, as a point-in-time snapshot (2026-09-19)** — this
+number moves as the dataset and dependencies change, so treat DATASET.md
+as the authoritative, current figure and this table as a dated
+reference:
+
+| Component | Size |
+|---|---:|
+| Combined training dataset (`data/external/`, 5 sources) | ~4.4 GB |
+| Python training environment (`.venv`, incl. PyTorch/CUDA) | ~6.1 GB |
+| Source code, docs, checkpoints, logs | ~30 MB |
+| **Total project footprint on the DGX** | **~11 GB** |
+
+Note the dataset itself is under half the total footprint — most of
+the space is the PyTorch/CUDA training environment, which is a
+one-time cost per machine, not something that grows with the dataset.
+
 ---
 
 ## 10. Circuit / Wiring Diagrams
