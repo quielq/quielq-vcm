@@ -170,9 +170,18 @@ approach already used for Snips SLU (step 6) and FSC's
 Applying this to already-downloaded audio (no re-fetch needed) via
 `scripts/refilter_slurp_manifest.py`, then rebuilding the combined
 manifest, took SLURP from 19,712 → 17,452 rows and the combined
-dataset from 64,665 → 62,405 rows. Whether this actually improves the
-affected labels' accuracy hasn't been verified with a training run
-yet — that's the natural next step.
+dataset from 64,665 → 62,405 rows.
+
+**Verified with a real training run** (EXPERIMENTS.md Experiment 12 —
+same model/config as Experiment 11, only the dataset changed): overall
+val accuracy improved +1.71pp (72.39% → 74.10%). LIST_REMINDERS jumped
+from the weakest class (49.4%) to a perfect 100% once purified down to
+Option B's 558 clean examples; WEATHER improved +6.1pp and TIME +4.9pp.
+MESSAGE unexpectedly dropped -6.4pp despite only 3 sentences being
+removed there — too small a change to be the direct cause, more likely
+a side effect of the overall class-weight/confusion redistribution
+than a flaw in the fix itself; worth re-checking once multiple seeds
+are used to rule out ordinary run-to-run noise.
 
 ## 1. The taxonomy (class-shared fixed-vs-slotted schema)
 

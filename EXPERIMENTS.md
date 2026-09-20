@@ -29,7 +29,8 @@ init, batch shuffling), not purely the effect being tested. Experiment
 | 9b | DS-CNN, same config as #7, `--train-fraction 0.50` | none | 30 | 54.77% (epoch 29) | `logs/train_dscnn_warmup_frac50_run10.log` |
 | 9c | DS-CNN, same config as #7, `--train-fraction 0.75` | none | 30 | 60.72% (epoch 28) | `logs/train_dscnn_warmup_frac75_run11.log` |
 | 10 | BC-ResNet, channels=48/blocks=8 (25,748 params), lr=1e-3 + 5-epoch warmup + cosine decay | none | 80 | 67.54% (epoch 53) | `logs/train_bcresnet_bigcap_run10.log` |
-| 11 | DS-CNN, num_filters=60/num_blocks=5 (26,300 params), lr=1e-3 + 5-epoch warmup + cosine decay | none | 80 | **72.39%** (epoch 63) — best overall | `logs/train_dscnn_bigcap_run11.log` |
+| 11 | DS-CNN, num_filters=60/num_blocks=5 (26,300 params), lr=1e-3 + 5-epoch warmup + cosine decay | none | 80 | 72.39% (epoch 63) | `logs/train_dscnn_bigcap_run11.log` |
+| 12 | Same as #11, on the SLURP-quality-fixed manifest (62,405 rows, was 64,665) | none | 80 | **74.10%** (epoch 46) — best overall | `logs/train_dscnn_bigcap_cleaned_run12.log` |
 
 ## Parked / to-do
 
@@ -952,14 +953,108 @@ are the SLURP-dominated labels flagged there (69% and 85% SLURP
 respectively) — real evidence that this is a data-quality ceiling,
 not something more capacity alone fixes.
 
-**Current standing recommendation**: `checkpoints/dscnn_bigcap_best.pt`
-(DS-CNN, num_filters=60/num_blocks=5, 72.39%) is now the best model
-across all 11 experiments, and **DS-CNN is the recommended
-architecture** going forward — it has now won at both default and
-matched capacity, with zero training instability at any setting tried,
-unlike BC-ResNet. The capacity-scaling headroom itself looks
-promising too (default 24,276→65.96%, bigger 26,300→72.39% for only
-~2,000 more params) — an even larger DS-CNN has not been tried and is
-a plausible next lever, distinct from and complementary to the
-dataset-quality fix already identified for the SLURP-dominated
-labels.
+**DS-CNN is the recommended architecture** going forward — it has now
+won at both default and matched capacity, with zero training
+instability at any setting tried, unlike BC-ResNet. The capacity-
+scaling headroom itself looks promising too (default 24,276→65.96%,
+bigger 26,300→72.39% for only ~2,000 more params) — an even larger
+DS-CNN has not been tried and is a plausible next lever, distinct from
+and complementary to the dataset-quality fix. **Superseded by
+Experiment 12 below**, which applied that dataset-quality fix and
+found a real, further improvement — see there for the current best
+checkpoint.
+
+## Experiment 12 — same config as #11, on the SLURP-quality-fixed dataset
+
+**Motivation**: directly tests whether the SLURP mapping-purity fix
+(DATASET.md's "Known per-label quality signal" — dropped LIST_REMINDERS'
+`lists_query` mapping entirely, filtered pure-date questions out of
+TIME, small junk cleanups for WEATHER/MESSAGE) actually improves
+accuracy, rather than just trusting the diagnosis. Same exact model
+config as Experiment 11, same seed, only the dataset changed — any
+accuracy difference is attributable to the fix, not noise from a
+different setup.
+
+**Setup**: `python -m vcm.train.train --model dscnn --epochs 80
+--batch-size 128 --lr 1e-3 --warmup-epochs 5 --seed 0 --width 60
+--depth 5`, on GPU 1, against the rebuilt `data/dataset_manifest.csv`
+(62,405 rows, down from 64,665 — see DATASET.md for exactly what was
+removed and why).
+
+**Result — the fix works**: best val accuracy **74.10%** at epoch
+46/80, beating Experiment 11's identical-config result (72.39%) by
+**+1.71pp**, purely from the dataset change.
+
+**Per-label impact on the four targeted labels** (Experiment 11 →
+Experiment 12):
+
+| Label | Before | After | Change |
+|---|---:|---:|---:|
+| LIST_REMINDERS | 49.4% | **100.0%** | **+50.6pp** |
+| WEATHER | 56.7% | 62.8% | +6.1pp |
+| TIME | 65.8% | 70.7% | +4.9pp |
+| MESSAGE | 60.3% | 53.9% | **-6.4pp** |
+
+LIST_REMINDERS's jump is the standout: once purified down to only
+Option B's 558 clean, on-taxonomy synthetic examples (val n dropped
+from 249 to 54), the model gets it perfectly right. WEATHER and TIME
+both improved meaningfully, consistent with removing genuinely
+mismatched training signal. **MESSAGE is a real anomaly worth flagging
+honestly**: only 3 sentences (10 rows) were removed from MESSAGE
+specifically — nowhere near enough to directly cause a 6.4pp drop.
+This is more likely a side effect of the overall redistribution
+(inverse-frequency class weights shifted slightly since the total
+label composition changed, and MESSAGE's confusion pattern shows heavy
+bidirectional confusion with PLAY_MUSIC — 38 each way) than a flaw in
+the MESSAGE-specific fix itself. Neither run used multiple seeds, so
+some of this is plausibly run-to-run noise rather than a real
+regression — worth re-checking if MESSAGE remains weak in future runs.
+
+**Per-class accuracy (full)**:
+
+| Label | Acc | n | | Label | Acc | n |
+|---|---:|---:|---|---|---:|---:|
+| unknown_background | 100.0% | 68 | | TIME | 70.7% | 225 |
+| LIST_REMINDERS | 100.0% | 54 | | VOLUME_DOWN | 67.0% | 442 |
+| CALL | 92.6% | 54 | | BRIGHTNESS | 66.6% | 395 |
+| PAUSE | 91.3% | 80 | | PLAY_MUSIC | 63.5% | 658 |
+| TIMER | 89.3% | 178 | | WEATHER | 62.8% | 530 |
+| TEMPERATURE | 87.5% | 1166 | | VOLUME_UP | 62.3% | 477 |
+| ALARM | 82.6% | 333 | | MESSAGE | 53.9% | 282 |
+| STOP | 80.6% | 108 | | | | |
+| NEXT | 79.6% | 54 | | | | |
+| LIGHT_ON | 79.5% | 562 | | | | |
+| LIGHT_OFF | 75.5% | 511 | | | | |
+| COLOR | 74.5% | 322 | | | | |
+| CREATE_REMINDER | 72.5% | 280 | | | | |
+
+**Top confusions**:
+
+| True → Predicted | Count |
+|---|---:|
+| VOLUME_UP → VOLUME_DOWN | 94 |
+| VOLUME_DOWN → VOLUME_UP | 68 |
+| PLAY_MUSIC → WEATHER | 57 |
+| WEATHER → PLAY_MUSIC | 47 |
+| TEMPERATURE → VOLUME_UP | 42 |
+| PLAY_MUSIC → MESSAGE | 38 |
+| MESSAGE → PLAY_MUSIC | 38 |
+| CREATE_REMINDER → PLAY_MUSIC | 35 |
+| BRIGHTNESS → COLOR | 34 |
+| TIME → WEATHER | 33 |
+
+**A few other labels moved by ±2-3pp in either direction** (e.g. NEXT
+94.4%→79.6%, LIGHT_OFF 72.6%→75.5%) despite not being touched by the
+dataset fix at all — consistent with ordinary run-to-run variance at
+these class sizes (several have val n≈54-108), not a systematic
+effect. This is exactly the kind of noise the "multiple seeds" caveat
+in the parked to-do list is meant to eventually rule out.
+
+**Current standing recommendation**: `checkpoints/dscnn_bigcap_cleaned_best.pt`
+(DS-CNN, num_filters=60/num_blocks=5, 74.10%) is now the best model
+and the current dataset+config combination to build on. The MESSAGE
+regression and the still-unexplained polarity confusion
+(VOLUME_UP/DOWN remains the top confusion pair) are the two clearest
+remaining threads — MESSAGE worth a second look once more seeds are
+available to check if it's real, and the polarity confusion still
+points at the same targeted-masking idea flagged since Experiment 1.

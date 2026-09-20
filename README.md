@@ -77,10 +77,11 @@ separate later workstreams — `vcm/inference/model.py` has a
 Model **training** has started for real, though: **see
 [EXPERIMENTS.md](EXPERIMENTS.md)** for real training-run results (best
 so far: DS-CNN, capacity-scaled (num_filters=60/num_blocks=5),
-warmup/cosine LR schedule — 72.39% val accuracy, across 11 experiments
-comparing architectures, capacity, augmentation, data volume, and LR
-schedules) and **[MODEL.md](MODEL.md)** for the technology choices and
-research behind the training pipeline.
+warmup/cosine LR schedule, on the SLURP-quality-fixed dataset — 74.10%
+val accuracy, across 12 experiments comparing architectures, capacity,
+augmentation, data volume, dataset quality, and LR schedules) and
+**[MODEL.md](MODEL.md)** for the technology choices and research
+behind the training pipeline.
 Dataset development itself (Section 9) has started — see the "Dataset
 pipeline" section above and [DATASET.md](DATASET.md).
 For Raspberry Pi hardware setup and testing (unverified, prospective
