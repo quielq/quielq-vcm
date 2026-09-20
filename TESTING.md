@@ -210,11 +210,69 @@ python -c "from vcm.actions import calls; calls.call()"
 
 ---
 
-## 2.8 Full Tier-1 smoke-test checklist
+### 2.8 Trained model live demo (real speech, real predictions)
+
+Everything above this point exercises the hardware-abstraction/dispatch
+skeleton with `StubIntentModel` (a stand-in that always returns the
+same fixed label) — it never actually classifies your voice. This
+section runs the **real trained model** from `EXPERIMENTS.md` against
+live speech instead, using `scripts/demo_infer.py` (built specifically
+for this — see that script's own docstring). This is a standalone
+sanity check, separate from `vcm.main`: it doesn't go through
+`dispatch.py`/TTS, and its label space is the 20-class training
+taxonomy (`vcm.dataset.sources.dataset_schema`), not yet
+`vcm.taxonomy.LABELS` — the two haven't been reconciled yet (see
+`VCM_Architecture_Review.md`).
+
+**Setup** (one-time, on top of the base `pip install -e ".[dev]"`):
+```bash
+pip install -e ".[train]"   # pulls in torch, needed to load a checkpoint
+```
+
+**Get a checkpoint**: checkpoints are gitignored (regeneratable
+training artifacts, not committed) — you'll need one sent to you, or
+train your own per `EXPERIMENTS.md`. Place it at
+`checkpoints/dscnn_bigcap_cleaned_best.pt` (the current best, 74.10%
+val accuracy — see `EXPERIMENTS.md` Experiment 12 for what "best" means
+and how it might change), or pass a different path explicitly.
+
+```bash
+python scripts/demo_infer.py
+# or, for a specific checkpoint:
+python scripts/demo_infer.py --checkpoint checkpoints/<name>.pt
+```
+
+**Expect**: it prints something like
+`Loaded dscnn from checkpoints/dscnn_bigcap_cleaned_best.pt (epoch 46, val_acc 0.7410, 20 labels)`,
+then `Hold spacebar (Mac) or the pushbutton (RPi) and speak a command.
+Ctrl+C to quit.` — hold spacebar, say a command, release, and it prints
+the top-3 predicted labels with probabilities, e.g.:
+```
+LIGHT_ON=0.81  LIGHT_OFF=0.12  COLOR=0.04
+```
+
+**Tips for getting a meaningful read on it, not just noise**:
+- Try phrasing close to the project's own scripted taxonomy first
+  (`"play music"`, `"what's the weather"`, `"turn on the lights"`) —
+  that's what most of the training data actually sounds like.
+  Naturalistic paraphrasing is a much harder test, especially for
+  labels documented as SLURP-influenced in `DATASET.md`.
+- Per-class accuracy varies a lot (see `EXPERIMENTS.md`'s per-class
+  tables) — expect some commands to work reliably and others (WEATHER,
+  MESSAGE, PLAY_MUSIC, VOLUME_UP/DOWN) to be noticeably weaker. That's
+  documented, expected behavior, not a bug in the demo.
+- If macOS blocks the mic or the spacebar listener, that's the same
+  Accessibility/Input Monitoring permission issue as the rest of this
+  doc — `tccutil reset Accessibility` / `tccutil reset ListenEvent` and
+  re-grant to your terminal app.
+
+---
+
+## 2.9 Full Tier-1 smoke-test checklist
 
 Run once after any change that touches multiple modules, or before a demo:
 
-- [ ] `python -m pytest` — 61/61 pass
+- [ ] `python -m pytest` — 89/89 pass
 - [ ] `python -m vcm.main` — hold spacebar, speak, see `Heard intent: unknown_background`
 - [ ] TTS audible (2.1)
 - [ ] Bulb on/off/dim responds (2.4)
