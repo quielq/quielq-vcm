@@ -72,6 +72,12 @@ again.
   so re-running the known configs (DS-CNN default and matched-capacity,
   BC-ResNet default and matched-capacity) is cheap — just don't skip
   it once the dataset changes.
+- **ARCHIVED, not dropped: real-recording tool for CALL/NEXT/LIST_REMINDERS**
+  (`scripts/record_real_examples.py`, see DATASET.md step 8). Built,
+  tested, ready to use — paused pending course-adviser confirmation on
+  recording new personal voice data for this project. Left in the repo
+  rather than removed so it can be picked back up the moment that's
+  cleared.
 
 ## Experiment 1 — DS-CNN baseline, no augmentation
 

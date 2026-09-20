@@ -460,7 +460,16 @@ synthetic as of this writing (LIST_REMINDERS joined this list later —
 see "Known per-label quality signal" above) — step 8 below is a direct
 attempt to close part of that gap.
 
-## 8. Real recordings for the synthetic-only gap
+## 8. Real recordings for the synthetic-only gap — ARCHIVED, on hold
+
+**Status: paused, not deleted.** The tool below is built, tested, and
+ready, but recording new personal voice data for this project needs
+confirmation from the course adviser first (a permissions question
+separate from, and not yet resolved the way, the synthetic-data
+question in `VCM_Architecture_Review.md` Section 7 was). Do not run
+this until that's confirmed. Left in place (not removed) so it's ready
+to pick back up the moment it's cleared — see EXPERIMENTS.md's parked
+list for the same note.
 
 ```bash
 python scripts/record_real_examples.py --speaker-id <your-name> --reps 10
