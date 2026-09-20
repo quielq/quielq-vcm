@@ -92,6 +92,34 @@ different root causes by which source dominates them:
   project's own scripted command phrasing, which plausibly makes the
   acoustic-to-label mapping itself noisier to learn for these labels
   specifically.
+- **Checked and ruled out: this is not a class-imbalance problem.**
+  Pearson correlation between per-label training-set size and
+  per-label accuracy (Experiment 11's real numbers, 20 labels): r ≈
+  -0.16 to +0.18 depending on outlier handling — essentially no
+  relationship. CALL has only 396 training examples and hits 94.4%
+  accuracy; WEATHER has 2,627 (~7x more) and only hits 56.7%. This also
+  makes sense mechanically: training already uses class-weighted
+  cross-entropy (inverse-frequency weighting), which specifically
+  corrects for raw imbalance — it's not the open problem here.
+- **The real problem for WEATHER/TIME/MESSAGE/LIST_REMINDERS is closer
+  to a mapping-purity problem than a phrasing-style problem.** Pulled
+  real example sentences from SLURP's raw `train.jsonl` for each raw
+  intent mapped to these labels and compared against this project's own
+  scripted taxonomy phrasing for the same label:
+
+  | Label | Taxonomy expects | Real SLURP example mapped to it |
+  |---|---|---|
+  | WEATHER | "What's the weather?" | `"do i need a coat"` — indirect, never says "weather" |
+  | TIME | "What time is it?" | `"is today the fourth or the fifth"` — a **date** question |
+  | MESSAGE | "Send a message" | `"between ten pm to nine am all emails received is to be replied to"` — email **scheduling**, not sending |
+  | LIST_REMINDERS | "Show my reminders" | `"pull up the shopping list"` — generic **lists**, conceptually different from timed reminders |
+  | PLAY_MUSIC | "Play music" | `"play only songs by the beatles please"` — reasonably matched, just more specific |
+
+  Four of these five aren't just noisier versions of the intended
+  intent — some of the mapped SLURP examples are arguably **the wrong
+  intent entirely** for what this project means by that label name
+  (PLAY_MUSIC is the exception; its SLURP examples are semantically
+  fine, just lexically varied).
 - **Option-B/FSC-dominated labels train best**: CALL, NEXT, TIMER
   (100% Option B), TEMPERATURE (83% FSC), PAUSE/STOP/CREATE_REMINDER/
   COLOR (51-64% Option B) are consistently the strongest classes.
@@ -103,15 +131,21 @@ different root causes by which source dominates them:
   and TEMPERATURE commands, a structural phrase overlap rather than a
   source-quality issue.
 
-**Actionable implication**: for the SLURP-dominated weak labels
-(WEATHER, TIME, MESSAGE, PLAY_MUSIC, LIST_REMINDERS), adding more
-scripted/on-taxonomy examples (Option-B-style synthetic generation, or
-real recordings following this project's own phrasing) for exactly
-these five labels is a targeted, source-composition fix — distinct
-from just adding more data of the current mix (Experiment 9 already
-showed more data helps in general, but doesn't address a source-purity
-issue by itself). This hasn't been tested directly yet; it's a
-diagnosis, not a completed fix.
+**Actionable implication, revised**: since this is closer to a
+mapping-purity problem than a pure phrasing-style or volume problem,
+the more targeted first fix is **filtering the existing SLURP mapping
+for WEATHER, TIME, MESSAGE, and LIST_REMINDERS** to exclude the
+semantically-mismatched examples (date-only queries mapped to TIME,
+email-scheduling mapped to MESSAGE, generic shopping/to-do lists mapped
+to LIST_REMINDERS, indirect non-weather-word queries mapped to
+WEATHER) — this is the same kind of empirical, transcript-driven
+filtering already applied to Snips SLU (step 6) and FSC's
+"deactivate"+"music" split (step 7), just not yet applied to SLURP's
+mapping for these four labels. Adding more scripted/on-taxonomy
+examples (Option-B-style synthetic, or real recordings) is still a
+good complementary move, but filtering the existing mismatch first is
+higher-priority and doesn't need any new data generation. Not yet
+implemented — this is a diagnosis, not a completed fix.
 
 ## 1. The taxonomy (class-shared fixed-vs-slotted schema)
 
