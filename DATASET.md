@@ -76,6 +76,43 @@ downloads that get deleted right after extraction).
 Every row's `audio_path` resolves to a real local file (verified) — this
 is an actual training-ready manifest, not just row counts.
 
+### Known per-label quality signal: source composition correlates with model accuracy
+
+Checked directly against the manifest (not assumed) after several
+training runs (see EXPERIMENTS.md) showed a consistent, reproducible
+weak-class pattern. The labels that train worst split into two
+different root causes by which source dominates them:
+
+- **SLURP-dominated labels train worse**: WEATHER (85% SLURP), TIME
+  (81%), MESSAGE (77%), PLAY_MUSIC (71%), LIST_REMINDERS (69%) are
+  consistently the lowest- or near-lowest-accuracy classes across every
+  architecture tried. SLURP's crowdsourced phrasing is naturalistic and
+  varied (e.g. `"open clock"` for ALARM, `"olly brighten the lights"`
+  for BRIGHTNESS — see step 2 below) rather than matching this
+  project's own scripted command phrasing, which plausibly makes the
+  acoustic-to-label mapping itself noisier to learn for these labels
+  specifically.
+- **Option-B/FSC-dominated labels train best**: CALL, NEXT, TIMER
+  (100% Option B), TEMPERATURE (83% FSC), PAUSE/STOP/CREATE_REMINDER/
+  COLOR (51-64% Option B) are consistently the strongest classes.
+  Both sources use scripted, on-taxonomy phrasing.
+- **FSC-dominated VOLUME_UP/DOWN and LIGHT_ON/OFF are a separate,
+  already-diagnosed problem** (EXPERIMENTS.md Experiment 1 onward):
+  these underperform not because of source noise but because FSC
+  reuses near-identical "turn up/down" carrier phrasing across VOLUME
+  and TEMPERATURE commands, a structural phrase overlap rather than a
+  source-quality issue.
+
+**Actionable implication**: for the SLURP-dominated weak labels
+(WEATHER, TIME, MESSAGE, PLAY_MUSIC, LIST_REMINDERS), adding more
+scripted/on-taxonomy examples (Option-B-style synthetic generation, or
+real recordings following this project's own phrasing) for exactly
+these five labels is a targeted, source-composition fix — distinct
+from just adding more data of the current mix (Experiment 9 already
+showed more data helps in general, but doesn't address a source-purity
+issue by itself). This hasn't been tested directly yet; it's a
+diagnosis, not a completed fix.
+
 ## 1. The taxonomy (class-shared fixed-vs-slotted schema)
 
 [`src/vcm/dataset/sources/dataset_schema.py`](src/vcm/dataset/sources/dataset_schema.py)

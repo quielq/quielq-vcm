@@ -48,11 +48,24 @@ again.
   below.** Result: matching DS-CNN's param count (channels=48,
   blocks=8) closed the gap and then some — 67.54%, the new best model
   overall.
-- Revisit all of the above (and the current 67.54% best itself) if
-  the class ends up converging on a different shared dataset — the
-  training pipeline is dataset-agnostic (reads whatever's in
-  `data/dataset_manifest.csv`), so this is a rerun of the same known
-  configs, not new work.
+- **When the final/converged class dataset lands, don't assume today's
+  ranking (BC-ResNet-bigcap > DS-CNN) carries over — re-run and
+  re-compare.** Three reasons this specific ranking is fragile:
+  (1) the margin is only +1.58pp from single seeded runs each, not
+  enough to rule out ordinary run-to-run noise; (2) the comparison
+  isn't fully controlled — DS-CNN was only tested at its default
+  capacity (24,276 params) and was never given the same width/depth
+  bump BC-ResNet got in Experiment 10, so DS-CNN's own capacity-scaling
+  behavior is untested; (3) BC-ResNet's edge is tied to how it handles
+  the polarity-word confusion, which is a property of *this* dataset's
+  specific phrasing overlaps (FSC reusing volume-style phrasing for
+  TEMPERATURE) — a different dataset could have a different dominant
+  weak point that favors either architecture differently, or neither.
+  The training pipeline is dataset-agnostic (reads whatever's in
+  `data/dataset_manifest.csv`), so this is a cheap rerun of the known
+  configs (DS-CNN default, DS-CNN at matched capacity to close the gap
+  in point 2, BC-ResNet at matched capacity), not new work — just
+  don't skip it.
 
 ## Experiment 1 — DS-CNN baseline, no augmentation
 
