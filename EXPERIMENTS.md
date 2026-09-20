@@ -30,7 +30,8 @@ init, batch shuffling), not purely the effect being tested. Experiment
 | 9c | DS-CNN, same config as #7, `--train-fraction 0.75` | none | 30 | 60.72% (epoch 28) | `logs/train_dscnn_warmup_frac75_run11.log` |
 | 10 | BC-ResNet, channels=48/blocks=8 (25,748 params), lr=1e-3 + 5-epoch warmup + cosine decay | none | 80 | 67.54% (epoch 53) | `logs/train_bcresnet_bigcap_run10.log` |
 | 11 | DS-CNN, num_filters=60/num_blocks=5 (26,300 params), lr=1e-3 + 5-epoch warmup + cosine decay | none | 80 | 72.39% (epoch 63) | `logs/train_dscnn_bigcap_run11.log` |
-| 12 | Same as #11, on the SLURP-quality-fixed manifest (62,405 rows, was 64,665) | none | 80 | **74.10%** (epoch 46) — best overall | `logs/train_dscnn_bigcap_cleaned_run12.log` |
+| 12 | Same as #11, on the SLURP-quality-fixed manifest (62,405 rows, was 64,665) | none | 80 | 74.10% (epoch 46) | `logs/train_dscnn_bigcap_cleaned_run12.log` |
+| 13 | Resumed from #12's checkpoint, on the Timers-and-Such-added manifest (63,476 rows) | none | 20 | **75.04%** (epoch 12) — best overall | `logs/train_dscnn_timers_finetune_run13.log` |
 
 ## Parked / to-do
 
@@ -1050,11 +1051,109 @@ these class sizes (several have val n≈54-108), not a systematic
 effect. This is exactly the kind of noise the "multiple seeds" caveat
 in the parked to-do list is meant to eventually rule out.
 
-**Current standing recommendation**: `checkpoints/dscnn_bigcap_cleaned_best.pt`
-(DS-CNN, num_filters=60/num_blocks=5, 74.10%) is now the best model
-and the current dataset+config combination to build on. The MESSAGE
-regression and the still-unexplained polarity confusion
-(VOLUME_UP/DOWN remains the top confusion pair) are the two clearest
-remaining threads — MESSAGE worth a second look once more seeds are
-available to check if it's real, and the polarity confusion still
-points at the same targeted-masking idea flagged since Experiment 1.
+Was the best model and dataset+config combination through Experiment
+12. **Superseded by Experiment 13 below**, which added real TIMER/ALARM
+audio (Timers and Such) on top of this. The MESSAGE regression and the
+polarity confusion (VOLUME_UP/DOWN) remain open — see Experiment 13's
+own conclusion for the current standing recommendation.
+
+## Experiment 13 — resume from Experiment 12, add Timers and Such (real TIMER/ALARM)
+
+**Motivation**: directly measures whether adding real TIMER/ALARM audio
+(DATASET.md step 9, ~1,071 recordings from Timers and Such) actually
+helps, and does so cheaply — instead of a full 80-epoch retrain from
+scratch, this resumes from Experiment 12's already-trained weights and
+continues training on the updated dataset for only 20 epochs. Training
+on the *full* updated manifest (not just the new rows in isolation)
+avoids the catastrophic-forgetting risk of fine-tuning on a narrow
+subset — every batch still sees all 20 classes, just starting from a
+good initialization instead of random.
+
+**A free, zero-training baseline came first**: before touching the
+DGX, Experiment 12's checkpoint (which had never seen any Timers-and-
+Such audio) was evaluated directly against real Timers-and-Such data —
+pure inference, no training cost. Result: **20.9% on TIMER, 52.3% on
+ALARM** across all 1,071 real recordings — concrete, measured evidence
+of exactly how severe the synthetic-to-real gap was for TIMER
+specifically (100% Chatterbox TTS beforehand), not just theoretical.
+
+**Setup**: `python -m vcm.train.train --model dscnn --epochs 20
+--batch-size 128 --lr 1e-3 --warmup-epochs 2 --seed 0 --width 60
+--depth 5 --resume-from checkpoints/dscnn_bigcap_cleaned_best.pt`, on
+the manifest rebuilt to include Timers and Such (63,476 rows, up from
+62,405). ~20 minutes wall-clock vs. ~80 minutes for a from-scratch run
+at the same epoch-for-epoch cost — roughly 4x cheaper for this check.
+
+**Result**: best val accuracy **75.04%** at epoch 12/20, beating
+Experiment 12's 74.10% by +0.94pp overall (note: this val set isn't
+identical to Experiment 12's — it grew slightly since Timers-and-Such
+contributes its own val rows too, so this overall number isn't a pure
+apples-to-apples delta by itself; the per-label held-out comparison
+below is the rigorous one).
+
+**The real result — a clean, leak-free before/after on data neither
+checkpoint ever trained on** (restricted to Timers-and-Such's val+test
+rows only, 253 recordings, so this isn't contaminated by what
+Experiment 13 just trained on):
+
+| Label | Before (Experiment 12) | After (Experiment 13) | Change |
+|---|---:|---:|---:|
+| TIMER | 31.4% (54/172) | **91.3%** (157/172) | **+59.9pp** |
+| ALARM | 63.0% (51/81) | **88.9%** (72/81) | **+25.9pp** |
+
+This is the cleanest, largest single-fix improvement in the whole
+project so far — real human audio for a previously 100%-synthetic
+label closed the vast majority of the gap in one pass, exactly as the
+synthetic-to-real generalization research predicted.
+
+**Per-class accuracy (full validation split)**:
+
+| Label | Acc | n | | Label | Acc | n |
+|---|---:|---:|---|---|---:|---:|
+| unknown_background | 100.0% | 68 | | CREATE_REMINDER | 69.6% | 280 |
+| LIST_REMINDERS | 98.2% | 54 | | VOLUME_UP | 68.6% | 477 |
+| TIMER | 94.8% | 270 | | VOLUME_DOWN | 66.7% | 442 |
+| CALL | 92.6% | 54 | | TIME | 66.7% | 225 |
+| ALARM | 88.0% | 374 | | MESSAGE | 63.8% | 282 |
+| LIGHT_ON | 86.1% | 562 | | PLAY_MUSIC | 61.6% | 658 |
+| TEMPERATURE | 85.9% | 1166 | | WEATHER | 57.9% | 530 |
+| PAUSE | 83.8% | 80 | | | | |
+| NEXT | 83.3% | 54 | | | | |
+| STOP | 81.5% | 108 | | | | |
+| LIGHT_OFF | 73.2% | 511 | | | | |
+| COLOR | 71.7% | 322 | | | | |
+| BRIGHTNESS | 71.1% | 395 | | | | |
+
+**Top confusions**:
+
+| True → Predicted | Count |
+|---|---:|
+| VOLUME_UP → VOLUME_DOWN | 73 |
+| PLAY_MUSIC → MESSAGE | 66 |
+| VOLUME_DOWN → VOLUME_UP | 61 |
+| WEATHER → MESSAGE | 56 |
+| PLAY_MUSIC → WEATHER | 46 |
+| WEATHER → PLAY_MUSIC | 46 |
+| LIGHT_OFF → LIGHT_ON | 44 |
+| TEMPERATURE → VOLUME_UP | 36 |
+| TIME → WEATHER | 33 |
+| COLOR → BRIGHTNESS | 32 |
+
+**Analysis**: TIMER (94.8%) and ALARM (88.0%) are now both strong
+classes, a complete reversal from before this fix. The polarity
+confusion (VOLUME_UP/DOWN) persists as the top confusion pair, exactly
+as in every prior experiment — real TIMER/ALARM audio fixed the
+problem it was meant to fix and, as expected, did nothing for the
+unrelated carrier-phrase-overlap problem. MESSAGE (63.8%) remains weak
+and now shows new confusion with WEATHER (56 counts) alongside its
+existing PLAY_MUSIC confusion — still an open anomaly, not resolved by
+this change (expected, since this fix didn't touch MESSAGE at all).
+
+**Current standing recommendation**: `checkpoints/dscnn_bigcap_timers_best.pt`
+is now the best model overall. This also validates `--resume-from` as
+a real, reusable technique for cheaply testing future data additions —
+a fraction of the cost of a from-scratch retrain, with a rigorous
+held-out-only evaluation (not the noisier overall val-accuracy delta)
+as the way to honestly measure a specific data addition's effect. The
+polarity confusion and MESSAGE anomaly remain the two clearest open
+threads, unaffected by this fix as expected.
