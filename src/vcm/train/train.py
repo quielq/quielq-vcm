@@ -89,6 +89,14 @@ def main() -> None:
         "model class's own default.",
     )
     parser.add_argument("--num-workers", type=int, default=4)
+    parser.add_argument(
+        "--resume-from",
+        type=Path,
+        default=None,
+        help="Continue training from this checkpoint's weights (architecture/model_kwargs must "
+        "match --model/--width/--depth) instead of a fresh random init. For cheaply testing "
+        "whether newly-added data helps, without a full from-scratch retrain.",
+    )
     parser.add_argument("--out", type=Path, default=Path("checkpoints/best.pt"))
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--seed", type=int, default=0, help="Random seed, for comparable experiments")
@@ -131,6 +139,14 @@ def main() -> None:
     model = MODELS[args.model](**model_kwargs).to(device)
     n_params = sum(p.numel() for p in model.parameters())
     print(f"Model params: {n_params:,}", flush=True)
+    if args.resume_from is not None:
+        resume_ckpt = torch.load(args.resume_from, map_location=device, weights_only=False)
+        model.load_state_dict(resume_ckpt["model_state_dict"])
+        print(
+            f"Resumed weights from {args.resume_from} "
+            f"(was epoch {resume_ckpt['epoch']}, val_acc {resume_ckpt['val_acc']:.4f})",
+            flush=True,
+        )
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
     scheduler = None
@@ -185,6 +201,7 @@ def main() -> None:
                     "seed": args.seed,
                     "warmup_epochs": args.warmup_epochs,
                     "train_fraction": args.train_fraction,
+                    "resumed_from": str(args.resume_from) if args.resume_from else None,
                     "model_kwargs": model_kwargs,
                     "labels": LABELS,
                     "epoch": epoch,
