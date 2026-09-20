@@ -22,8 +22,27 @@ diversity the fix gets — see the "TTS mode collapse" research finding
 in the project chat log: speaker diversity in training data is what
 actually closes the synthetic-to-real gap, not just more of one voice.
 
+**Important — this holds out some of each speaker's own recordings by
+design, so it doesn't secretly train and test on the same voice.**
+Adding your voice to training is a legitimate fix (a classmate's own
+prior experiment found exactly this helped for CALL, see
+VCM_Architecture_Review.md Section 9) — but "it recognizes me better"
+and "it generalizes better to other people" are different claims, and
+only the first one is honestly measurable from your own held-out
+clips. The last `--holdout-fraction` (default 20%) of each phrase's
+reps for a given speaker are automatically routed to val/test instead
+of train, same 80/10/10-style split every other source in this
+dataset already uses (see e.g. sources/gsc_background.py). This gives
+a real, leak-free number for "did adding my voice help with my voice,"
+which is a genuinely useful thing to know — it's just not the same
+claim as generalizing to strangers, which needs *other* speakers'
+held-out recordings, not your own.
+
 Usage:
     python scripts/record_real_examples.py --speaker-id quielq --reps 10
+    # a dedicated cross-speaker generalization check, contributing
+    # zero training data (a good role for one volunteer classmate):
+    python scripts/record_real_examples.py --speaker-id <name> --reps 10 --holdout-fraction 1.0
 
 Writes real .wav files to data/real_recordings/<split>/<LABEL>/ and a
 manifest.csv in this project's common schema, picked up automatically
@@ -79,11 +98,36 @@ def _slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
 
 
+def _assign_split(rep: int, total_reps: int, holdout_fraction: float) -> str:
+    """Deterministic per-speaker holdout: the last `holdout_fraction` of a
+    phrase's reps go to val/test instead of train, so every contributor's
+    own recordings include a genuinely-unseen-by-training slice of their
+    own voice, not just more training volume. Split roughly in half
+    between val and test among the held-out reps.
+    """
+    if holdout_fraction <= 0:
+        return "train"
+    n_holdout = max(1, round(total_reps * holdout_fraction)) if holdout_fraction < 1 else total_reps
+    if rep <= total_reps - n_holdout:
+        return "train"
+    # alternate holdout reps between val and test
+    holdout_index = rep - (total_reps - n_holdout)
+    return "val" if holdout_index % 2 == 1 else "test"
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--speaker-id", required=True, help="Your name/handle, for speaker-disjoint splits later")
     parser.add_argument("--reps", type=int, default=10, help="How many times to repeat each phrase")
-    parser.add_argument("--split", default="train", choices=["train", "val", "test"])
+    parser.add_argument(
+        "--holdout-fraction",
+        type=float,
+        default=0.2,
+        help="Fraction of this speaker's own reps per phrase held out to val/test instead of "
+        "train (default 0.2, i.e. roughly 80/10/10). 0 = all train (only justified if another "
+        "contributor's held-out recordings already cover this voice for testing). 1.0 = all "
+        "held out (a pure cross-speaker generalization check, no training contribution).",
+    )
     parser.add_argument("--out-dir", type=Path, default=REPO_ROOT / "data/real_recordings")
     args = parser.parse_args()
 
@@ -95,17 +139,22 @@ def main() -> None:
         with manifest_path.open() as f:
             existing_rows = list(csv.DictReader(f))
 
-    print(f"Recording as speaker_id={args.speaker_id!r}, {args.reps} reps per phrase, split={args.split!r}")
+    print(f"Recording as speaker_id={args.speaker_id!r}, {args.reps} reps per phrase")
     print(f"{len(TARGET_PHRASES)} phrases, {len(TARGET_PHRASES) * args.reps} recordings total.")
+    print(
+        f"{args.holdout_fraction * 100:.0f}% of your own reps per phrase will be held out to "
+        "val/test (never trained on) — see this script's docstring for why."
+    )
     print("Hold spacebar (Mac) or the pushbutton (RPi), say the phrase naturally, release. Ctrl+C to stop early.\n")
 
     new_rows = []
     try:
         for label, phrase in TARGET_PHRASES:
-            label_dir = args.out_dir / args.split / label
-            label_dir.mkdir(parents=True, exist_ok=True)
             for rep in range(1, args.reps + 1):
-                print(f'[{label}] Say: "{phrase}"  (rep {rep}/{args.reps})')
+                split = _assign_split(rep, args.reps, args.holdout_fraction)
+                label_dir = args.out_dir / split / label
+                label_dir.mkdir(parents=True, exist_ok=True)
+                print(f'[{label}] Say: "{phrase}"  (rep {rep}/{args.reps}, -> {split})')
                 audio = record_while_held(button)
                 if len(audio) == 0:
                     print("  (no audio captured, retrying this rep)")
@@ -119,7 +168,7 @@ def main() -> None:
                         "source": "real_recordings",
                         "is_synthetic": False,
                         "speaker_id": args.speaker_id,
-                        "split": args.split,
+                        "split": split,
                     }
                 )
     except KeyboardInterrupt:

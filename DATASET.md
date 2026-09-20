@@ -479,6 +479,21 @@ volume, is what actually closes this gap. Re-run with a different
 `--speaker-id` per contributor; recordings accumulate in the same
 manifest rather than overwriting.
 
+**Not train/test leakage, by construction**: adding your own voice to
+training and then informally testing with your own voice would
+otherwise conflate two different claims — "this helped recognize me"
+vs. "this generalizes to other people" — only the first of which that
+setup could honestly support. The script automatically holds out the
+last `--holdout-fraction` (default 20%) of each phrase's reps *per
+speaker* to val/test, so every contributor's own recordings include
+real, never-trained-on clips of their own voice — the same 80/10/10
+convention every other source in this dataset already uses (see
+`sources/gsc_background.py`). A held-out accuracy number on those
+clips honestly answers "did this help with my voice." Answering "does
+this generalize to a stranger's voice" needs a contributor who runs
+with `--holdout-fraction 1.0` (pure test, no training contribution) —
+a good role for one volunteer classmate.
+
 ## 9. Combined manifest
 
 ```bash
