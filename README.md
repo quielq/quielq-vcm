@@ -76,8 +76,9 @@ separate later workstreams — `vcm/inference/model.py` has a
 `TFLiteIntentModel` interface ready for when an exported model exists.
 Model **training** has started for real, though: **see
 [EXPERIMENTS.md](EXPERIMENTS.md)** for real training-run results (best
-so far: DS-CNN + warmup/cosine LR schedule, 65.96% val accuracy, across
-7 experiments comparing architectures, augmentation, and LR schedules)
+so far: BC-ResNet, capacity matched to DS-CNN, warmup/cosine LR
+schedule — 67.54% val accuracy, across 10 experiments comparing
+architectures, capacity, augmentation, data volume, and LR schedules)
 and **[MODEL.md](MODEL.md)** for the technology choices and research
 behind the training pipeline.
 Dataset development itself (Section 9) has started — see the "Dataset

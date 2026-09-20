@@ -23,11 +23,12 @@ init, batch shuffling), not purely the effect being tested. Experiment
 | 4 | BC-ResNet (10,196 params), lr=3e-4 | none | 30 | 38.79% (epoch 28) | `logs/train_bcresnet_lowlr_run4.log` |
 | 5 | BC-ResNet (10,196 params), lr=1e-3 + 3-epoch warmup + cosine decay | none | 30 | 47.41% (epoch 25) | `logs/train_bcresnet_warmup_run5.log` |
 | 6 | BC-ResNet (10,196 params), lr=1e-3 + 5-epoch warmup + cosine decay | none | 80 | 58.99% (epoch 65) | `logs/train_bcresnet_warmup80_run6.log` |
-| 7 | DS-CNN (24,276 params), lr=1e-3 + 3-epoch warmup + cosine decay | none | 30 | **65.96%** (epoch 26) — best overall so far | `logs/train_dscnn_warmup_run7.log` |
+| 7 | DS-CNN (24,276 params), lr=1e-3 + 3-epoch warmup + cosine decay | none | 30 | 65.96% (epoch 26) | `logs/train_dscnn_warmup_run7.log` |
 | 8 | DS-CNN (24,276 params), lr=1e-3 + 3-epoch warmup + cosine decay | SpecAugment | 30 | 57.77% (epoch 30) | `logs/train_dscnn_warmup_augment_run8.log` |
 | 9a | DS-CNN, same config as #7, `--train-fraction 0.25` | none | 30 | 44.06% (epoch 29) | `logs/train_dscnn_warmup_frac25_run9.log` |
 | 9b | DS-CNN, same config as #7, `--train-fraction 0.50` | none | 30 | 54.77% (epoch 29) | `logs/train_dscnn_warmup_frac50_run10.log` |
 | 9c | DS-CNN, same config as #7, `--train-fraction 0.75` | none | 30 | 60.72% (epoch 28) | `logs/train_dscnn_warmup_frac75_run11.log` |
+| 10 | BC-ResNet, channels=48/blocks=8 (25,748 params), lr=1e-3 + 5-epoch warmup + cosine decay | none | 80 | **67.54%** (epoch 53) — best overall | `logs/train_bcresnet_bigcap_run10.log` |
 
 ## Parked / to-do
 
@@ -43,11 +44,11 @@ again.
   LIGHT_ON/OFF) instead of SpecAugment's random masking (ruled out in
   Experiment 8). Needs word-level time alignment, which the pipeline
   doesn't have yet — a bigger lift than the other items here.
-- **BC-ResNet with more channels/blocks**, now that its instability is
-  understood and fixed (Experiments 5-6): worth checking whether more
-  capacity closes the remaining gap to DS-CNN, separately from the
-  epoch/schedule tuning already done.
-- Revisit all of the above (and the current 65.96% baseline itself) if
+- ~~BC-ResNet with more channels/blocks~~ — **done, see Experiment 10
+  below.** Result: matching DS-CNN's param count (channels=48,
+  blocks=8) closed the gap and then some — 67.54%, the new best model
+  overall.
+- Revisit all of the above (and the current 67.54% best itself) if
   the class ends up converging on a different shared dataset — the
   training pipeline is dataset-agnostic (reads whatever's in
   `data/dataset_manifest.csv`), so this is a rerun of the same known
@@ -757,3 +758,101 @@ legitimate, evidence-backed lever**, not a dead end — it just won't by
 itself eliminate the confusion the way a truly new source of
 information (e.g. protecting the distinguishing word specifically)
 might.
+
+## Experiment 10 — BC-ResNet, capacity matched to DS-CNN
+
+**Motivation**: Experiments 5-6 fixed BC-ResNet's training instability
+(warmup+cosine schedule) and closed most of its gap to DS-CNN with more
+epochs (58.99% at 80 epochs), but it still trailed DS-CNN's 65.96%
+(Experiment 7). BC-ResNet's default config (channels=32, blocks=6) is
+only 10,196 params — less than half of DS-CNN's 24,276 — so the
+remaining gap could be an under-capacity model, not an architecture
+that's inherently worse for this task. Added `--width`/`--depth` CLI
+overrides to `train.py` (map to each model's own constructor kwargs)
+specifically to test this without code changes.
+
+**Setup**: `python -m vcm.train.train --model bcresnet --epochs 80
+--batch-size 128 --lr 1e-3 --warmup-epochs 5 --seed 0 --width 48
+--depth 8`, on GPU 0. `channels=48, blocks=8` gives **25,748 params** —
+closely matched to DS-CNN's 24,276, a fair capacity comparison rather
+than a much bigger model.
+
+**Result — new best model overall**: best val accuracy **67.54%** at
+epoch 53/80, beating DS-CNN's 65.96% (Experiment 7) by **+1.58pp**.
+This is the first BC-ResNet run to beat DS-CNN on this dataset, after
+Experiments 3-6 all fell short at the smaller default capacity.
+
+**The same instability-then-settle pattern recurred, and capacity
+didn't make it worse**: spikes still occurred while LR was high
+(epochs 8, 17, 28 all had a val_loss jump followed by a partial or
+full recovery the next epoch), consistent with Experiments 5-6's
+finding that this is LR-magnitude-driven, not capacity-driven. Once
+LR dropped below ~3e-4 around epoch 50, the curve settled into a
+smooth, low-variance plateau in the 63-68% range for the rest of the
+run (epochs 50-80) — the same settling behavior seen at the smaller
+capacity, just reaching a higher plateau.
+
+**Convergence was also much faster than the smaller BC-ResNet**: this
+run matched Experiment 6's final 58.99% by epoch ~24 (Experiment 6
+needed all 80 epochs to get there), and crossed DS-CNN's 65.96%
+benchmark by epoch ~45 — roughly half the epoch budget Experiment 6
+needed just to get close.
+
+**Per-class accuracy**:
+
+| Label | Acc | n | | Label | Acc | n |
+|---|---:|---:|---|---|---:|---:|
+| unknown_background | 100.0% | 68 | | LIGHT_OFF | 61.8% | 511 |
+| NEXT | 96.3% | 54 | | VOLUME_UP | 59.3% | 477 |
+| PAUSE | 95.0% | 80 | | TIME | 53.6% | 360 |
+| TEMPERATURE | 93.8% | 1166 | | PLAY_MUSIC | 52.9% | 658 |
+| CALL | 88.9% | 54 | | MESSAGE | 51.8% | 282 |
+| TIMER | 88.2% | 178 | | WEATHER | 50.2% | 534 |
+| STOP | 85.2% | 108 | | LIST_REMINDERS | 49.4% | 249 |
+| ALARM | 76.6% | 333 | | VOLUME_DOWN | 48.0% | 442 |
+| CREATE_REMINDER | 73.6% | 280 | | | | |
+| LIGHT_ON | 70.5% | 562 | | | | |
+| COLOR | 69.3% | 322 | | | | |
+| BRIGHTNESS | 62.8% | 395 | | | | |
+
+**Top confusions**:
+
+| True → Predicted | Count |
+|---|---:|
+| VOLUME_DOWN → VOLUME_UP | 89 |
+| WEATHER → PLAY_MUSIC | 72 |
+| LIGHT_OFF → TEMPERATURE | 66 |
+| VOLUME_UP → TEMPERATURE | 63 |
+| TIME → PLAY_MUSIC | 61 |
+| VOLUME_UP → VOLUME_DOWN | 60 |
+| LIGHT_ON → LIGHT_OFF | 56 |
+| WEATHER → TIME | 53 |
+| VOLUME_DOWN → TEMPERATURE | 53 |
+| PLAY_MUSIC → MESSAGE | 49 |
+
+**Analysis**: TEMPERATURE jumped to 93.8% — the strongest large class
+by far, well above DS-CNN's 84.1% for the same label (Experiment 7).
+But this came with a new, previously-minor confusion pattern:
+LIGHT_OFF→TEMPERATURE (66) and VOLUME_DOWN/UP→TEMPERATURE (63, 53) are
+now prominent, where they barely registered in DS-CNN's confusion
+list. This reads as the model becoming very confident about
+TEMPERATURE specifically (likely because it's the largest class by
+far, 1,166 val examples) at the expense of pulling in some borderline
+VOLUME/LIGHT cases that share its "turn up/down X" carrier phrase —
+the classic pattern of a class-imbalance-driven bias, only partly
+offset by the class-weighted loss. The core VOLUME_UP/DOWN and
+LIGHT_ON/OFF polarity confusion is still present (89, 60, 56 counts)
+but is no longer the single dominant failure mode the way it was for
+DS-CNN.
+
+**Current standing recommendation**: `checkpoints/bcresnet_bigcap_best.pt`
+is now the best model produced across all 10 experiments (67.54% val
+accuracy), ahead of DS-CNN's warmup+cosine result (65.96%,
+`checkpoints/dscnn_warmup_best.pt`). Trade-off to note for the RPi
+target: at 25,748 params BC-ResNet is now roughly the same size as
+DS-CNN (24,276), so the "BC-ResNet is much smaller" advantage from
+Experiments 3-6 no longer applies at this capacity — the choice
+between them is now purely about accuracy and confusion pattern, not
+model size. Both remaining open items — targeted masking for the
+polarity confusion, and growing the dataset (Experiment 9's finding)
+— apply to whichever architecture is carried forward.
