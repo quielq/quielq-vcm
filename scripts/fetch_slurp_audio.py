@@ -35,7 +35,7 @@ from datasets import Audio, load_dataset
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from vcm.dataset.sources.slurp import LABEL_MAPPING  # noqa: E402
+from vcm.dataset.sources.slurp import LABEL_MAPPING, is_valid_sentence  # noqa: E402
 
 SLURP_META_DIR = REPO_ROOT / "data/external/slurp"
 OUT_DIR = REPO_ROOT / "data/external/slurp_audio"
@@ -69,6 +69,7 @@ def main() -> None:
             sid: intent_to_label[rec["intent"]]
             for sid, rec in local_records.items()
             if rec["intent"] in intent_to_label
+            and is_valid_sentence(intent_to_label[rec["intent"]], rec["sentence"])
         }
         print(f"[{hf_split}] {len(targets)} target sentences to find", flush=True)
 

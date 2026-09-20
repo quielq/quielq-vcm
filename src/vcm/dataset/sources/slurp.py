@@ -15,6 +15,20 @@ of the taxonomy's 19 labels have **no SLURP match at all**: SLURP has no
 timer domain distinct from alarms (TIMER), and no thermostat/temperature
 domain within its "iot" scenario (TEMPERATURE). These are genuine gaps,
 not omissions in the mapping below.
+
+`LIST_REMINDERS` was also dropped down to no SLURP match, deliberately,
+after training runs (EXPERIMENTS.md Experiments 7/11) consistently
+showed it as one of the two weakest classes. Inspecting all 197 unique
+`lists_query` sentences found only 1 even contains the word "reminder"
+(and that one is still about viewing a list of reminders, not a timed
+alert) — the rest are generic shopping lists, to-do lists, and even
+music playlists ("what songs are on my favorite list"). This is a real
+concept mismatch, not just noisy phrasing, so the mapping was removed
+rather than filtered down. **This is a data gap worth revisiting**:
+LIST_REMINDERS now relies solely on Option B's 558 synthetic rows: if
+the class finds or builds a real source that actually covers timed
+reminders (not generic lists), re-adding real coverage for this label
+is a priority, not a "nice to have."
 """
 
 # Acknowledgment: the taxonomy this checks coverage against was shared by
@@ -24,6 +38,7 @@ not omissions in the mapping below.
 from __future__ import annotations
 
 import json
+import re
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
@@ -43,7 +58,7 @@ LABEL_MAPPING: dict[str, list[str]] = {
     "VOLUME_DOWN": ["audio_volume_down"],
     "CALL": [],
     "MESSAGE": ["email_sendemail"],  # proxy only, not a phone/SMS message
-    "LIST_REMINDERS": ["lists_query"],
+    "LIST_REMINDERS": [],  # dropped: lists_query means generic lists, not reminders — see module docstring
     "TIMER": [],
     "ALARM": ["alarm_set"],
     "TEMPERATURE": [],
@@ -97,3 +112,53 @@ def coverage_report(
         audio = sum(r.num_recordings for r in records if r.intent in intents)
         report[label] = {"sentences": sentences, "recordings": audio, "matched_intents": len(intents)}
     return report
+
+
+# Built empirically by inspecting all 490 real `datetime_query` sentences
+# (EXPERIMENTS.md's weak-class diagnosis): ~35% turned out to be pure date
+# questions ("what date is today", "is today march sixth") with no time
+# content at all, mapped to TIME anyway. This regex pair excludes a
+# sentence only when it has a date signal and *no* time signal, so mixed
+# "date and time" queries are kept (they do mention time).
+_DATE_SIGNAL = re.compile(
+    r"\b(date|calendar|day of the week|what day|monday|tuesday|wednesday|thursday|"
+    r"friday|saturday|sunday|january|february|march|april|may|june|july|august|"
+    r"september|october|november|december|birthday|christmas|easter|halloween|"
+    r"thanksgiving|valentine|weekend)\b"
+)
+_TIME_SIGNAL = re.compile(
+    r"\b(time|hour|clock|noon|midnight|a\.?m\.?|p\.?m\.?|eastern|pacific|central|"
+    r"mountain|g\.?m\.?t\.?|zone)\b"
+)
+
+# Small, surgical exclusion lists for WEATHER and MESSAGE — unlike TIME,
+# inspecting all 834 weather_query and 523 email_sendemail sentences found
+# the overwhelming majority genuinely on-topic (even indirect ones like
+# "do i need a coat" are legitimately weather-dependent), so these are
+# just the handful of clearly nonsensical or off-topic entries, not a
+# phrasing-style filter.
+_WEATHER_JUNK = {
+    "answer email from", "by get marks", "by our scores", "by proper formula",
+    "food will be given at the exhibition", "is the city cheaper or costlier to live",
+    "i always pay attention", "i mostly pay attention", "i occasionally pay attention",
+    "tell mom ill be late this evening", "its not possible", "its very dangerous one", "happy",
+}
+_MESSAGE_JUNK = {"how it's come to us", "how its come to us", "how we can get credit"}
+
+
+def is_valid_sentence(label: str, sentence: str) -> bool:
+    """True if this SLURP sentence should be kept for `label`.
+
+    Only meaningful for TIME, WEATHER, and MESSAGE — every other label
+    passes through unfiltered (either the mapping already has no known
+    quality issue, or the label was already dropped from LABEL_MAPPING
+    entirely, like LIST_REMINDERS).
+    """
+    s = sentence.lower()
+    if label == "TIME":
+        return not (_DATE_SIGNAL.search(s) and not _TIME_SIGNAL.search(s))
+    if label == "WEATHER":
+        return s not in _WEATHER_JUNK
+    if label == "MESSAGE":
+        return s not in _MESSAGE_JUNK
+    return True
