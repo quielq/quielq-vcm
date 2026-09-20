@@ -27,8 +27,19 @@ def record(duration_s: float = 1.5, sample_rate: int = SAMPLE_RATE) -> np.ndarra
 
 
 def record_while_held(button, sample_rate: int = SAMPLE_RATE) -> np.ndarray:
-    """Record from button press to release, using a HAL PushButton (see vcm.hal.button)."""
+    """Record from button press to release, using a HAL PushButton (see vcm.hal.button).
+
+    Waits for the press *before* opening the input stream — opening it
+    first would start capturing from the moment this function is
+    called, not from the actual press, so idle dead air while waiting
+    for the user to press the button would get prepended to every
+    recording. Since feature extraction takes a fixed-length window
+    from the start of the buffer (see audio/features.py), that dead air
+    could push the real speech out of the window entirely.
+    """
     import queue
+
+    button.wait_for_press()
 
     chunks: queue.Queue[np.ndarray] = queue.Queue()
 
@@ -38,7 +49,6 @@ def record_while_held(button, sample_rate: int = SAMPLE_RATE) -> np.ndarray:
     with sd.InputStream(
         samplerate=sample_rate, channels=1, dtype="float32", callback=_callback
     ):
-        button.wait_for_press()
         button.wait_for_release()
 
     collected = []

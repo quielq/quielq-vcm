@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 
@@ -32,12 +33,31 @@ from vcm.train.architectures import BCResNet, DSCNN
 
 MODELS = {"dscnn": DSCNN, "bcresnet": BCResNet}
 
+# The model always outputs a full softmax over all 20 classes, even for
+# silence — there's no built-in "nothing was said" option, and
+# unknown_background was only trained on 6 specific noisy sources (GSC's
+# white noise, a running tap, an exercise bike, a dishwasher, a cat,
+# pink noise), not general quiet-room silence, so it has no strong
+# learned basis for recognizing plain silence either. This is a simple
+# RMS-energy gate as a stopgap: skip classification entirely below this
+# threshold rather than trust the model's (currently uncalibrated)
+# handling of near-silent audio. Not a trained VAD — just loud enough
+# to filter out "held the button, said nothing."
+SILENCE_RMS_THRESHOLD = 0.01
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoint", type=Path, default=Path("checkpoints/dscnn_bigcap_cleaned_best.pt"))
     parser.add_argument("--top-k", type=int, default=3)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
+    parser.add_argument(
+        "--silence-threshold",
+        type=float,
+        default=SILENCE_RMS_THRESHOLD,
+        help="RMS amplitude below which captured audio is treated as silence and skipped "
+        "without running the model (0 disables this gate entirely)",
+    )
     args = parser.parse_args()
 
     device = torch.device(args.device)
@@ -61,6 +81,10 @@ def main() -> None:
             audio = record_while_held(button)
             if len(audio) == 0:
                 print("(no audio captured, try again)")
+                continue
+            rms = float(np.sqrt(np.mean(np.square(audio))))
+            if rms < args.silence_threshold:
+                print(f"(silence, rms={rms:.4f} < {args.silence_threshold} — skipped)")
                 continue
             features = torch.from_numpy(extract_log_mel(audio)).unsqueeze(0).to(device)
             with torch.no_grad():
