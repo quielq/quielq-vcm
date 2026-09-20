@@ -28,7 +28,8 @@ init, batch shuffling), not purely the effect being tested. Experiment
 | 9a | DS-CNN, same config as #7, `--train-fraction 0.25` | none | 30 | 44.06% (epoch 29) | `logs/train_dscnn_warmup_frac25_run9.log` |
 | 9b | DS-CNN, same config as #7, `--train-fraction 0.50` | none | 30 | 54.77% (epoch 29) | `logs/train_dscnn_warmup_frac50_run10.log` |
 | 9c | DS-CNN, same config as #7, `--train-fraction 0.75` | none | 30 | 60.72% (epoch 28) | `logs/train_dscnn_warmup_frac75_run11.log` |
-| 10 | BC-ResNet, channels=48/blocks=8 (25,748 params), lr=1e-3 + 5-epoch warmup + cosine decay | none | 80 | **67.54%** (epoch 53) — best overall | `logs/train_bcresnet_bigcap_run10.log` |
+| 10 | BC-ResNet, channels=48/blocks=8 (25,748 params), lr=1e-3 + 5-epoch warmup + cosine decay | none | 80 | 67.54% (epoch 53) | `logs/train_bcresnet_bigcap_run10.log` |
+| 11 | DS-CNN, num_filters=60/num_blocks=5 (26,300 params), lr=1e-3 + 5-epoch warmup + cosine decay | none | 80 | **72.39%** (epoch 63) — best overall | `logs/train_dscnn_bigcap_run11.log` |
 
 ## Parked / to-do
 
@@ -48,24 +49,27 @@ again.
   below.** Result: matching DS-CNN's param count (channels=48,
   blocks=8) closed the gap and then some — 67.54%, the new best model
   overall.
+- ~~DS-CNN with matched capacity (close the fair-comparison gap)~~ —
+  **done, see Experiment 11 below.** Result: the gap was real — DS-CNN
+  at matched capacity (72.39%) beats BC-ResNet at matched capacity
+  (67.54%) by a solid +4.85pp. The Experiment 10 conclusion ("BC-ResNet
+  is the new best model") is now superseded: DS-CNN was simply never
+  given a fair shot at the same capacity bump. **DS-CNN is the best
+  architecture found so far on this dataset**, at any capacity tried.
 - **When the final/converged class dataset lands, don't assume today's
-  ranking (BC-ResNet-bigcap > DS-CNN) carries over — re-run and
-  re-compare.** Three reasons this specific ranking is fragile:
-  (1) the margin is only +1.58pp from single seeded runs each, not
-  enough to rule out ordinary run-to-run noise; (2) the comparison
-  isn't fully controlled — DS-CNN was only tested at its default
-  capacity (24,276 params) and was never given the same width/depth
-  bump BC-ResNet got in Experiment 10, so DS-CNN's own capacity-scaling
-  behavior is untested; (3) BC-ResNet's edge is tied to how it handles
-  the polarity-word confusion, which is a property of *this* dataset's
-  specific phrasing overlaps (FSC reusing volume-style phrasing for
-  TEMPERATURE) — a different dataset could have a different dominant
-  weak point that favors either architecture differently, or neither.
-  The training pipeline is dataset-agnostic (reads whatever's in
-  `data/dataset_manifest.csv`), so this is a cheap rerun of the known
-  configs (DS-CNN default, DS-CNN at matched capacity to close the gap
-  in point 2, BC-ResNet at matched capacity), not new work — just
-  don't skip it.
+  ranking (DS-CNN-bigcap best) carries over — re-run and re-compare.**
+  Two reasons this specific ranking could still change: (1) it's from
+  a single seeded run each, not multiple seeds, so some of the +4.85pp
+  gap over BC-ResNet-bigcap could still be run-to-run variance rather
+  than a pure architecture effect (worth a repeat-seed check before
+  fully trusting the margin); (2) DS-CNN's edge is tied to how it
+  handles the polarity-word confusion and general phrase structure of
+  *this* dataset's sources — a different dataset could shift which
+  architecture's inductive bias fits best. The training pipeline is
+  dataset-agnostic (reads whatever's in `data/dataset_manifest.csv`),
+  so re-running the known configs (DS-CNN default and matched-capacity,
+  BC-ResNet default and matched-capacity) is cheap — just don't skip
+  it once the dataset changes.
 
 ## Experiment 1 — DS-CNN baseline, no augmentation
 
@@ -859,13 +863,103 @@ but is no longer the single dominant failure mode the way it was for
 DS-CNN.
 
 **Current standing recommendation**: `checkpoints/bcresnet_bigcap_best.pt`
-is now the best model produced across all 10 experiments (67.54% val
-accuracy), ahead of DS-CNN's warmup+cosine result (65.96%,
-`checkpoints/dscnn_warmup_best.pt`). Trade-off to note for the RPi
-target: at 25,748 params BC-ResNet is now roughly the same size as
-DS-CNN (24,276), so the "BC-ResNet is much smaller" advantage from
-Experiments 3-6 no longer applies at this capacity — the choice
-between them is now purely about accuracy and confusion pattern, not
-model size. Both remaining open items — targeted masking for the
-polarity confusion, and growing the dataset (Experiment 9's finding)
-— apply to whichever architecture is carried forward.
+was the best model produced up through Experiment 10 (67.54% val
+accuracy). **Superseded by Experiment 11 below**, which gave DS-CNN
+the same fair capacity treatment and found it pulls further ahead
+(72.39%) — so this recommendation no longer holds; see Experiment 11's
+own conclusion for the current standing recommendation. Trade-off to
+note for the RPi target: at 25,748 params BC-ResNet is now roughly the
+same size as DS-CNN (24,276), so the "BC-ResNet is much smaller"
+advantage from Experiments 3-6 no longer applies at this capacity —
+the choice between them is purely about accuracy and confusion
+pattern, not model size. Both remaining open items — targeted masking
+for the polarity confusion, and growing the dataset (Experiment 9's
+finding) — apply to whichever architecture is carried forward.
+
+## Experiment 11 — DS-CNN, capacity matched to BC-ResNet's bigcap config
+
+**Motivation**: directly closes the fair-comparison gap flagged after
+Experiment 10 — BC-ResNet was given a capacity bump (10,196→25,748
+params) and beat DS-CNN's default-capacity result, but DS-CNN itself
+had never been tested at a matching capacity. Without this run, "BC-
+ResNet is the better architecture" and "more capacity helps, and we
+only tried it on one side" were indistinguishable.
+
+**Setup**: `python -m vcm.train.train --model dscnn --epochs 80
+--batch-size 128 --lr 1e-3 --warmup-epochs 5 --seed 0 --width 60
+--depth 5`, on GPU 2. `num_filters=60, num_blocks=5` gives **26,300
+params** — within 2% of BC-ResNet's bigcap size (25,748), a close
+capacity match rather than a much bigger model.
+
+**Result — DS-CNN pulls further ahead, decisively**: best val accuracy
+**72.39%** at epoch 63/80, beating BC-ResNet's matched-capacity result
+(67.54%, Experiment 10) by **+4.85pp**, and DS-CNN's own default-
+capacity result (65.96%, Experiment 7) by +6.43pp. This is a much
+larger gap than Experiment 10's narrow +1.58pp BC-ResNet-over-DS-CNN
+margin — DS-CNN's capacity-scaling response is real and substantial,
+not a rounding error. **DS-CNN is the best architecture found on this
+dataset at every capacity level tried so far.**
+
+**No instability at all, at any point in this run** — unlike every
+BC-ResNet run (Experiments 3, 5, 6, 10), DS-CNN's val_loss decreased
+essentially monotonically for all 80 epochs regardless of capacity.
+This reinforces the Experiment 7 finding that the spiking behavior is
+specific to BC-ResNet's broadcasted-residual mechanism, not a general
+property of training on this dataset at higher capacity or higher LR.
+
+**Per-class accuracy**:
+
+| Label | Acc | n | | Label | Acc | n |
+|---|---:|---:|---|---|---:|---:|
+| unknown_background | 100.0% | 68 | | LIGHT_OFF | 72.6% | 511 |
+| NEXT | 94.4% | 54 | | CREATE_REMINDER | 69.3% | 280 |
+| CALL | 94.4% | 54 | | TIME | 65.8% | 360 |
+| TIMER | 92.1% | 178 | | VOLUME_UP | 65.6% | 477 |
+| TEMPERATURE | 87.1% | 1166 | | VOLUME_DOWN | 65.2% | 442 |
+| PAUSE | 86.3% | 80 | | BRIGHTNESS | 64.3% | 395 |
+| ALARM | 83.2% | 333 | | PLAY_MUSIC | 63.5% | 658 |
+| LIGHT_ON | 81.7% | 562 | | MESSAGE | 60.3% | 282 |
+| STOP | 79.6% | 108 | | WEATHER | 56.7% | 534 |
+| COLOR | 73.9% | 322 | | LIST_REMINDERS | 49.4% | 249 |
+
+**Top confusions**:
+
+| True → Predicted | Count |
+|---|---:|
+| VOLUME_UP → VOLUME_DOWN | 67 |
+| VOLUME_DOWN → VOLUME_UP | 63 |
+| WEATHER → TIME | 60 |
+| TIME → WEATHER | 53 |
+| PLAY_MUSIC → WEATHER | 45 |
+| WEATHER → MESSAGE | 37 |
+| PLAY_MUSIC → TIME | 36 |
+| LIGHT_OFF → LIGHT_ON | 36 |
+| WEATHER → LIST_REMINDERS | 35 |
+| WEATHER → PLAY_MUSIC | 35 |
+
+**Analysis**: every class improved over the smaller DS-CNN
+(Experiment 7) except `unknown_background` (already saturated at
+100%). The improvements are broad, not concentrated in a few classes —
+consistent with more capacity generally helping a model fit more of
+the data's real structure, rather than fixing one specific weak point.
+Confusion counts also dropped across the board (e.g.
+VOLUME_UP↔VOLUME_DOWN combined fell from 192 in Experiment 7 to 130
+here) — the polarity confusion persists but is measurably smaller.
+**Directly cross-validating the DATASET.md source-composition
+diagnosis**: LIST_REMINDERS (49.4%) and WEATHER (56.7%) remain the two
+weakest classes even at this much higher overall accuracy, and both
+are the SLURP-dominated labels flagged there (69% and 85% SLURP
+respectively) — real evidence that this is a data-quality ceiling,
+not something more capacity alone fixes.
+
+**Current standing recommendation**: `checkpoints/dscnn_bigcap_best.pt`
+(DS-CNN, num_filters=60/num_blocks=5, 72.39%) is now the best model
+across all 11 experiments, and **DS-CNN is the recommended
+architecture** going forward — it has now won at both default and
+matched capacity, with zero training instability at any setting tried,
+unlike BC-ResNet. The capacity-scaling headroom itself looks
+promising too (default 24,276→65.96%, bigger 26,300→72.39% for only
+~2,000 more params) — an even larger DS-CNN has not been tried and is
+a plausible next lever, distinct from and complementary to the
+dataset-quality fix already identified for the SLURP-dominated
+labels.
