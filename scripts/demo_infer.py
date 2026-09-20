@@ -10,7 +10,7 @@ since the training label space (vcm.dataset.sources.dataset_schema,
 main.py/dispatch.py use.
 
 Usage:
-    python scripts/demo_infer.py --checkpoint checkpoints/dscnn_warmup_best.pt
+    python scripts/demo_infer.py --checkpoint checkpoints/dscnn_bigcap_cleaned_best.pt
 
 Hold the spacebar to record (same push-to-talk mock main.py uses on a
 Mac; on the RPi this uses the real HAL pushbutton), release to
@@ -35,7 +35,7 @@ MODELS = {"dscnn": DSCNN, "bcresnet": BCResNet}
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--checkpoint", type=Path, default=Path("checkpoints/dscnn_warmup_best.pt"))
+    parser.add_argument("--checkpoint", type=Path, default=Path("checkpoints/dscnn_bigcap_cleaned_best.pt"))
     parser.add_argument("--top-k", type=int, default=3)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = parser.parse_args()
@@ -43,7 +43,8 @@ def main() -> None:
     device = torch.device(args.device)
     ckpt = torch.load(args.checkpoint, map_location=device, weights_only=False)
     labels = list(ckpt["labels"])
-    model = MODELS[ckpt["model_name"]](num_classes=len(labels)).to(device)
+    model_kwargs = ckpt.get("model_kwargs", {"num_classes": len(labels)})
+    model = MODELS[ckpt["model_name"]](**model_kwargs).to(device)
     model.load_state_dict(ckpt["model_state_dict"])
     model.eval()
 
