@@ -17,6 +17,11 @@ Currently combines:
 - FSC (8 labels, including TEMPERATURE/STOP/PAUSE which had zero real
   coverage anywhere else) — data/external/fsc/manifest.csv, produced by
   scripts/process_fsc.py.
+- Real recordings for the synthetic-only gap (CALL, NEXT, TIMER,
+  LIST_REMINDERS, plus specific under-covered phrasings) —
+  data/real_recordings/manifest.csv, produced by
+  scripts/record_real_examples.py. See that script's docstring for why
+  this source exists.
 
 Usage:
     python scripts/build_manifest.py [--out data/dataset_manifest.csv]
@@ -44,6 +49,7 @@ OPTION_B_AUDIO_ROOT = REPO_ROOT / "data/external/option_b/audio"
 GSC_BACKGROUND_MANIFEST = REPO_ROOT / "data/external/gsc/manifest.csv"
 SNIPS_LIGHTS_MANIFEST = REPO_ROOT / "data/external/snips_lights/manifest.csv"
 FSC_MANIFEST = REPO_ROOT / "data/external/fsc/manifest.csv"
+REAL_RECORDINGS_MANIFEST = REPO_ROOT / "data/real_recordings/manifest.csv"
 
 
 def main() -> None:
@@ -88,6 +94,13 @@ def main() -> None:
         print(f"FSC:        {len(fsc_rows)} rows (real, 8 labels)")
     else:
         print(f"FSC:        skipped, {FSC_MANIFEST} not found (run scripts/process_fsc.py first)")
+
+    if REAL_RECORDINGS_MANIFEST.exists():
+        real_rows = read_manifest(REAL_RECORDINGS_MANIFEST)
+        rows.extend(real_rows)
+        print(f"Real recs:  {len(real_rows)} rows (real, gap-filling for CALL/NEXT/TIMER/LIST_REMINDERS + more)")
+    else:
+        print(f"Real recs:  skipped, {REAL_RECORDINGS_MANIFEST} not found (run scripts/record_real_examples.py first)")
 
     write_manifest(rows, args.out)
 
