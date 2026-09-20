@@ -22,6 +22,9 @@ Currently combines:
   data/real_recordings/manifest.csv, produced by
   scripts/record_real_examples.py. See that script's docstring for why
   this source exists.
+- Timers and Such (real TIMER/ALARM audio, ~90+ real speakers) —
+  data/external/timers_and_such/manifest.csv, produced by
+  scripts/fetch_timers_and_such.py.
 
 Usage:
     python scripts/build_manifest.py [--out data/dataset_manifest.csv]
@@ -50,6 +53,7 @@ GSC_BACKGROUND_MANIFEST = REPO_ROOT / "data/external/gsc/manifest.csv"
 SNIPS_LIGHTS_MANIFEST = REPO_ROOT / "data/external/snips_lights/manifest.csv"
 FSC_MANIFEST = REPO_ROOT / "data/external/fsc/manifest.csv"
 REAL_RECORDINGS_MANIFEST = REPO_ROOT / "data/real_recordings/manifest.csv"
+TIMERS_AND_SUCH_MANIFEST = REPO_ROOT / "data/external/timers_and_such/manifest.csv"
 
 
 def main() -> None:
@@ -101,6 +105,13 @@ def main() -> None:
         print(f"Real recs:  {len(real_rows)} rows (real, gap-filling for CALL/NEXT/TIMER/LIST_REMINDERS + more)")
     else:
         print(f"Real recs:  skipped, {REAL_RECORDINGS_MANIFEST} not found (run scripts/record_real_examples.py first)")
+
+    if TIMERS_AND_SUCH_MANIFEST.exists():
+        timers_rows = read_manifest(TIMERS_AND_SUCH_MANIFEST)
+        rows.extend(timers_rows)
+        print(f"Timers:     {len(timers_rows)} rows (real, TIMER + ALARM)")
+    else:
+        print(f"Timers:     skipped, {TIMERS_AND_SUCH_MANIFEST} not found (run scripts/fetch_timers_and_such.py first)")
 
     write_manifest(rows, args.out)
 
