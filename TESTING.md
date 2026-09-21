@@ -232,9 +232,10 @@ pip install -e ".[train]"   # pulls in torch, needed to load a checkpoint
 **Get a checkpoint**: checkpoints are gitignored (regeneratable
 training artifacts, not committed) — you'll need one sent to you, or
 train your own per `EXPERIMENTS.md`. Place it at
-`checkpoints/dscnn_bigcap_cleaned_best.pt` (the current best, 74.10%
-val accuracy — see `EXPERIMENTS.md` Experiment 12 for what "best" means
-and how it might change), or pass a different path explicitly.
+`checkpoints/dscnn_bigcap_timers_best.pt` (the current standing
+recommendation, 75.04% val accuracy — see `EXPERIMENTS.md` Experiment
+13 for what "best" means and how it might change), or pass a different
+path explicitly.
 
 ```bash
 python scripts/demo_infer.py
@@ -243,7 +244,7 @@ python scripts/demo_infer.py --checkpoint checkpoints/<name>.pt
 ```
 
 **Expect**: it prints something like
-`Loaded dscnn from checkpoints/dscnn_bigcap_cleaned_best.pt (epoch 46, val_acc 0.7410, 20 labels)`,
+`Loaded dscnn from checkpoints/dscnn_bigcap_timers_best.pt (epoch 12, val_acc 0.7504, 20 labels)`,
 then `Hold spacebar (Mac) or the pushbutton (RPi) and speak a command.
 Ctrl+C to quit.` — hold spacebar, say a command, release, and it prints
 the top-3 predicted labels with probabilities, e.g.:
