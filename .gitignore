@@ -23,3 +23,6 @@ data/dataset_manifest.csv
 # training run outputs — regenerate via vcm.train.train, don't commit
 checkpoints/
 logs/
+
+# scripts/demo_infer.py --debug output — local diagnostic recordings
+debug_recordings/
