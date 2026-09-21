@@ -28,6 +28,7 @@ from torch.utils.data import DataLoader
 
 from vcm.train.architectures import BCResNet, DSCNN
 from vcm.train.dataset import LABELS, ManifestDataset, class_weights
+from vcm.train.losses import ConfusablePairLoss, build_confusable_mask
 
 MODELS = {"dscnn": DSCNN, "bcresnet": BCResNet}
 # Generic --width/--depth CLI flags map to each model's own constructor
@@ -97,6 +98,15 @@ def main() -> None:
         "match --model/--width/--depth) instead of a fresh random init. For cheaply testing "
         "whether newly-added data helps, without a full from-scratch retrain.",
     )
+    parser.add_argument(
+        "--confusable-alpha",
+        type=float,
+        default=0.0,
+        help="Extra penalty weight on probability mass placed on classes known to be "
+        "confusable with the true label (VOLUME_UP/VOLUME_DOWN/TEMPERATURE, LIGHT_ON/"
+        "LIGHT_OFF — see vcm.train.losses). 0.0 (default) is plain weighted "
+        "cross-entropy, i.e. the loss used through Experiment 13.",
+    )
     parser.add_argument("--out", type=Path, default=Path("checkpoints/best.pt"))
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--seed", type=int, default=0, help="Random seed, for comparable experiments")
@@ -129,7 +139,12 @@ def main() -> None:
     )
 
     weights = class_weights(train_ds.rows).to(device)
-    criterion = nn.CrossEntropyLoss(weight=weights)
+    if args.confusable_alpha > 0.0:
+        confusable_mask = build_confusable_mask(LABELS).to(device)
+        criterion = ConfusablePairLoss(weights, confusable_mask, alpha=args.confusable_alpha)
+        print(f"Using ConfusablePairLoss (alpha={args.confusable_alpha})", flush=True)
+    else:
+        criterion = nn.CrossEntropyLoss(weight=weights)
 
     model_kwargs: dict[str, int] = {"num_classes": len(LABELS)}
     if args.width is not None:
@@ -202,6 +217,7 @@ def main() -> None:
                     "warmup_epochs": args.warmup_epochs,
                     "train_fraction": args.train_fraction,
                     "resumed_from": str(args.resume_from) if args.resume_from else None,
+                    "confusable_alpha": args.confusable_alpha,
                     "model_kwargs": model_kwargs,
                     "labels": LABELS,
                     "epoch": epoch,

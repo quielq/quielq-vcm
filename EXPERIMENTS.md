@@ -32,6 +32,7 @@ init, batch shuffling), not purely the effect being tested. Experiment
 | 11 | DS-CNN, num_filters=60/num_blocks=5 (26,300 params), lr=1e-3 + 5-epoch warmup + cosine decay | none | 80 | 72.39% (epoch 63) | `logs/train_dscnn_bigcap_run11.log` |
 | 12 | Same as #11, on the SLURP-quality-fixed manifest (62,405 rows, was 64,665) | none | 80 | 74.10% (epoch 46) | `logs/train_dscnn_bigcap_cleaned_run12.log` |
 | 13 | Resumed from #12's checkpoint, on the Timers-and-Such-added manifest (63,476 rows) | none | 20 | **75.04%** (epoch 12) — best overall | `logs/train_dscnn_timers_finetune_run13.log` |
+| 14 | Resumed from #13's checkpoint, ConfusablePairLoss (alpha=1.0) targeting VOLUME_UP/DOWN/TEMPERATURE + LIGHT_ON/OFF | none | 15 | 75.54% (epoch 10) — mixed result, see writeup | `logs/exp14_confusable.log` |
 
 ## Parked / to-do
 
@@ -47,6 +48,13 @@ again.
   LIGHT_ON/OFF) instead of SpecAugment's random masking (ruled out in
   Experiment 8). Needs word-level time alignment, which the pipeline
   doesn't have yet — a bigger lift than the other items here.
+- **Confusable-pair loss tuning** — see Experiment 14. alpha=1.0 gave
+  a mixed result (fixed the LIGHT_ON/LIGHT_OFF confusion specifically,
+  but not VOLUME_UP/DOWN/TEMPERATURE, and introduced some new
+  unrelated confusion). Untried: lower/higher alpha, or per-group
+  alpha (LIGHT only). `vcm.train.losses.ConfusablePairLoss` is built
+  and tested either way — this is now a cheap `--confusable-alpha`
+  sweep away, not new infrastructure work.
 - ~~BC-ResNet with more channels/blocks~~ — **done, see Experiment 10
   below.** Result: matching DS-CNN's param count (channels=48,
   blocks=8) closed the gap and then some — 67.54%, the new best model
@@ -1163,3 +1171,88 @@ held-out-only evaluation (not the noisier overall val-accuracy delta)
 as the way to honestly measure a specific data addition's effect. The
 polarity confusion and MESSAGE anomaly remain the two clearest open
 threads, unaffected by this fix as expected.
+
+## Experiment 14 — ConfusablePairLoss, targeting the polarity confusion directly
+
+**Motivation**: the polarity confusion (VOLUME_UP/VOLUME_DOWN,
+TEMPERATURE->VOLUME_UP, LIGHT_ON/LIGHT_OFF) has topped every confusion
+matrix from Experiment 1 through 13 and is unaffected by adding more
+data (Experiment 13 confirmed this — these labels already have
+thousands of examples). Research into confusable-pair/minimal-pair
+keyword-spotting literature (Inter-Category Focal Loss-style
+approaches, e.g. arXiv:2304.05922) suggested a loss-level fix instead:
+penalize the probability mass a sample's true class places on classes
+already known (from our own confusion matrices, not guessed) to be
+confusable with it. Implemented in `vcm.train.losses.ConfusablePairLoss`
+(see that module's docstring) — zero new data needed, a strict
+superset of the existing weighted cross-entropy (alpha=0 reduces to
+it exactly).
+
+Two groups defined directly from the top-confusions tables above:
+`(VOLUME_UP, VOLUME_DOWN, TEMPERATURE)` and `(LIGHT_ON, LIGHT_OFF)`.
+
+**Setup**: `python -m vcm.train.train --model dscnn --epochs 15
+--batch-size 128 --lr 1e-3 --warmup-epochs 2 --seed 0 --width 60
+--depth 5 --resume-from checkpoints/dscnn_bigcap_timers_best.pt
+--confusable-alpha 1.0 --out checkpoints/dscnn_bigcap_confusable_best.pt`.
+Same cheap resume-and-continue methodology as Experiment 13 (~15
+minutes vs. a full retrain).
+
+**Result**: best val accuracy **75.54%** at epoch 10/15, +0.50pp over
+Experiment 13's 75.04%. On its own this looks like a small win, but
+the overall number hides what actually happened — a targeted
+within-group-confusion metric (computed directly from
+`vcm.train.losses.CONFUSABLE_GROUPS`, not the generic top-10 list)
+gives the honest picture:
+
+| Group | Metric | #13 (before) | #14 (after) | Change |
+|---|---|---:|---:|---:|
+| VOLUME_UP/DOWN/TEMPERATURE | correct | 77.9% | 80.3% | +2.4pp |
+| | within-group confusion (the targeted problem) | 10.7% | 10.7% | **0.0pp — unchanged** |
+| | other-wrong | 11.4% | 9.0% | -2.4pp |
+| LIGHT_ON/LIGHT_OFF | correct | 80.0% | 79.1% | -0.9pp |
+| | within-group confusion (the targeted problem) | 6.1% | 4.4% | **-1.7pp — improved** |
+| | other-wrong | 14.0% | 16.5% | +2.5pp |
+
+**Analysis — an honest, mixed result, not a clean win**:
+- **LIGHT_ON/LIGHT_OFF**: the loss did what it was designed to do —
+  the specific LIGHT_ON<->LIGHT_OFF confusion dropped 6.1%->4.4%. But
+  that gain was more than offset by a rise in unrelated wrong
+  predictions (14.0%->16.5%), so overall group accuracy actually
+  *fell* slightly (80.0%->79.1%). The penalty term seems to have
+  pushed probability mass off the confusable partner class, but not
+  reliably onto the correct class — sometimes onto a third, unrelated
+  class instead.
+- **VOLUME_UP/VOLUME_DOWN/TEMPERATURE**: the targeted confusion didn't
+  move at all (10.7% both times) — individually, VOLUME_DOWN's
+  within-group confusion got slightly *worse* (16.5%->17.4%) while
+  TEMPERATURE's improved slightly (5.7%->5.3%). The +2.4pp group
+  accuracy gain came entirely from fewer *unrelated* errors
+  (TEMPERATURE's other-wrong dropped 8.4%->5.2%) — a real improvement,
+  but not the one this experiment set out to produce, and not
+  obviously caused by the confusable-pair mechanism rather than just
+  more resumed-training epochs.
+- Overall: the loss is not obviously wrong, but alpha=1.0 does not
+  cleanly fix the polarity confusion it targets. Full evaluation:
+  `python <scratchpad>/eval_confusable_groups.py <ckpt1> <ckpt2>` (ad
+  hoc script, not committed to the repo — logic is short enough to
+  reproduce if needed: for each confusable group, split each class's
+  errors into within-group vs. other-wrong).
+
+**Open follow-ups, not yet tried**: a lower alpha (weaker penalty,
+less likely to overshoot into unrelated classes), a higher alpha
+(stronger push, in case 1.0 undershoots), or restricting the penalty
+to only the LIGHT group (the only one where it worked as intended)
+while leaving VOLUME/TEMPERATURE on plain cross-entropy. Not run yet —
+next step is a decision on whether this line of tuning is worth
+another DGX pass or whether to park it, matching this project's
+efficiency-first approach to training runs.
+
+**Current standing recommendation**: unchanged from Experiment 13 —
+`checkpoints/dscnn_bigcap_timers_best.pt` is still the safer default
+given this experiment's mixed, not-clearly-better result on the
+LIGHT_ON/LIGHT_OFF group specifically. `dscnn_bigcap_confusable_best.pt`
+is marginally higher on raw val accuracy (75.54% vs 75.04%) and
+genuinely better on the LIGHT confusion specifically, so it's a
+reasonable alternative, not a clear regression — this is a "pick one
+and note the tradeoff" situation, not an obvious win either way.
