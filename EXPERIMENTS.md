@@ -33,7 +33,8 @@ init, batch shuffling), not purely the effect being tested. Experiment
 | 12 | Same as #11, on the SLURP-quality-fixed manifest (62,405 rows, was 64,665) | none | 80 | 74.10% (epoch 46) | `logs/train_dscnn_bigcap_cleaned_run12.log` |
 | 13 | Resumed from #12's checkpoint, on the Timers-and-Such-added manifest (63,476 rows) | none | 20 | **75.04%** (epoch 12) — best overall | `logs/train_dscnn_timers_finetune_run13.log` |
 | 14 | Resumed from #13's checkpoint, ConfusablePairLoss (alpha=1.0) targeting VOLUME_UP/DOWN/TEMPERATURE + LIGHT_ON/OFF | none | 15 | 75.54% (epoch 10) — mixed result, see writeup | `logs/exp14_confusable.log` |
-| 15 | Same as #14, alpha=2.0 (resumed from #13 directly, not #14) | none | 15 | 75.45% (epoch 10) — lower raw accuracy but genuinely better on the targeted metric, see writeup | `logs/exp15_confusable_alpha2.log` |
+| 15 | Same as #14, alpha=2.0 (resumed from #13 directly, not #14) | none | 15 | **75.45%** (epoch 10) — best checkpoint overall, adopted as default | `logs/exp15_confusable_alpha2.log` |
+| 16 | Same as #15, alpha=3.0 (resumed from #13 directly) | none | 15 | 75.36% (epoch 14) — overshoot, worse than #15 on the targeted metric too, see writeup | `logs/exp16_confusable_alpha3.log` |
 
 ## Parked / to-do
 
@@ -49,15 +50,15 @@ again.
   LIGHT_ON/OFF) instead of SpecAugment's random masking (ruled out in
   Experiment 8). Needs word-level time alignment, which the pipeline
   doesn't have yet — a bigger lift than the other items here.
-- **Confusable-pair loss tuning beyond alpha=2.0** — see Experiments
-  14-15. alpha=2.0 (`dscnn_bigcap_confusable2_best.pt`, now the repo
-  default) is a real, clean improvement over both alpha=1.0 and the
-  no-loss baseline on the targeted polarity-confusion metric. The
-  1.0->2.0 trend was monotonically improving, so a higher alpha
-  (3.0+) might do even better — untried, parked rather than chased
-  further for now. `vcm.train.losses.ConfusablePairLoss` is built and
-  tested either way — this is a cheap `--confusable-alpha` sweep away,
-  not new infrastructure work, whenever it's worth another DGX pass.
+- ~~Confusable-pair loss tuning~~ — **done, see Experiments 14-16.**
+  alpha=2.0 (`dscnn_bigcap_confusable2_best.pt`, the repo default) is
+  a real peak — alpha=1.0 undershoots (barely moves the VOLUME/
+  TEMPERATURE confusion) and alpha=3.0 overshoots (regresses
+  VOLUME/TEMPERATURE back to baseline and pushes LIGHT's other-wrong
+  rate above baseline too). Closed out, not paused — a different
+  mechanism (per-group alpha, or a different penalty formulation),
+  not more of the same knob, would be needed to improve on this
+  further.
 - ~~BC-ResNet with more channels/blocks~~ — **done, see Experiment 10
   below.** Result: matching DS-CNN's param count (channels=48,
   blocks=8) closed the gap and then some — 67.54%, the new best model
@@ -1307,6 +1308,51 @@ clearly stronger checkpoint on the actual problem being fixed.
 (alpha=2.0) is now the repo-wide default (`demo_infer.py`, `TESTING.md`
 updated) — strictly better than the Experiment 13 baseline on the
 polarity-confusion metric this whole line of experiments targets, at a
-negligible (0.09pp) cost in overall val accuracy. Further alpha tuning
-(the trend from 1.0 -> 2.0 suggests a higher alpha might do even
-better) is parked, not pursued further — see the parked to-do list.
+negligible (0.09pp) cost in overall val accuracy. **Confirmed by
+Experiment 16 below**: the 1.0->2.0 trend does not continue to 3.0 —
+alpha=2.0 is a real peak, not a point on a still-climbing curve.
+
+## Experiment 16 — ConfusablePairLoss, alpha=3.0 (does the trend continue?)
+
+**Motivation**: Experiment 15 (alpha=2.0) beat alpha=1.0 on every
+group metric simultaneously, with no sign of plateauing. This tests
+whether pushing alpha further keeps helping or starts overshooting.
+
+**Setup**: identical to Experiments 14/15 but `--confusable-alpha 3.0`,
+resumed from Experiment 13's checkpoint directly (same isolation
+methodology — alpha is the only variable that changes between 13, 14,
+15, 16).
+
+**Result**: best val accuracy 75.36% at epoch 14/15 — between
+Experiment 14 (75.54%) and Experiment 15 (75.45%) on the raw number,
+but the group breakdown shows this is a genuine reversal, not noise:
+
+| Group | Metric | #13 (baseline) | #15 (alpha=2.0) | #16 (alpha=3.0) |
+|---|---|---:|---:|---:|
+| VOLUME_UP/DOWN/TEMPERATURE | correct | 77.9% | **81.7%** | 78.0% |
+| | within-group confusion (targeted) | 10.7% | **9.6%** | 9.9% |
+| | other-wrong | 11.4% | **8.7%** | 12.1% |
+| LIGHT_ON/LIGHT_OFF | correct | 80.0% | **80.4%** | 78.0% |
+| | within-group confusion (targeted) | 6.1% | 4.9% | **4.6%** |
+| | other-wrong | 14.0% | **14.6%** | 17.4% |
+
+**Analysis**: the trend broke. alpha=3.0 squeezes the LIGHT group's
+targeted confusion slightly lower than alpha=2.0 (4.9%->4.6%) — the
+mechanism is still doing what it's designed to do — but at a much
+steeper cost: other-wrong jumps to 17.4% (worse than both alpha=2.0
+*and* the no-loss baseline), and the VOLUME/TEMPERATURE group regresses
+on every metric back to roughly baseline levels, wiping out
+Experiment 15's gains there entirely. This is the classic overshoot
+failure mode for this kind of penalty: pushing probability mass hard
+enough off the confusable partner starts dumping it onto unrelated
+classes instead of the correct one, rather than continuing to
+concentrate it on the right answer. alpha=2.0 sits right at the peak
+before that trade-off turns negative.
+
+**Current standing recommendation — unchanged**: `checkpoints/dscnn_bigcap_confusable2_best.pt`
+(alpha=2.0, Experiment 15) remains the best checkpoint and the repo
+default. Alpha tuning is now closed out, not just paused — 1.0, 2.0,
+and 3.0 collectively bracket a real peak at 2.0, so further sweeping
+in either direction is low-value without a different mechanism (e.g.
+per-group alpha, or a different penalty formulation) rather than just
+more of the same knob.
