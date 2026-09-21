@@ -78,10 +78,13 @@ Model **training** has started for real, though: **see
 [EXPERIMENTS.md](EXPERIMENTS.md)** for real training-run results (best
 so far: DS-CNN, capacity-scaled (num_filters=60/num_blocks=5), on the
 SLURP-quality-fixed dataset plus real TIMER/ALARM audio from Timers
-and Such — 75.04% val accuracy overall, and a real +59.9pp/+25.9pp
-held-out improvement on TIMER/ALARM specifically, across 13 experiments
-comparing architectures, capacity, augmentation, data volume, dataset
-quality, and LR schedules) and **[MODEL.md](MODEL.md)** for the
+and Such, plus a confusable-pair-weighted loss targeting the
+VOLUME_UP/DOWN/TEMPERATURE and LIGHT_ON/OFF polarity confusion —
+75.45% val accuracy overall, a real +59.9pp/+25.9pp held-out
+improvement on TIMER/ALARM specifically, and a measured reduction in
+the polarity confusion itself, across 15 experiments comparing
+architectures, capacity, augmentation, data volume, dataset quality,
+LR schedules, and loss functions) and **[MODEL.md](MODEL.md)** for the
 technology choices and research
 behind the training pipeline.
 Dataset development itself (Section 9) has started — see the "Dataset

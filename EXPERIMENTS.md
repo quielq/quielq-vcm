@@ -49,13 +49,15 @@ again.
   LIGHT_ON/OFF) instead of SpecAugment's random masking (ruled out in
   Experiment 8). Needs word-level time alignment, which the pipeline
   doesn't have yet — a bigger lift than the other items here.
-- **Confusable-pair loss tuning** — see Experiment 14. alpha=1.0 gave
-  a mixed result (fixed the LIGHT_ON/LIGHT_OFF confusion specifically,
-  but not VOLUME_UP/DOWN/TEMPERATURE, and introduced some new
-  unrelated confusion). Untried: lower/higher alpha, or per-group
-  alpha (LIGHT only). `vcm.train.losses.ConfusablePairLoss` is built
-  and tested either way — this is now a cheap `--confusable-alpha`
-  sweep away, not new infrastructure work.
+- **Confusable-pair loss tuning beyond alpha=2.0** — see Experiments
+  14-15. alpha=2.0 (`dscnn_bigcap_confusable2_best.pt`, now the repo
+  default) is a real, clean improvement over both alpha=1.0 and the
+  no-loss baseline on the targeted polarity-confusion metric. The
+  1.0->2.0 trend was monotonically improving, so a higher alpha
+  (3.0+) might do even better — untried, parked rather than chased
+  further for now. `vcm.train.losses.ConfusablePairLoss` is built and
+  tested either way — this is a cheap `--confusable-alpha` sweep away,
+  not new infrastructure work, whenever it's worth another DGX pass.
 - ~~BC-ResNet with more channels/blocks~~ — **done, see Experiment 10
   below.** Result: matching DS-CNN's param count (channels=48,
   blocks=8) closed the gap and then some — 67.54%, the new best model
@@ -1301,12 +1303,10 @@ accuracy is a worse guide here than the targeted breakdown — alpha=2.0
 scores lower on the headline number (75.45% vs 75.54%) while being the
 clearly stronger checkpoint on the actual problem being fixed.
 
-**Current standing recommendation**: `checkpoints/dscnn_bigcap_confusable2_best.pt`
-(alpha=2.0) is now the best available checkpoint for real-world use —
-strictly better than the Experiment 13 baseline on the polarity-
-confusion metric this whole line of experiments targets, at a
-negligible (0.09pp) cost in overall val accuracy. Not yet updated as
-the repo-wide default (`demo_infer.py`, `TESTING.md`) pending a
-decision on whether to keep tuning alpha further — the trend
-(1.0 -> 2.0 both improving) suggests a higher alpha might do even
-better, untested.
+**Current standing recommendation — adopted**: `checkpoints/dscnn_bigcap_confusable2_best.pt`
+(alpha=2.0) is now the repo-wide default (`demo_infer.py`, `TESTING.md`
+updated) — strictly better than the Experiment 13 baseline on the
+polarity-confusion metric this whole line of experiments targets, at a
+negligible (0.09pp) cost in overall val accuracy. Further alpha tuning
+(the trend from 1.0 -> 2.0 suggests a higher alpha might do even
+better) is parked, not pursued further — see the parked to-do list.
