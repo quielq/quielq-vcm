@@ -51,6 +51,32 @@ CONFUSABLE_GROUPS: tuple[tuple[str, ...], ...] = (
 )
 
 
+def effective_number_weights(counts: torch.Tensor, beta: float = 0.999) -> torch.Tensor:
+    """Class-Balanced weighting (Cui, Jia, Lin, Song, Belongie, "Class-Balanced
+    Loss Based on Effective Number of Samples", CVPR 2019): weight_c is
+    proportional to (1-beta) / (1 - beta^n_c) instead of the plain 1/n_c
+    this project used through Experiment 17.
+
+    Motivated by a real finding, not theory: a live-voice debug session
+    (see EXPERIMENTS.md Experiment 18) showed the model systematically
+    defaulting to large classes (TEMPERATURE 8,691 train examples,
+    LIGHT_ON 4,050, VOLUME_UP 3,524, PLAY_MUSIC 3,682) at the expense of
+    small ones (CALL 396, PAUSE 640, STOP 812) on real/unfamiliar audio
+    — every "surprise" wrong answer in that session was a large class
+    stealing from a small one, not an acoustically-similar confusion
+    (that's what ConfusablePairLoss above already handles). Plain
+    inverse-frequency weighting (`vcm.train.dataset.class_weights`)
+    already compensates for this some, but effective-number weighting
+    is the standard fix for exactly this pattern at this project's
+    imbalance ratio (~22x, TEMPERATURE vs CALL) — plain 1/n weights blow
+    up for the rarest classes in a way that's often less stable than
+    effective-number weighting during training.
+    """
+    effective_num = 1.0 - torch.pow(torch.as_tensor(beta, dtype=counts.dtype), counts)
+    weights = (1.0 - beta) / effective_num.clamp(min=1e-8)
+    return weights / weights.sum() * len(counts)  # normalize: mean weight == 1
+
+
 def build_confusable_mask(
     labels: tuple[str, ...], groups: tuple[tuple[str, ...], ...] = CONFUSABLE_GROUPS
 ) -> torch.Tensor:
@@ -70,19 +96,42 @@ def build_confusable_mask(
 
 
 class ConfusablePairLoss(nn.Module):
-    """Weighted cross-entropy plus alpha * (probability mass placed on
-    classes confusable with the true label). alpha=0 reduces exactly to
-    plain weighted cross-entropy.
+    """Weighted cross-entropy, optionally with two independent additions:
+
+    1. Focal modulation (Lin et al., "Focal Loss for Dense Object
+       Detection", ICCV 2017): multiply each example's loss by
+       (1 - p_t)^gamma, down-weighting examples the model already gets
+       right (confidently) and up-weighting ones it doesn't — the
+       standard fix for a model defaulting to easy/common classes under
+       distribution shift rather than genuinely resolving hard ones.
+       gamma=0.0 (default) disables this, recovering plain weighted CE.
+    2. alpha * (probability mass placed on classes confusable with the
+       true label) — see this module's docstring. alpha=0.0 (default)
+       disables this.
+
+    Both default off, so this class is a strict superset of plain
+    weighted cross-entropy, not a replacement — same design as before.
     """
 
-    def __init__(self, class_weights: torch.Tensor, confusable_mask: torch.Tensor, alpha: float = 1.0):
+    def __init__(
+        self,
+        class_weights: torch.Tensor,
+        confusable_mask: torch.Tensor,
+        alpha: float = 1.0,
+        gamma: float = 0.0,
+    ):
         super().__init__()
         self.register_buffer("class_weights", class_weights)
         self.register_buffer("confusable_mask", confusable_mask)
         self.alpha = alpha
+        self.gamma = gamma
 
     def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
         ce = F.cross_entropy(logits, targets, weight=self.class_weights, reduction="none")
+        if self.gamma > 0.0:
+            probs_for_focal = F.softmax(logits, dim=1)
+            p_t = probs_for_focal.gather(1, targets.unsqueeze(1)).squeeze(1)
+            ce = ((1.0 - p_t).clamp(min=1e-8) ** self.gamma) * ce
         if self.alpha == 0.0:
             return ce.mean()
         probs = F.softmax(logits, dim=1)

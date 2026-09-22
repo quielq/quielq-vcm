@@ -55,6 +55,16 @@ class ManifestDataset(Dataset):
         return features, LABEL_TO_INDEX[row.label]
 
 
+def class_counts(rows: list[ManifestRow]) -> torch.Tensor:
+    """Raw per-class example counts, in LABELS order. Used by class_weights
+    below (plain inverse-frequency) and by vcm.train.losses.effective_number_weights
+    (the class-balanced alternative, see that function's docstring)."""
+    counts = torch.zeros(len(LABELS))
+    for row in rows:
+        counts[LABEL_TO_INDEX[row.label]] += 1
+    return counts.clamp(min=1)
+
+
 def class_weights(rows: list[ManifestRow]) -> torch.Tensor:
     """Inverse-frequency class weights for a weighted CrossEntropyLoss.
 
@@ -62,8 +72,5 @@ def class_weights(rows: list[ManifestRow]) -> torch.Tensor:
     TEMPERATURE=8,691 in the train split) — worth correcting for from
     the start rather than letting the model ignore rare classes.
     """
-    counts = torch.zeros(len(LABELS))
-    for row in rows:
-        counts[LABEL_TO_INDEX[row.label]] += 1
-    counts = counts.clamp(min=1)
+    counts = class_counts(rows)
     return counts.sum() / (len(LABELS) * counts)

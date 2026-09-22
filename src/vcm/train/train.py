@@ -27,8 +27,8 @@ from torch import nn
 from torch.utils.data import DataLoader
 
 from vcm.train.architectures import BCResNet, DSCNN
-from vcm.train.dataset import LABELS, ManifestDataset, class_weights
-from vcm.train.losses import ConfusablePairLoss, build_confusable_mask
+from vcm.train.dataset import LABELS, ManifestDataset, class_counts, class_weights
+from vcm.train.losses import ConfusablePairLoss, build_confusable_mask, effective_number_weights
 
 MODELS = {"dscnn": DSCNN, "bcresnet": BCResNet}
 # Generic --width/--depth CLI flags map to each model's own constructor
@@ -107,6 +107,23 @@ def main() -> None:
         "LIGHT_OFF — see vcm.train.losses). 0.0 (default) is plain weighted "
         "cross-entropy, i.e. the loss used through Experiment 13.",
     )
+    parser.add_argument(
+        "--class-balance-beta",
+        type=float,
+        default=0.0,
+        help="Use effective-number-of-samples class weighting (Cui et al. 2019) with this "
+        "beta instead of the plain inverse-frequency weights used through Experiment 17. "
+        "0.0 (default) keeps plain inverse-frequency. Try 0.999 or 0.9999 — see "
+        "vcm.train.losses.effective_number_weights.",
+    )
+    parser.add_argument(
+        "--focal-gamma",
+        type=float,
+        default=0.0,
+        help="Focal-loss modulation exponent (Lin et al. 2017) — down-weights examples the "
+        "model already gets right, up-weights ones it doesn't. 0.0 (default) disables this, "
+        "i.e. plain weighted cross-entropy. Try 2.0 (the paper's default).",
+    )
     parser.add_argument("--out", type=Path, default=Path("checkpoints/best.pt"))
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--seed", type=int, default=0, help="Random seed, for comparable experiments")
@@ -138,11 +155,19 @@ def main() -> None:
         val_ds, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=True
     )
 
-    weights = class_weights(train_ds.rows).to(device)
-    if args.confusable_alpha > 0.0:
+    if args.class_balance_beta > 0.0:
+        weights = effective_number_weights(class_counts(train_ds.rows), beta=args.class_balance_beta).to(device)
+        print(f"Using effective-number class weights (beta={args.class_balance_beta})", flush=True)
+    else:
+        weights = class_weights(train_ds.rows).to(device)
+
+    if args.confusable_alpha > 0.0 or args.focal_gamma > 0.0:
         confusable_mask = build_confusable_mask(LABELS).to(device)
-        criterion = ConfusablePairLoss(weights, confusable_mask, alpha=args.confusable_alpha)
-        print(f"Using ConfusablePairLoss (alpha={args.confusable_alpha})", flush=True)
+        criterion = ConfusablePairLoss(weights, confusable_mask, alpha=args.confusable_alpha, gamma=args.focal_gamma)
+        print(
+            f"Using ConfusablePairLoss (alpha={args.confusable_alpha}, gamma={args.focal_gamma})",
+            flush=True,
+        )
     else:
         criterion = nn.CrossEntropyLoss(weight=weights)
 
@@ -218,6 +243,8 @@ def main() -> None:
                     "train_fraction": args.train_fraction,
                     "resumed_from": str(args.resume_from) if args.resume_from else None,
                     "confusable_alpha": args.confusable_alpha,
+                    "class_balance_beta": args.class_balance_beta,
+                    "focal_gamma": args.focal_gamma,
                     "model_kwargs": model_kwargs,
                     "labels": LABELS,
                     "epoch": epoch,
