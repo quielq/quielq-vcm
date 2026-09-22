@@ -16,6 +16,7 @@ is self-contained here and in whatever checkpoint training produces.
 
 from __future__ import annotations
 
+import random
 from pathlib import Path
 
 import soundfile as sf
@@ -53,6 +54,23 @@ class ManifestDataset(Dataset):
         if self.augment:
             features = spec_augment(features)
         return features, LABEL_TO_INDEX[row.label]
+
+
+def cap_per_class(rows: list[ManifestRow], max_per_class: int) -> list[ManifestRow]:
+    """Randomly subsample each label down to at most max_per_class rows
+    (labels already at or below the cap are returned unchanged). A
+    dataset-level alternative to loss reweighting for class imbalance —
+    see EXPERIMENTS.md Experiment 20. Deterministic given the caller has
+    already seeded `random` (as train.py does via --seed)."""
+    by_label: dict[str, list[ManifestRow]] = {}
+    for row in rows:
+        by_label.setdefault(row.label, []).append(row)
+    capped: list[ManifestRow] = []
+    for label_rows in by_label.values():
+        if len(label_rows) > max_per_class:
+            label_rows = random.sample(label_rows, max_per_class)
+        capped.extend(label_rows)
+    return capped
 
 
 def class_counts(rows: list[ManifestRow]) -> torch.Tensor:

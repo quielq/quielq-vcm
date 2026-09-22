@@ -95,6 +95,44 @@ downloads that get deleted right after extraction).
 Every row's `audio_path` resolves to a real local file (verified) — this
 is an actual training-ready manifest, not just row counts.
 
+### Per-label breakdown by source
+
+The label-level view of the table above — computed directly from
+`data/dataset_manifest.csv`, all splits combined. This is the real
+imbalance the training pipeline sees: **22x between the largest label
+(TEMPERATURE, 11,170) and the smallest (CALL, 498)**, motivating the
+class-imbalance work in EXPERIMENTS.md Experiments 18-20.
+
+| Label | SLURP | Option B | FSC | Snips | GSC bg | Timers | **Total** |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| TEMPERATURE | 0 | 1,796 | 9,374 | 0 | 0 | 0 | **11,170** |
+| LIGHT_OFF | 1,025 | 578 | 3,236 | 448 | 0 | 0 | **5,287** |
+| LIGHT_ON | 113 | 570 | 4,135 | 448 | 0 | 0 | **5,266** |
+| PLAY_MUSIC | 3,764 | 568 | 912 | 0 | 0 | 0 | **5,244** |
+| VOLUME_UP | 998 | 566 | 3,010 | 0 | 0 | 0 | **4,574** |
+| BRIGHTNESS | 1,163 | 1,770 | 0 | 1,028 | 0 | 0 | **3,961** |
+| VOLUME_DOWN | 560 | 580 | 2,731 | 0 | 0 | 0 | **3,871** |
+| WEATHER | 3,279 | 544 | 0 | 0 | 0 | 0 | **3,823** |
+| ALARM | 1,486 | 1,754 | 0 | 0 | 0 | 354 | **3,594** |
+| COLOR | 717 | 1,736 | 0 | 548 | 0 | 0 | **3,001** |
+| CREATE_REMINDER | 961 | 1,766 | 0 | 0 | 0 | 0 | **2,727** |
+| TIMER | 0 | 1,750 | 0 | 0 | 0 | 717 | **2,467** |
+| MESSAGE | 1,853 | 528 | 0 | 0 | 0 | 0 | **2,381** |
+| TIME | 1,533 | 548 | 0 | 0 | 0 | 0 | **2,081** |
+| STOP | 0 | 532 | 510 | 0 | 0 | 0 | **1,042** |
+| PAUSE | 0 | 496 | 315 | 0 | 0 | 0 | **811** |
+| unknown_background | 0 | 0 | 0 | 0 | 600 | 0 | **600** |
+| LIST_REMINDERS | 0 | 558 | 0 | 0 | 0 | 0 | **558** |
+| NEXT | 0 | 520 | 0 | 0 | 0 | 0 | **520** |
+| CALL | 0 | 498 | 0 | 0 | 0 | 0 | **498** |
+| **TOTAL** | **17,452** | **17,658** | **24,223** | **2,472** | **600** | **1,071** | **63,476** |
+
+At a glance: CALL/NEXT/LIST_REMINDERS are Option-B-only (the
+zero-real-coverage gap above); TEMPERATURE/LIGHT_ON/LIGHT_OFF/VOLUME_UP/
+VOLUME_DOWN are FSC-heavy; WEATHER/MESSAGE/TIME/PLAY_MUSIC/CREATE_REMINDER
+are SLURP-heavy; TIMER/ALARM are the only labels with any Timers-and-Such
+contribution.
+
 ### Known per-label quality signal: source composition correlates with model accuracy
 
 Checked directly against the manifest (not assumed) after several

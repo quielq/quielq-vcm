@@ -3,7 +3,7 @@ import soundfile as sf
 import torch
 
 from vcm.dataset.manifest import ManifestRow, write_manifest
-from vcm.train.dataset import LABEL_TO_INDEX, LABELS, ManifestDataset, class_weights
+from vcm.train.dataset import LABEL_TO_INDEX, LABELS, ManifestDataset, cap_per_class, class_weights
 
 
 def _write_wav(path, duration_s=1.0, sample_rate=16000, seed=0):
@@ -82,3 +82,29 @@ def test_class_weights_handles_zero_count_label_without_dividing_by_zero():
     rows = [_row(label="PLAY_MUSIC")]
     weights = class_weights(rows)
     assert torch.isfinite(weights).all()
+
+
+def test_cap_per_class_shrinks_oversized_labels():
+    rows = [_row(label="TEMPERATURE") for _ in range(100)] + [_row(label="CALL") for _ in range(5)]
+    capped = cap_per_class(rows, max_per_class=20)
+    counts = {"TEMPERATURE": 0, "CALL": 0}
+    for r in capped:
+        counts[r.label] += 1
+    assert counts["TEMPERATURE"] == 20
+    assert counts["CALL"] == 5  # already under the cap, untouched
+
+
+def test_cap_per_class_leaves_undersized_labels_unchanged():
+    rows = [_row(label="CALL") for _ in range(5)]
+    capped = cap_per_class(rows, max_per_class=1000)
+    assert len(capped) == 5
+
+
+def test_cap_per_class_total_matches_sum_of_per_label_caps():
+    rows = (
+        [_row(label="TEMPERATURE") for _ in range(100)]
+        + [_row(label="LIGHT_ON") for _ in range(50)]
+        + [_row(label="CALL") for _ in range(5)]
+    )
+    capped = cap_per_class(rows, max_per_class=30)
+    assert len(capped) == 30 + 30 + 5

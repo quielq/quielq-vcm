@@ -27,7 +27,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 
 from vcm.train.architectures import BCResNet, DSCNN
-from vcm.train.dataset import LABELS, ManifestDataset, class_counts, class_weights
+from vcm.train.dataset import LABELS, ManifestDataset, cap_per_class, class_counts, class_weights
 from vcm.train.losses import ConfusablePairLoss, build_confusable_mask, effective_number_weights
 
 MODELS = {"dscnn": DSCNN, "bcresnet": BCResNet}
@@ -74,6 +74,16 @@ def main() -> None:
         help="Randomly subsample this fraction of the training split (for data-scaling "
         "experiments, e.g. EXPERIMENTS.md's learning-curve test). 1.0 (default) uses all "
         "training rows. Val/test are never subsampled.",
+    )
+    parser.add_argument(
+        "--max-per-class",
+        type=int,
+        default=None,
+        help="Cap each class's training examples at this many, randomly subsampling classes "
+        "that exceed it (val/test untouched). Addresses class imbalance by shrinking large "
+        "classes rather than reweighting the loss (see EXPERIMENTS.md Experiment 20) — a "
+        "dataset-level fix, doesn't interact with the loss function or LR schedule the way "
+        "ConfusablePairLoss's focal-loss option did. Default: no cap, use every row.",
     )
     parser.add_argument(
         "--width",
@@ -139,6 +149,10 @@ def main() -> None:
 
     train_ds = ManifestDataset.from_csv(args.manifest, split="train", augment=args.augment)
     val_ds = ManifestDataset.from_csv(args.manifest, split="val", augment=False)
+    if args.max_per_class is not None:
+        before = len(train_ds.rows)
+        train_ds.rows = cap_per_class(train_ds.rows, args.max_per_class)
+        print(f"--max-per-class {args.max_per_class}: {before} -> {len(train_ds.rows)} rows", flush=True)
     if args.train_fraction < 1.0:
         n_keep = max(1, int(len(train_ds.rows) * args.train_fraction))
         train_ds.rows = random.sample(train_ds.rows, n_keep)
@@ -241,6 +255,7 @@ def main() -> None:
                     "seed": args.seed,
                     "warmup_epochs": args.warmup_epochs,
                     "train_fraction": args.train_fraction,
+                    "max_per_class": args.max_per_class,
                     "resumed_from": str(args.resume_from) if args.resume_from else None,
                     "confusable_alpha": args.confusable_alpha,
                     "class_balance_beta": args.class_balance_beta,
