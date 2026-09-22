@@ -31,9 +31,20 @@ import torch.nn.functional as F
 from torch import nn
 
 # Confusable groups, chosen directly from the top-confusions tables in
-# EXPERIMENTS.md (Experiments 1, 5, 9, 12, 13 all show the same two
-# clusters at or near the top): every pair within a group gets penalized
-# both directions.
+# EXPERIMENTS.md (Experiments 1, 5, 9, 12, 13, 15 all show the same
+# clusters at or near the top): every pair within a group gets
+# penalized both directions.
+#
+# COLOR/BRIGHTNESS was tried as a 3rd group (Experiment 17) — real
+# confusion (COLOR -> BRIGHTNESS was the #5 overall confusion pair,
+# 44 counts, same "set the lights/brightness to X" carrier-phrase
+# overlap as the two groups below), but adding it at the same shared
+# alpha regressed VOLUME/TEMPERATURE (-3.9pp) and LIGHT (-1.9pp) more
+# than it helped COLOR/BRIGHTNESS (+4.9pp) — a net-negative tradeoff,
+# not adopted. Left out of the default here so a fresh
+# `--confusable-alpha` run reproduces Experiment 15's result, not
+# Experiment 17's. Re-add it (or try a per-group alpha) only with that
+# tradeoff in mind — see Experiment 17's writeup before changing this.
 CONFUSABLE_GROUPS: tuple[tuple[str, ...], ...] = (
     ("VOLUME_UP", "VOLUME_DOWN", "TEMPERATURE"),
     ("LIGHT_ON", "LIGHT_OFF"),

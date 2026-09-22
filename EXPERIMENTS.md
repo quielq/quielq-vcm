@@ -35,6 +35,7 @@ init, batch shuffling), not purely the effect being tested. Experiment
 | 14 | Resumed from #13's checkpoint, ConfusablePairLoss (alpha=1.0) targeting VOLUME_UP/DOWN/TEMPERATURE + LIGHT_ON/OFF | none | 15 | 75.54% (epoch 10) — mixed result, see writeup | `logs/exp14_confusable.log` |
 | 15 | Same as #14, alpha=2.0 (resumed from #13 directly, not #14) | none | 15 | **75.45%** (epoch 10) — best checkpoint overall, adopted as default | `logs/exp15_confusable_alpha2.log` |
 | 16 | Same as #15, alpha=3.0 (resumed from #13 directly) | none | 15 | 75.36% (epoch 14) — overshoot, worse than #15 on the targeted metric too, see writeup | `logs/exp16_confusable_alpha3.log` |
+| 17 | Same as #15, adds a 3rd confusable group (COLOR, BRIGHTNESS), alpha=2.0 unchanged | none | 15 | 75.30% (epoch 15) — real tradeoff, not a clean win, see writeup | `logs/exp17_confusable_colorfix.log` |
 
 ## Parked / to-do
 
@@ -1356,3 +1357,58 @@ and 3.0 collectively bracket a real peak at 2.0, so further sweeping
 in either direction is low-value without a different mechanism (e.g.
 per-group alpha, or a different penalty formulation) rather than just
 more of the same knob.
+
+## Experiment 17 — add COLOR/BRIGHTNESS as a 3rd confusable group
+
+**Motivation**: live-voice testing (real speech, not the synthetic val
+split) surfaced COLOR commands as a weak point. Checked against data
+before touching anything: COLOR was already confirmed weak in the
+Experiment 15 checkpoint (63.0% val accuracy) with `COLOR -> BRIGHTNESS`
+as the #5 overall confusion (44 misclassifications) — the same
+carrier-phrase-overlap pattern as the two existing confusable groups
+("set the lights/brightness to X"), so extending the existing loss
+mechanism rather than building something new was the obvious next
+step.
+
+**Setup**: identical to Experiment 15 (`--confusable-alpha 2.0`,
+resumed from Experiment 13's checkpoint) but with `CONFUSABLE_GROUPS`
+extended to include `("COLOR", "BRIGHTNESS")` as a third group,
+alongside the existing two.
+
+**Result**: best val accuracy 75.30% at epoch 15/15 — essentially flat
+vs. Experiment 15's 75.45%. The group breakdown shows why this is a
+genuine three-way tradeoff, not a clean win:
+
+| Group | Metric | #15 (2 groups) | #17 (3 groups) |
+|---|---|---:|---:|
+| COLOR/BRIGHTNESS | correct | 65.8% | **70.7%** (+4.9pp) |
+| | within-group confusion (targeted) | 7.9% | 7.7% (flat) |
+| VOLUME_UP/DOWN/TEMPERATURE | correct | **81.7%** | 77.8% (**-3.9pp**) |
+| LIGHT_ON/LIGHT_OFF | correct | **80.4%** | 78.5% (**-1.9pp**) |
+
+**Analysis**: adding a third simultaneous confusable-pair penalty
+genuinely improved COLOR/BRIGHTNESS's overall accuracy (+4.9pp,
+717 samples) — but at the cost of regressing the two groups
+Experiment 15 had already fixed, most notably VOLUME/TEMPERATURE
+(-3.9pp on 2,085 samples, the largest of the three groups). This reads
+as the three penalty terms competing during training and diluting each
+other, not a mechanism that scales cleanly to more groups at a fixed
+alpha. Also consistent with the pattern seen in Experiments 14/16:
+COLOR/BRIGHTNESS's *targeted* confusion (the thing the loss is
+supposed to fix) barely moved (7.9%->7.7%) — the accuracy gain came
+from fewer unrelated errors, not the mechanism cleanly separating the
+two confusable classes.
+
+Net effect weighted by group size is likely negative overall (the two
+regressed groups are more than 3x the sample count of the one that
+improved), even though the headline val accuracy looks nearly flat.
+
+**Current standing recommendation — unchanged**: `checkpoints/dscnn_bigcap_confusable2_best.pt`
+(2 groups, alpha=2.0) remains the repo default.
+`dscnn_bigcap_confusable_colorfix_best.pt` is not adopted — it's a
+real tradeoff (better COLOR/BRIGHTNESS, worse VOLUME/TEMPERATURE and
+LIGHT), not a strict improvement. If COLOR/BRIGHTNESS is worth fixing
+on its own, a per-group alpha (weighting each group's penalty
+independently rather than sharing one alpha across all three) is the
+logical next experiment rather than adding groups at a fixed shared
+alpha.
