@@ -69,24 +69,36 @@ Both live behind `vcm/hal/`, with an RPi implementation already written
 (`gpiozero`/`sense_hat`) ready to activate once the hardware and `VCM_PLATFORM=rpi`
 (or auto-detection on the actual Pi) select it.
 
-## Not in this pass
+## Two model pipelines, both kept
 
-Quantization/export and the benchmark harness (Sections 5, 7) are still
-separate later workstreams — `vcm/inference/model.py` has a
+An ML-engineering review (MODEL.md Section 9) researching commercial
+voice assistants and published SLU benchmarks found that Siri, Alexa,
+and Google Assistant all classify intent from a **text transcript**
+(ASR → NLU), not raw audio — and verified on this project's own data
+that the approach fixes its single worst, most persistent problem
+(VOLUME_UP/VOLUME_DOWN and LIGHT_ON/LIGHT_OFF acoustic confusion, six
+loss-engineering experiments, mixed results at best). Both pipelines
+are kept for now, cascade prioritized on accuracy, RPi resource-cost
+optimization deferred:
+
+- **Direct audio → intent** (the original pipeline): a single tiny
+  CNN (DS-CNN, 26,300 params) classifies a log-mel spectrogram
+  directly. Lighter-weight, single-model. `scripts/demo_infer.py`.
+- **ASR-cascade** (new, higher accuracy): `faster-whisper` transcribes
+  audio to text, then a TF-IDF + logistic regression classifier maps
+  the transcript to an intent. Heavier (~6x the direct pipeline's
+  size), but **90.62% test accuracy on real audio** vs. the direct
+  pipeline's 75.45% — see EXPERIMENTS.md Experiment 26.
+  `scripts/demo_infer_cascade.py`.
+
+Quantization/export and the benchmark harness (Sections 5, 7) are
+still separate later workstreams — `vcm/inference/model.py` has a
 `TFLiteIntentModel` interface ready for when an exported model exists.
-Model **training** has started for real, though: **see
-[EXPERIMENTS.md](EXPERIMENTS.md)** for real training-run results (best
-so far: DS-CNN, capacity-scaled (num_filters=60/num_blocks=5), on the
-SLURP-quality-fixed dataset plus real TIMER/ALARM audio from Timers
-and Such, plus a confusable-pair-weighted loss targeting the
-VOLUME_UP/DOWN/TEMPERATURE and LIGHT_ON/OFF polarity confusion —
-75.45% val accuracy overall, a real +59.9pp/+25.9pp held-out
-improvement on TIMER/ALARM specifically, and a measured reduction in
-the polarity confusion itself, across 15 experiments comparing
-architectures, capacity, augmentation, data volume, dataset quality,
-LR schedules, and loss functions) and **[MODEL.md](MODEL.md)** for the
-technology choices and research
-behind the training pipeline.
+**See [EXPERIMENTS.md](EXPERIMENTS.md)** for every real training-run
+result (26 experiments so far: architectures, capacity, augmentation,
+data volume, dataset quality, LR schedules, loss functions, and the
+cascade pivot) and **[MODEL.md](MODEL.md)** for the technology choices
+and research behind both pipelines.
 Dataset development itself (Section 9) has started — see the "Dataset
 pipeline" section above and [DATASET.md](DATASET.md).
 For Raspberry Pi hardware setup and testing (unverified, prospective

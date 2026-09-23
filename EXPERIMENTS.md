@@ -36,6 +36,15 @@ init, batch shuffling), not purely the effect being tested. Experiment
 | 15 | Same as #14, alpha=2.0 (resumed from #13 directly, not #14) | none | 15 | **75.45%** (epoch 10) — best checkpoint overall, adopted as default | `logs/exp15_confusable_alpha2.log` |
 | 16 | Same as #15, alpha=3.0 (resumed from #13 directly) | none | 15 | 75.36% (epoch 14) — overshoot, worse than #15 on the targeted metric too, see writeup | `logs/exp16_confusable_alpha3.log` |
 | 17 | Same as #15, adds a 3rd confusable group (COLOR, BRIGHTNESS), alpha=2.0 unchanged | none | 15 | 75.30% (epoch 15) — real tradeoff, not a clean win, see writeup | `logs/exp17_confusable_colorfix.log` |
+| 18 | Same as #15, adds effective-number class weights (beta=0.999, a real config mistake — weaker than baseline) + focal loss (gamma=2.0) | none | 15 | 75.29% (**epoch 1** — never improved on the starting checkpoint) | `logs/exp18_classbalanced_focal.log` |
+| 19 | Same as #18 with the beta mistake removed (plain weights + focal gamma=2.0 only) | none | 15 | 74.86% (**epoch 1** again — same failure mode, ruling out the beta mistake as the cause) | `logs/exp19_focal_only.log` |
+| 20 | Same as #15, adds `--max-per-class 2000` (resumed from #13) | none | 15 | 75.49% (**epoch 1** again) | `logs/exp20_max_per_class.log` |
+| 21 | Same as #20, lr=1e-4 instead of 1e-3 (testing whether LR was the cause) | none | 15 | 75.23% (**epoch 1** again — ruled out LR as the cause) | `logs/exp21_max_per_class_lowlr.log` |
+| 22 | Same as #20's cap, **from scratch** (not resumed) — isolates whether the resume-from setup itself was the problem | none | 80 | 70.57% (epoch 57) — real per-class tradeoff, see writeup | `logs/exp22_capped_scratch.log` |
+| 23 | Same as #22, `--max-per-class 3000` (gentler cap) | none | 80 | 73.16% (epoch 60) — better tradeoff, still below #15 overall | `logs/exp23_capped3000_scratch.log` |
+| 24 | QA-filtered Option B data (17,658→16,500) + dropout=0.2 + weight-decay=1e-4 + label-smoothing=0.1, all from scratch | none | 80 | 70.60% (epoch 76) — broad regression, over-regularization not the data, see writeup | `logs/exp24_qafiltered_tweaked.log` |
+| 25 | Same as #24, QA-filtered data only (no dropout/weight-decay/label-smoothing) — isolates the QA filter's effect | none | 80 | in progress | `logs/exp25_qafiltered_only.log` |
+| 26 | **ASR-cascade** (Whisper-base transcript → TF-IDF + logistic regression), a different architecture entirely — see writeup | n/a | n/a | **90.62%** test accuracy, real audio only — new best by a wide margin | `scripts/train_cascade_classifier.py` |
 
 ## Parked / to-do
 
@@ -1412,3 +1421,233 @@ on its own, a per-group alpha (weighting each group's penalty
 independently rather than sharing one alpha across all three) is the
 logical next experiment rather than adding groups at a fixed shared
 alpha.
+
+## Experiments 18-21 — chasing a majority-class-bias fix, four dead ends with one useful pattern
+
+**Motivation**: a live-voice `--debug` session (real speech, not the
+synthetic val split) found a new pattern distinct from the polarity
+confusion above — the model defaulting to large classes (LIGHT_ON,
+VOLUME_UP, PLAY_MUSIC, WEATHER, TEMPERATURE) at the expense of small
+ones (PAUSE, STOP, CALL, MESSAGE) on real/unfamiliar audio. Training
+set sizes confirmed a real ~22x imbalance (TEMPERATURE 8,691 vs. CALL
+396). Four experiments tried to fix this via the loss function, all
+resumed from Experiment 13's checkpoint:
+
+- **18**: effective-number class weights (Cui et al. 2019, beta=0.999)
+  + focal loss (gamma=2.0), on top of the existing confusable-pair
+  loss. Best result: **epoch 1** (75.29%) — none of the following 14
+  epochs of real training ever beat the barely-touched starting point.
+  Root cause found on inspection: beta=0.999 gave CALL only 3.1x more
+  weight than TEMPERATURE, versus the 21.9x ratio plain inverse-
+  frequency weighting (already in use since Experiment 1) already
+  provided — a real configuration mistake that *weakened* rather than
+  strengthened small-class compensation.
+- **19**: same setup with the beta mistake removed (focal loss alone,
+  gamma=2.0). Still epoch-1-is-best (74.86%) — ruling out the beta
+  mistake as the actual cause.
+- **20**: `--max-per-class 2000` (dataset-level downsampling of
+  oversized classes instead of loss reweighting) at the original
+  lr=1e-3. Still epoch-1-is-best (75.49%).
+- **21**: same as #20 but lr=1e-4 (10x lower, testing whether the peak
+  LR was too disruptive for a resumed checkpoint). Still epoch-1-is-
+  best (75.23%) — ruling out LR magnitude too.
+
+**The real finding**: four different mechanisms (reweighting, focal
+modulation, dataset downsampling), at two different learning rates,
+all show the identical failure mode when resumed from Experiment 13's
+checkpoint — the model never improves past its barely-perturbed
+starting point. The common thread isn't any one technique; it's that
+*any* new mechanism layered on the already-working confusable-pair
+loss, in the resume-from-a-converged-checkpoint pattern, fails to find
+anything better within 15 epochs. Experiment 15 (confusable-pair loss
+*alone*, same starting checkpoint, same warmup/LR shape) genuinely
+improved past epoch 1 by contrast — so the resume-from pattern itself
+still works, just not for stacking a second mechanism on top of it.
+This directly motivated Experiments 22-23 below: test downsampling
+**from scratch** instead, to separate "does downsampling help" from
+"does the resume-from pattern break for a second mechanism."
+
+## Experiment 22 — max-per-class downsampling, from scratch
+
+**Setup**: `--max-per-class 2000`, DS-CNN bigcap, confusable-pair loss
+(alpha=2.0), **from scratch** (not resumed), 80 epochs — matching
+Experiment 12's original from-scratch recipe, isolating the downsample-
+from-scratch question from the resume-from failure mode above. Train
+set: 47,909 → 30,224 rows.
+
+**Result**: 70.57% best (epoch 57) — well below Experiment 15's
+75.45%. But the per-class breakdown shows a real, substantial,
+legible tradeoff, not just "worse":
+
+| Class | Exp 15 (no cap) | Exp 22 (cap 2000) | Change |
+|---|---:|---:|---:|
+| NEXT | 79.6% | **94.4%** | **+14.8pp** |
+| PLAY_MUSIC | 54.6% | **64.3%** | **+9.7pp** |
+| MESSAGE | 57.5% | **62.1%** | +4.6pp |
+| CALL | 92.6% | **96.3%** | +3.7pp |
+| WEATHER | 68.5% | 53.2% | **-15.3pp** |
+| VOLUME_UP | 72.8% | 56.8% | **-15.9pp** |
+| VOLUME_DOWN | 69.9% | 55.9% | **-14.0pp** |
+| LIGHT_OFF | 77.1% | 62.6% | **-14.5pp** |
+
+Confirms the majority-class-bias diagnosis was real — the classes it
+targeted (NEXT, CALL, MESSAGE, PLAY_MUSIC) genuinely improved, some
+dramatically. But capping *everything* over 2,000 at exactly 2,000 was
+too blunt: WEATHER (2,611→2,000), VOLUME_UP (3,524→2,000), VOLUME_DOWN
+(2,965→2,000) all lost 23-43% of their data too, for real cost — they
+weren't the problem classes, but the uniform cap hit them anyway.
+
+## Experiment 23 — max-per-class 3000 (gentler cap), from scratch
+
+**Setup**: identical to #22 but `--max-per-class 3000`. Train set:
+47,909 → 38,927 rows (19% cut vs. #22's 37%).
+
+**Result**: 73.16% best (epoch 60) — better than #22, still below #15.
+The gentler cap recovered most of the mid-sized classes' collateral
+damage while keeping most of the real gains:
+
+| Class | Exp 15 | Exp 22 (cap 2000) | Exp 23 (cap 3000) |
+|---|---:|---:|---:|
+| NEXT | 79.6% | 94.4% | 90.7% (still a real win) |
+| COLOR | 63.0% | 68.6% | **70.2%** (best yet) |
+| CREATE_REMINDER | 66.8% | 67.5% | **72.1%** (best yet) |
+| WEATHER | 68.5% | 53.2% | 65.3% (mostly recovered) |
+| VOLUME_DOWN | 69.9% | 55.9% | 67.0% (mostly recovered) |
+| LIGHT_OFF | 77.1% | 62.6% | 73.8% (mostly recovered) |
+| VOLUME_UP | 72.8% | 56.8% | 63.3% (still down -9.5pp) |
+
+**Conclusion for both 22/23**: real, genuine tradeoffs — every cap
+value trades some classes' strength for others', and no single global
+cap beat Experiment 15's overall accuracy. Superseded by the ASR-
+cascade finding below before a further cap sweep (e.g. 4000, or a
+per-class-targeted cap) was tried.
+
+## Experiment 24 — QA-filtered synthetic data + regularization stack, from scratch
+
+**Motivation**: a separate ML-engineering review (research on
+commercial voice assistants and SOTA SLU accuracy, see MODEL.md
+Section 9) found the project's synthetic-audio QA gate
+(`vcm/dataset/qa/synthetic_check.py`) had been built but never actually
+run, despite direct published evidence that ASR-based filtering of
+synthetic TTS clips closes real/synthetic accuracy gaps (89%→92.5% in
+a comparable study). Running it (`scripts/qa_filter_option_b.py`)
+against Option B's 17,658 clips dropped 1,158 (6.6%) — with a striking
+concentration: **BRIGHTNESS alone accounted for 592 of the 1,158 drops
+(51% of all failures, ~33% of BRIGHTNESS's own synthetic data)**, far
+out of proportion to every other label (mostly 1-4%) — something about
+BRIGHTNESS's synthetic generation specifically produces audio that
+doesn't transcribe as intended.
+
+Same review also found DS-CNN had zero regularization (no dropout,
+unlike BCResNet), no weight decay, and no label smoothing — all added
+as opt-in flags (see MODEL.md Section 9), tested together here.
+
+**Setup**: QA-filtered manifest (62,318 rows, was 63,476) +
+`--dropout 0.2 --weight-decay 1e-4 --label-smoothing 0.1` +
+confusable-pair loss (alpha=2.0), from scratch, 80 epochs. Also the
+first experiment under the new (non-opt-in) feature normalization
+added in the same review pass — `extract_log_mel` now normalizes to
+roughly zero-mean/unit-variance using measured dataset constants,
+which is why this couldn't be a `--resume-from` of any earlier
+checkpoint (they were trained on the old, unnormalized features).
+
+**Result**: 70.60% (epoch 76, converged/plateaued for the last ~10
+epochs, not still climbing) — a real 4.85pp regression from Experiment
+15. Per-class breakdown showed a **broad decline across nearly every
+class** (VOLUME_UP -13.2pp, VOLUME_DOWN -11.4pp, WEATHER -10.3pp,
+CREATE_REMINDER -10.5pp, PAUSE -17.6pp), not concentrated on the QA-
+filtered classes specifically (BRIGHTNESS itself only dropped -1.8pp).
+That pattern points at the regularization stack — dropout 0.2 +
+weight decay 1e-4 + label smoothing 0.1, all at once, at their
+"textbook" default strengths — being too aggressive for a 26K-
+parameter model, most likely underfitting it, rather than the QA-
+filtered data being the problem. Even VOLUME_UP/DOWN (which the
+confusable-pair loss targets) got worse, suggesting the extra
+regularization interfered with that mechanism too — the same kind of
+multi-mechanism interference seen in Experiments 17-21.
+
+**Lesson**: standard regularization defaults don't automatically
+transfer to a model this small; worth retesting each of dropout/
+weight-decay/label-smoothing individually, at gentler values, rather
+than stacked at once.
+
+## Experiment 25 — QA-filtered data only, from scratch (isolating from Experiment 24's regularization stack)
+
+**Setup**: same QA-filtered manifest as #24, confusable-pair loss
+(alpha=2.0) only — no dropout/weight-decay/label-smoothing — isolating
+whether the QA filter itself helped or hurt, separate from Experiment
+24's over-regularization. From scratch, 80 epochs.
+
+**Status**: launched, then superseded in priority by Experiment 26's
+result below before completion — the numbers, once available, are
+useful documentation but no longer change the project's direction.
+
+## Experiment 26 — ASR-cascade (Whisper transcript → text classifier), a different architecture entirely
+
+**Motivation**: an ML-engineering review (commercial voice assistant
+architecture + SOTA SLU research, MODEL.md Section 9) found that Siri,
+Alexa, and Google Assistant all classify intent from a **text
+transcript**, not raw audio — a cascade (ASR → NLU), not the single
+end-to-end audio-to-intent model this project has built through
+Experiment 25. Verified directly against this project's own hardest
+case before committing to the idea: `faster-whisper` (`base`) correctly
+resolved the VOLUME_UP/VOLUME_DOWN and LIGHT_ON/LIGHT_OFF distinction
+in text ("Turn the volume up.", "lights off in the washroom") on real
+clips that `whisper-tiny` and, separately, six direct-audio loss-
+engineering experiments (14-19) could not reliably resolve acoustically.
+
+**Setup**:
+1. `scripts/transcribe_corpus_for_cascade.py` — `faster-whisper` (base)
+   transcribes all 62,876 non-background clips in the manifest.
+   Deliberately uses *Whisper's own transcript* as the training text,
+   not each source's ground-truth transcript (which the combined
+   manifest doesn't carry through anyway) — the classifier should
+   train on the same kind of noisy ASR output it'll see at real
+   inference time.
+2. `scripts/train_cascade_classifier.py` — TF-IDF (1-2 grams) +
+   logistic regression on `(Whisper transcript, label)`. Deliberately
+   the cheapest plausible text classifier — this project's 20-intent,
+   largely fixed-phrasing vocabulary is far narrower than open-domain
+   SLU benchmarks like SLURP's full 69 intents.
+3. `scripts/demo_infer_cascade.py` — live mic test, mirroring
+   `demo_infer.py`'s interface (same push-to-talk capture, same
+   `--debug` full-distribution/WAV-saving option), for the cascade
+   instead of the direct-audio model.
+
+No hyperparameter tuning at any step — this was a first-pass
+feasibility check.
+
+**Result — a step change, not an incremental gain**:
+
+| Split | All | Real audio only |
+|---|---:|---:|
+| Val | 90.17% (n=6,844) | 87.51% (n=5,062) |
+| **Test** | **92.23%** (n=8,597) | **90.62%** (n=6,831) |
+
+Real-audio-only accuracy (the honest number, controlling for
+synthetic clips being easier for Whisper to transcribe than real
+speech) clears 90% on the held-out test split and lands almost exactly
+at the published SLURP ceiling (87-88%, the closest comparable
+real-world benchmark) found in the same research pass — a credible
+number, not an inflated illusion. Confirmed on two independent splits,
+not a one-off. Per-class, the project's single worst, most persistent
+problem — VOLUME_UP/VOLUME_DOWN polarity confusion — improved
+dramatically: VOLUME_DOWN 55.9-69.9% (every prior direct-audio
+experiment) → **80.1%**; VOLUME_UP 56.8-72.8% → **86.6%**. The classes
+with zero real audio coverage (CALL, NEXT, LIST_REMINDERS) — the
+project's other standing open risk — score 88.9%, 100%, and 98.1%
+respectively on this blended metric, consistent with the ASR offloading
+acoustic generalization almost entirely onto Whisper's own pretraining
+(hundreds of thousands of hours of real diverse speech, none of it
+from this project's limited/synthetic-heavy dataset).
+
+**Decision**: keep both pipelines. The direct-audio DS-CNN
+(`dscnn_bigcap_confusable2_best.pt`) remains the lighter-weight,
+single-model fallback; the ASR-cascade is now the accuracy-priority
+path pending live-voice validation (not yet done — this result is from
+the manifest's held-out splits, the same standard used throughout this
+project, but per-established practice a real `--debug` live test is
+still the next step before fully trusting it) and RPi
+resource-cost characterization (whisper-base is ~6x the size of the
+entire direct-audio pipeline — an explicit "optimize later" tradeoff,
+not yet measured).
