@@ -49,6 +49,7 @@ init, batch shuffling), not purely the effect being tested. Experiment
 | 28 | **CRNN** (96,277 params: strided DS-conv front end + BiGRU + attention pooling), confusable-pair loss alpha=2.0, 3 seeds; plus DS-CNN baseline seeds 1/2 | none | 80 | 84.00 / 84.91 / 84.00% val; **79.8–80.8% real-speech test** (DS-CNN: 68.4–70.6%) | `logs/exp28_*.log` |
 | 29a | Same as #28 + trim silence + 5.0s window, 3 seeds | none | 80 | 84.20 / 83.75 / 84.88% val; 80.7–80.8% real-speech test (≈ #28) | `logs/exp29a_*.log` |
 | 29b | Same as #29a + **waveform augmentation** (noise, speed, reverb, start shift), 3 seeds | waveform | 80 | 88.29 / 88.51 / 88.46% val; **85.1–85.7% real-speech test** — best deployable model | `logs/exp29b_*.log` |
+| 30 | Same as #29b + auxiliary word-level CTC head on the Whisper transcripts (training only); weight 0.5 × 3 seeds, 0.2 and 1.0 × seed 0 | waveform | 80 | 88.31 / 88.44 / 88.40% val; 84.6–84.8% real-speech test (weight 0.5) — **slightly worse than #29b, not adopted** | `logs/exp30_*.log` |
 
 ## Parked / to-do
 
@@ -1933,6 +1934,102 @@ flagged in DATASET.md step 8.
 (best real-speech seed, 85.73%) is the best deployable model. Try it
 live with `python scripts/demo_infer.py --checkpoint
 checkpoints/exp29b_crnn_trim5s_waveaug_s2.pt`; the feature config
-(trim + 5.0s) is read from the checkpoint automatically. Experiment 30
-(auxiliary word-level CTC on the Whisper transcripts, on top of 29b) is
-running.
+(trim + 5.0s) is read from the checkpoint automatically.
+
+## Experiment 30 — auxiliary word-level CTC on the Whisper transcripts
+
+**Motivation**: Experiment 27 distilled only the cascade's 19-class
+probabilities, a thin signal. Following Lugosch et al. (Interspeech
+2019), a CTC loss asking the model's per-frame features to spell out
+*which words were said, in order* should push the encoder toward word
+content instead of clip-level acoustic texture. That should in turn help
+the shared-vocabulary confusions left after 29b (PLAY_MUSIC ↔ WEATHER ↔
+MESSAGE, COLOR ↔ BRIGHTNESS).
+
+**Setup**: Experiment 29b + `--ctc-weight` (`vcm/train/transcripts.py`):
+a linear head (280K params) on CRNN's per-frame BiGRU outputs,
+word-level vocabulary from the train-split Whisper transcripts (2,172
+entries incl. blank/`<unk>`, words seen ≥3 times, 97.6% token
+coverage), empty target for untranscribed `unknown_background`. Word-level
+rather than character-level because CRNN's frames are ~80ms apart, too
+coarse for characters. The head lives only in the training loop and is
+**not saved**, so the deployed model is identical in size (96,277) to
+29b. Weight 0.5 × seeds 0/1/2, plus 0.2 and 1.0 at seed 0.
+
+**Result — a small but consistent negative**:
+
+| | Best val | Real-speech test | All test |
+|---|---:|---:|---:|
+| Experiment 29b (no CTC), 3 seeds | 88.29–88.51% | 85.32 / 85.14 / 85.73% (mean 85.40) | 87.97–88.40% |
+| **CTC weight 0.5**, 3 seeds | 88.31–88.44% | 84.61 / 84.83 / 84.67% (mean **84.70**) | 87.56–87.77% |
+| CTC weight 0.2, seed 0 | 88.40% | 84.80% | 87.75% |
+| CTC weight 1.0, seed 0 | 87.72% | 83.68% | 86.74% |
+
+-0.7pp real speech at weight 0.5, with all three CTC seeds below all
+three 29b seeds, and monotonically worse as the weight grows (0.2 ≈ 0.5
+> 1.0). Val accuracy was indistinguishable, so only the real-speech test
+metric exposes the difference. The CTC loss itself trained normally
+(~120 → ~1.8), so this isn't a broken head. The per-class
+breakdown (real speech, 3-seed means, weight 0.5 vs 29b) shows where it
+cost:
+
+| Label | 29b | CTC 0.5 | Change |
+|---|---:|---:|---:|
+| CREATE_REMINDER | 66.3% | 59.7% | **-6.6pp** |
+| COLOR | 53.9% | 51.8% | -2.1pp |
+| WEATHER | 78.5% | 76.6% | -1.9pp |
+| LIGHT_ON | 94.9% | 93.8% | -1.1pp |
+| VOLUME_UP | 87.8% | 86.7% | -1.1pp |
+| ALARM | 81.0% | 81.8% | +0.8pp |
+| STOP | 99.5% | 100.0% | +0.5pp |
+| all others | | | within ±0.7pp |
+
+The biggest losses are on exactly the free-form SLURP classes it was
+meant to help, CREATE_REMINDER most of all, whose transcripts are the
+longest and most open-vocabulary (the reminder's content). Likely
+explanation: with only 96K params, transcribing every word competes
+with classifying intent for the same capacity, and the free-form
+classes have the most intent-irrelevant words to transcribe. Lugosch
+et al.'s setup used the ASR targets for *pretraining* a much larger
+encoder, then fine-tuned for intent. Staging it that way (CTC-only
+pretrain, then intent fine-tune without CTC), or keyword-only targets
+instead of every word, are the untried variants. Neither is a cheap
+next step compared with the data gaps found in live testing (below).
+
+**Current standing recommendation — unchanged**: Experiment 29b
+(`exp29b_crnn_trim5s_waveaug_s2.pt`, 85.73% real speech) remains the
+best deployable model. The `--ctc-weight` flag stays in `train.py`
+(default off) for the staged variants above.
+
+## Live-voice test of Experiment 29b (informal)
+
+One tester, Mac microphone, `scripts/demo_infer.py`, about 100
+utterances. Strong: volume up/down, lights on/off, temperature, NEXT,
+CALL, MESSAGE, LIST_REMINDERS, ALARM, CREATE_REMINDER — mostly ≥0.95
+confidence. Weak, each traced to a gap in the training transcripts
+(`data/cascade_transcripts.csv`, train split):
+
+- **PAUSE/STOP lose to PLAY_MUSIC unless the verb is clearly
+  articulated.** Train counts: PAUSE 640, STOP 812, PLAY_MUSIC 3,682,
+  and about half of PLAY_MUSIC's clips contain "song"/"music"/"playing",
+  so those words are strong PLAY_MUSIC evidence. PAUSE phrasings are
+  mostly "pause the music" (219), "pause" (119), "pause this song" (90)
+  and "pause music" (69). "Pause audio" never occurs, and "pause the
+  song" only 17 times. Also, **26 STOP clips transcribe as "start
+  music"**, either a Whisper mishearing or mislabeled PLAY_MUSIC. Needs
+  a label audit.
+- **"Timer for 3/5 minutes" fails, "Start a timer for …" works.** Train
+  phrasings are dominated by "start a timer for / count down for" +
+  {10 seconds, 30 seconds, one minute}. Bare "timer …" is 262 of 1,941
+  clips, and other durations are rare.
+- **"Color {x}" is flaky.** That pattern occurs only in synthetic data
+  and only for red/green/blue (~380 clips). Real COLOR speech uses
+  "change/set the lights to …".
+- Confident errors (1.00 on a wrong class) plus low-confidence misses
+  (0.3–0.6) suggest a reject threshold in the demo ("didn't catch that")
+  as a cheap mitigation.
+
+Next lever is data rather than architecture: targeted synthetic data for
+these phrasings (including verb minimal pairs like "play / pause / stop
+the song", the same idea that fixed the polarity confusion), a label
+audit, and real recordings once the adviser clears the recording tool.
