@@ -224,6 +224,107 @@ pulls and chops it into 600 `unknown_background` clips (see DATASET.md
 step 5). FSC access remains the one still-open dataset gap of the ones
 checked so far — see DATASET.md step 8.
 
+## 9. ML-engineering review for a 90%+ target, and the ASR-cascade option
+
+After 23 training experiments plateaued around 70-75% val accuracy
+(EXPERIMENTS.md), a full review was done — codebase/pipeline/dataset
+audit plus research on commercial voice assistants (Siri, Alexa,
+Google Assistant) and published SLU benchmarks — specifically to
+answer whether 90%+ is achievable and what it would take.
+
+### Honest calibration: 90%+ is not realistic with current constraints
+
+**SLURP** (real crowdsourced spoken commands + synthetic augmentation
+— the closest published analog to this project's data mix) tops out
+at **87-88% intent accuracy**, and only with massive scale (72K real +
+69K synthetic utterances) *and* large self-supervised pretrained
+encoders (wav2vec2/HuBERT). The benchmarks that do hit 90-99%
+(Google Speech Commands, Fluent Speech Commands) aren't comparable —
+single isolated words or ~250 scripted phrases with overlapping
+train/test speakers, essentially memorization-friendly. This project's
+data (mixed real+synthetic, several classes with zero real coverage,
+small from-scratch model, no SSL pretraining) is structurally closer
+to SLURP's harder ceiling. **80-85% is a more defensible target**
+unless one of those constraints changes.
+
+### The architectural finding that matters most: commercial assistants don't classify intent from audio
+
+Siri, Alexa, and Google Assistant all use a **cascade**: audio →
+speech-to-text (ASR) → intent classification **on the text
+transcript** — not a single end-to-end audio-to-intent model. Sourced:
+Amazon's own Alexa NLU papers describe ASR-transcript → domain/intent/
+slot classification as the shipped production architecture, explicitly
+contrasting it with end-to-end audio-to-intent as a still-unproven
+research direction (FANS, Interspeech 2021). Apple's "Hey Siri" is a
+tiny wake-word DNN separate from the transcript-based language
+understanding. Google Assistant's on-device RNN-T ASR feeds a separate
+text-understanding model.
+
+**Why this matters here specifically**: this project's single most
+persistent failure — VOLUME_UP vs. VOLUME_DOWN, LIGHT_ON vs.
+LIGHT_OFF, near-identical carrier-phrase acoustic overlap (6 loss-
+engineering experiments, 14-19, mixed/limited results) — nearly
+disappears once classifying *text* instead of *spectrograms*. Verified
+directly, not just argued: `faster-whisper` (`base`, 74M params) was
+run against this project's own real LIGHT_ON/LIGHT_OFF/VOLUME_UP/
+VOLUME_DOWN audio and correctly transcribed the distinguishing word
+("lights off in the washroom", "Turn the volume up.") in nearly every
+sample — the exact confusion that direct audio classification has
+never fully resolved is largely a non-issue in text.
+
+### Scoped prototype: ASR-cascade (audio → Whisper → text classifier → intent)
+
+- **ASR**: `faster-whisper`, `base` size — verified `tiny` is
+  meaningfully worse (garbled transcriptions, e.g. "I'd soften the
+  wash arm" for a LIGHT_OFF clip) where `base` gets the same clips
+  right. Both are confirmed runnable on Raspberry Pi.
+- **Training data**: no new data needed. Run Whisper once over all
+  63,476 existing audio clips; pair `(Whisper's own transcript,
+  existing label)` as the text classifier's training data — this
+  trains on the same *kind* of noisy ASR output the model will see at
+  real inference time, not clean ground-truth text it'll never
+  actually get.
+- **Text classifier**: start with TF-IDF + logistic regression
+  (cheapest plausible baseline) before reaching for a neural text
+  classifier — this project's 20-intent, largely fixed-phrasing
+  vocabulary is a much narrower problem than SLURP's full 69-intent
+  open-domain benchmark.
+- **Slot extraction** (TIMER duration, ALARM time, COLOR/BRIGHTNESS/
+  TEMPERATURE values, CREATE_REMINDER task) becomes regex/rule-based
+  text parsing instead of acoustic slot-filling — meaningfully easier,
+  and not something the current direct-audio pipeline attempts at all.
+- **Honest risks**: two models instead of one (real RAM/latency cost —
+  whisper-base is ~6x this project's entire current DSCNN); ASR errors
+  on numbers/proper nouns could still cause slot-extraction mistakes
+  even when intent classification succeeds; a genuinely bigger build
+  than anything done so far, comparable in scope to the confusable
+  grammar-decoder idea raised earlier and set aside — but this one has
+  real production precedent and real evidence on this project's own
+  data, not just a plausible argument.
+
+### Other concrete gaps found in the same review (smaller, lower-risk)
+
+- DS-CNN had **no regularization at all** (no dropout, unlike
+  BCResNet's BCResBlock) — added as an opt-in `--dropout` flag.
+- Optimizer had **no weight decay** (plain Adam) — added as
+  `--weight-decay`, opt-in.
+- **No label smoothing** anywhere, despite repeatedly observing
+  overconfident wrong predictions on live audio (e.g. 0.97 confidence
+  for the wrong class) — added to both loss paths, opt-in.
+- **No feature-level normalization** beyond per-clip max-referenced dB
+  — `extract_log_mel` now normalizes to roughly zero-mean/unit-variance
+  using constants measured from a real 2,000-clip training sample
+  (mean=-59.64, std=21.30). Unlike the above, this is *not* opt-in —
+  it's a real change to the feature representation, so a checkpoint
+  trained before it should be retrained from scratch, not resumed.
+- The synthetic-audio QA gate (`vcm/dataset/qa/synthetic_check.py`,
+  Section 11 of DATASET.md) existed but had **never actually been
+  run** against Option B's 17,658 clips — direct published evidence
+  found in this review shows ASR-based filtering of synthetic TTS
+  clips measurably closes real/synthetic accuracy gaps (89%→92.5% in a
+  directly comparable study). Now being run via
+  `scripts/qa_filter_option_b.py`.
+
 ## References
 
 - Zhang, Suda, Lai, Chandra. "Hello Edge: Keyword Spotting on
@@ -248,3 +349,14 @@ checked so far — see DATASET.md step 8.
   Recognition." 2018. https://arxiv.org/abs/1804.03209 (the paper
   behind Google Speech Commands v2, already a candidate source in
   Section 9)
+- Bastianelli, Vanzo, Swietojanski, Rieser. "SLURP: A Spoken Language
+  Understanding Resource Package." EMNLP 2020.
+  https://aclanthology.org/2020.emnlp-main.588.pdf (real-world intent
+  accuracy ceiling this project's data most resembles; see Section 9)
+- Kumar et al. "FANS: Fusing ASR and NLU for Spoken Language
+  Understanding." Amazon Alexa, Interspeech 2021.
+  https://arxiv.org/pdf/2111.00400 (source for the ASR-then-NLU
+  cascade being Alexa's production architecture; see Section 9)
+- Lin, Goyal, Girshick, He, Dollár. "Focal Loss for Dense Object
+  Detection." ICCV 2017. https://arxiv.org/abs/1708.02002 (the focal
+  loss variant tried in EXPERIMENTS.md Experiments 18-19)
