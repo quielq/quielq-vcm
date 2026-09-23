@@ -60,6 +60,14 @@ generator-agnostic synthetic-audio QA gate, all in `src/vcm/dataset/`.
 See **[DATASET.md](DATASET.md)** for exact commands to reproduce every
 step from a fresh clone, including expected output.
 
+## Training
+
+Training runs on a shared DGX node. **[TRAINING.md](TRAINING.md)** is
+the runbook: picking a GPU, packing several runs per GPU, pinning
+threads so DataLoader workers don't oversubscribe the node, `nohup`
+launch scripts, multi-seed evaluation, and where checkpoints and logs
+live. Results for every run are in **[EXPERIMENTS.md](EXPERIMENTS.md)**.
+
 ## What's deliberately mocked (per Section 8)
 
 - **Push-to-talk button**: spacebar-hold stands in for the physical pushbutton.
