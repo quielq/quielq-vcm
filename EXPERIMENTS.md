@@ -43,8 +43,9 @@ init, batch shuffling), not purely the effect being tested. Experiment
 | 22 | Same as #20's cap, **from scratch** (not resumed) — isolates whether the resume-from setup itself was the problem | none | 80 | 70.57% (epoch 57) — real per-class tradeoff, see writeup | `logs/exp22_capped_scratch.log` |
 | 23 | Same as #22, `--max-per-class 3000` (gentler cap) | none | 80 | 73.16% (epoch 60) — better tradeoff, still below #15 overall | `logs/exp23_capped3000_scratch.log` |
 | 24 | QA-filtered Option B data (17,658→16,500) + dropout=0.2 + weight-decay=1e-4 + label-smoothing=0.1, all from scratch | none | 80 | 70.60% (epoch 76) — broad regression, over-regularization not the data, see writeup | `logs/exp24_qafiltered_tweaked.log` |
-| 25 | Same as #24, QA-filtered data only (no dropout/weight-decay/label-smoothing) — isolates the QA filter's effect | none | 80 | in progress | `logs/exp25_qafiltered_only.log` |
-| 26 | **ASR-cascade** (Whisper-base transcript → TF-IDF + logistic regression), a different architecture entirely — see writeup | n/a | n/a | **90.62%** test accuracy, real audio only — new best by a wide margin | `scripts/train_cascade_classifier.py` |
+| 25 | Same as #24, QA-filtered data only (no dropout/weight-decay/label-smoothing) — isolates the QA filter's effect | none | 80 | 73.98% (epoch ~65) — confirms the QA filter itself isn't harmful; #24's regression was the regularization stack | `logs/exp25_qafiltered_only.log` |
+| 26 | **ASR-cascade** (Whisper-base transcript → TF-IDF + logistic regression), a different architecture entirely — see writeup | n/a | n/a | **90.62%** test accuracy, real audio only — but not deployable, see writeup | `scripts/train_cascade_classifier.py` |
+| 27 | DS-CNN + confusable-pair loss (alpha=2.0), **plus knowledge distillation** from #26's cascade (teacher, training-time only) | none | 80 | 75.78% val (epoch 55) — real mixed per-class tradeoff, see writeup | `logs/exp27_distillation.log` |
 
 ## Parked / to-do
 
@@ -1641,13 +1642,122 @@ acoustic generalization almost entirely onto Whisper's own pretraining
 (hundreds of thousands of hours of real diverse speech, none of it
 from this project's limited/synthetic-heavy dataset).
 
-**Decision**: keep both pipelines. The direct-audio DS-CNN
-(`dscnn_bigcap_confusable2_best.pt`) remains the lighter-weight,
-single-model fallback; the ASR-cascade is now the accuracy-priority
-path pending live-voice validation (not yet done — this result is from
-the manifest's held-out splits, the same standard used throughout this
-project, but per-established practice a real `--debug` live test is
-still the next step before fully trusting it) and RPi
-resource-cost characterization (whisper-base is ~6x the size of the
-entire direct-audio pipeline — an explicit "optimize later" tradeoff,
-not yet measured).
+**Model size** (measured, not estimated): direct-audio DS-CNN
+checkpoint is **137.5 KB**. The cascade is `faster-whisper` (base,
+142MB on disk) + the TF-IDF/logistic-regression classifier (1.9MB) =
+**~144MB total — ~1,070x the DS-CNN's size**.
+
+**Decision, revised after a compliance check (see MODEL.md Section 10)**:
+the assignment explicitly states "ASR models are not desirable for
+on-device computing because of footprint" and requires the VCM to be
+tiny — at ~1,070x the size, the cascade cannot be the deployed VCM.
+It's kept as a **backup/reference option** (useful if the footprint
+constraint is ever relaxed, or as a benchmark ceiling) and — more
+usefully — as an **offline training-time teacher** for the direct-audio
+model via knowledge distillation (see Experiment 27), which keeps 100%
+of the ASR's benefit off the deployed model entirely. Live-voice
+validation of the cascade (`--debug`) was done afterward anyway, out of
+general interest — see the notes below — and held up well, but that no
+longer changes which model actually gets deployed.
+
+**Live-voice validation (informal, ~68 utterances, done for interest
+after the compliance finding above)**: ~96% correct on clearly-
+intentional utterances, exceeding the 90.62% test-set number. Every
+previously-broken direct-audio case now worked via the cascade —
+"Kill the lights" (LIGHT_OFF=0.98), "Lower the volume"/"Turn the
+volume down" (VOLUME_DOWN=0.99, both previously scored WEATHER=0.97 on
+the direct model), "Make a call" (CALL=0.96-0.98, previously ~0-1%).
+Real remaining errors: "Start music"→STOP (should be PLAY_MUSIC),
+"Lights out."→LIGHT_ON (idiom not in any training template, should be
+LIGHT_OFF), "Stop play"→PLAY_MUSIC (should be STOP, though Whisper's
+own transcription looked truncated here too). A few attempts were also
+hallucinated into non-English text by Whisper on ambiguous/quiet audio
+(fixed afterward — `language="en"` is now forced in
+`FasterWhisperTranscriber`).
+
+## Experiment 27 — knowledge distillation from the ASR-cascade into the deployable DS-CNN
+
+**Motivation**: the compliance finding in Experiment 26 (ASR isn't
+deployable — "not desirable for on-device computing because of
+footprint," VCM must be tiny) raised the question of whether the
+cascade's real benefit could still reach the deployed model without
+ever running ASR on it. The assignment's constraint is specifically
+about what runs at *inference* time; it says nothing about how
+training data/signal is produced. Knowledge distillation (Hinton,
+Vinyals, Dean, 2015) is the standard technique for exactly this: use a
+larger "teacher" model's predictions as extra soft-label supervision
+when training a smaller "student," then deploy only the student.
+
+**Setup**:
+1. `scripts/generate_distillation_labels.py` — runs every non-
+   background manifest row's already-computed Whisper transcript
+   (`data/cascade_transcripts.csv`, from Experiment 26) through the
+   trained cascade classifier, producing a full 19-class probability
+   distribution per clip (`data/distillation_labels.csv`).
+2. `vcm.train.dataset.load_distillation_labels()` remaps these into
+   this project's 20-label order (`unknown_background` always gets
+   probability 0 — it has no transcript). `ManifestDataset` optionally
+   returns `(features, label, teacher_probs)` instead of
+   `(features, label)` when distillation labels are supplied.
+3. `vcm.train.losses.DistillationLoss` wraps the existing
+   `ConfusablePairLoss` and adds a temperature-scaled KL-divergence
+   term against the teacher's soft labels, skipping rows with no
+   teacher available (`--distill-weight`, `--distill-temperature`,
+   both opt-in/default-off in `train.py`).
+4. Training run: `--confusable-alpha 2.0 --distill-weight 2.0
+   --distill-temperature 2.0`, DS-CNN bigcap, from scratch, 80 epochs
+   — same recipe as Experiment 15 with distillation added on top.
+
+**A real numerical instability at the start, self-resolved**: epoch 1's
+train_loss was 23.17 — wildly higher than any prior experiment's
+(typically 0.2-2.0). val_loss (computed with the base criterion only,
+unaffected by distillation) looked normal (~3.0, expected for an
+untrained 20-class model). Root cause: an untrained model's raw
+outputs can be confidently wrong on classes the teacher favors, and
+KL-divergence punishes that heavily — `target * (log(target) -
+input)` blows up when the student's log-probability for a
+teacher-favored class is very negative. Watched closely through the
+LR warmup peak (the highest-risk point for this kind of instability,
+per Experiments 18-21's earlier lessons): train_loss fell steadily
+every epoch (23.17→8.11 by epoch 10→2.73 by epoch 80) and val_acc
+climbed normally throughout, with no NaN/divergence at any point — the
+large magnitude was a scale artifact of the KL term on an untrained
+model, not real instability.
+
+**Result**: 75.78% best val accuracy (epoch 55) — technically new
+best, edging out Experiment 15's 75.45% by +0.33pp. But the headline
+number hides real, substantial per-class churn, not a clean
+improvement:
+
+| Class | Exp 15 (no distillation) | Exp 27 (distillation) | Change |
+|---|---:|---:|---:|
+| PLAY_MUSIC | 54.6% | **70.8%** | **+16.2pp** |
+| CREATE_REMINDER | 66.8% | **73.8%** | +7.0pp |
+| COLOR | 63.0% | **70.4%** | +7.4pp |
+| NEXT | 79.6% | 83.0% | +3.4pp |
+| VOLUME_DOWN | 69.9% | 58.3% | **-11.6pp** |
+| PAUSE | 91.3% | 82.5% | -8.8pp |
+| STOP | 85.2% | 77.4% | -7.8pp |
+| WEATHER | 68.5% | 64.1% | -4.4pp |
+
+**Analysis**: the wins are real and land exactly where predicted —
+PLAY_MUSIC, CREATE_REMINDER, and COLOR are three of the five labels in
+the "diffuse confusion cluster" (PLAY_MUSIC/WEATHER/TIME/MESSAGE/
+CREATE_REMINDER) that no prior fix — confusable-pair loss, downsampling,
+regularization — ever touched, since it's not a clean acoustic pair
+the way VOLUME_UP/DOWN is. PLAY_MUSIC's +16.2pp is the single largest
+per-class improvement of any experiment in this project. But
+VOLUME_DOWN regressed substantially — notable because that's one of
+the two classes distillation was specifically expected to help (the
+cascade resolves it well via text) — and PAUSE/STOP, previously
+strong, both weakened. `distill-weight=2.0` may simply be too strong
+for some classes while being right for others; untried: a lower
+weight (e.g. 1.0), or a per-group weighting analogous to the
+confusable-pair loss's per-group alpha idea.
+
+**Current standing recommendation**: not a strict upgrade over
+Experiment 15 — which one to actually ship depends on whether the
+PLAY_MUSIC/COLOR/CREATE_REMINDER gains or the VOLUME_DOWN/PAUSE/STOP
+costs matter more for the live demo. Both remain fully compliant
+(137.5 KB, no ASR at inference time) — see MODEL.md Section 10 for the
+full three-way comparison including the ASR-cascade.

@@ -294,7 +294,10 @@ never fully resolved is largely a non-issue in text.
   text parsing instead of acoustic slot-filling — meaningfully easier,
   and not something the current direct-audio pipeline attempts at all.
 - **Honest risks**: two models instead of one (real RAM/latency cost —
-  whisper-base is ~6x this project's entire current DSCNN); ASR errors
+  whisper-base is **~1,070x this project's entire current DSCNN by disk
+  size** (~144MB vs. 137.5KB), ~2,810x by parameter count (74M vs.
+  26,300) — an earlier "~6x" estimate here was wrong, corrected after
+  actually measuring both; see Section 10's size table); ASR errors
   on numbers/proper nouns could still cause slot-extraction mistakes
   even when intent classification succeeds; a genuinely bigger build
   than anything done so far, comparable in scope to the confusable
@@ -324,6 +327,43 @@ never fully resolved is largely a non-issue in text.
   clips measurably closes real/synthetic accuracy gaps (89%→92.5% in a
   directly comparable study). Now being run via
   `scripts/qa_filter_option_b.py`.
+
+## 10. Consolidated recommendation — three real options, by accuracy and footprint
+
+After 27 experiments (EXPERIMENTS.md), here's where things actually
+stand. Sizes below are measured (`ls -la` / `du`), not estimated.
+
+| # | Option | Accuracy | Model size | Deployable per assignment rules? |
+|---|---|---|---:|---|
+| 1 | **DS-CNN + confusable-pair loss** (Experiment 15) | 75.45% val | **137.5 KB** | Yes — clean baseline |
+| 2 | **DS-CNN + distillation from the ASR-cascade** (Experiment 27) | 75.78% val (mixed per-class, see below) | **137.5 KB** | Yes — current best fully-compliant option |
+| 3 | **ASR-cascade** (Experiment 26) | **90.62% test, real audio** | ~144 MB (whisper-base 142MB + classifier 1.9MB) | **No — backup/reference only** |
+
+**Option 3, the ASR-cascade, is the accuracy ceiling but not a
+candidate for the actual submitted VCM.** The assignment states "ASR
+models are not desirable for on-device computing because of footprint"
+and requires the VCM to be tiny — whisper-base alone is **~1,070x this
+project's DS-CNN by disk size, ~2,810x by parameter count**. It's kept
+in the repo and documented as a **backup option for systems that can
+accommodate the footprint** (e.g. a benchmark reference, or a future
+deployment target with more compute than an RPi4/5), not as something
+that competes with Options 1/2 for the actual deliverable.
+
+**Option 1 vs. Option 2** — the real tradeoff, not a clean upgrade:
+distillation (Option 2) uses the ASR-cascade purely as an offline
+training-time teacher (see Experiment 27) — the deployed model is
+identical in size and architecture to Option 1, just trained with
+extra supervision. It fixed the project's long-standing diffuse
+confusion cluster substantially (PLAY_MUSIC +16.2pp, COLOR +7.4pp,
+CREATE_REMINDER +7.0pp — the first real progress on any of these
+across 27 experiments) but caused a real regression on VOLUME_DOWN
+(-11.6pp) and new weakness on PAUSE/STOP that Option 1 didn't have.
+The +0.33pp headline gain hides substantial per-class churn — this is
+not a strict improvement, and which one to actually ship depends on
+which failure mode matters more for the live demo. Untried: a lower
+`--distill-weight` (currently 2.0) to check whether the VOLUME_DOWN
+cost can be reduced without losing the PLAY_MUSIC/COLOR/CREATE_REMINDER
+gains.
 
 ## References
 

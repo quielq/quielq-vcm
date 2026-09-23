@@ -74,21 +74,29 @@ Both live behind `vcm/hal/`, with an RPi implementation already written
 An ML-engineering review (MODEL.md Section 9) researching commercial
 voice assistants and published SLU benchmarks found that Siri, Alexa,
 and Google Assistant all classify intent from a **text transcript**
-(ASR → NLU), not raw audio — and verified on this project's own data
-that the approach fixes its single worst, most persistent problem
-(VOLUME_UP/VOLUME_DOWN and LIGHT_ON/LIGHT_OFF acoustic confusion, six
-loss-engineering experiments, mixed results at best). Both pipelines
-are kept for now, cascade prioritized on accuracy, RPi resource-cost
-optimization deferred:
+(ASR → NLU), not raw audio. **Important compliance note**: this
+assignment explicitly states "ASR models are not desirable for
+on-device computing because of footprint" and requires the VCM to be
+tiny — so the ASR-cascade below is kept as a **backup/reference
+option only**, not a candidate for the actual deployed VCM. See
+MODEL.md Section 10 for the full comparison. Three things exist now:
 
-- **Direct audio → intent** (the original pipeline): a single tiny
-  CNN (DS-CNN, 26,300 params) classifies a log-mel spectrogram
-  directly. Lighter-weight, single-model. `scripts/demo_infer.py`.
-- **ASR-cascade** (new, higher accuracy): `faster-whisper` transcribes
-  audio to text, then a TF-IDF + logistic regression classifier maps
-  the transcript to an intent. Heavier (~6x the direct pipeline's
-  size), but **90.62% test accuracy on real audio** vs. the direct
-  pipeline's 75.45% — see EXPERIMENTS.md Experiment 26.
+- **Direct audio → intent** (the original, deployable pipeline): a
+  single tiny CNN (DS-CNN, 26,300 params, **137.5 KB**) classifies a
+  log-mel spectrogram directly. `scripts/demo_infer.py`. Two trained
+  variants: plain (75.45% val, Experiment 15) and one additionally
+  trained with **knowledge distillation** from the ASR-cascade
+  (75.78% val, real per-class tradeoffs, Experiment 27) — the
+  cascade is used only offline as a training-time teacher here, never
+  deployed; the distilled model is identical in size/architecture to
+  the plain one.
+- **ASR-cascade** (backup/reference only, not for deployment):
+  `faster-whisper` transcribes audio to text, then a TF-IDF + logistic
+  regression classifier maps the transcript to an intent. **~144 MB —
+  ~1,070x the direct pipeline's size by disk, ~2,810x by parameter
+  count** — but **90.62% test accuracy on real audio** vs. the direct
+  pipeline's ~75%, the accuracy ceiling for systems that can
+  accommodate the footprint. See EXPERIMENTS.md Experiment 26.
   `scripts/demo_infer_cascade.py`.
 
 Quantization/export and the benchmark harness (Sections 5, 7) are
