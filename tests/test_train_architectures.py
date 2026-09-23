@@ -1,9 +1,9 @@
 import pytest
 import torch
 
-from vcm.train.architectures import BCResNet, DSCNN
+from vcm.train.architectures import CRNN, BCResNet, DSCNN
 
-MODEL_CLASSES = [DSCNN, BCResNet]
+MODEL_CLASSES = [DSCNN, BCResNet, CRNN]
 
 
 @pytest.mark.parametrize("model_cls", MODEL_CLASSES)
@@ -46,6 +46,12 @@ def test_backward_pass_produces_gradients(model_cls):
     loss = torch.nn.functional.cross_entropy(model(x), labels)
     loss.backward()
     assert any(p.grad is not None and p.grad.abs().sum() > 0 for p in model.parameters())
+
+
+def test_crnn_sequence_features_keep_a_time_axis():
+    model = CRNN(num_classes=20)
+    seq = model.sequence_features(torch.randn(2, 40, 301))
+    assert seq.shape[0] == 2 and seq.shape[1] > 1 and seq.shape[2] == 128
 
 
 def test_dscnn_dropout_zero_is_deterministic_in_eval_mode():

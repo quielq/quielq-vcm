@@ -14,9 +14,14 @@ from torch import nn
 class DepthwiseSeparableBlock(nn.Module):
     """Building block for DSCNN (below) — see that class's docstring."""
 
-    def __init__(self, in_channels: int, out_channels: int):
+    def __init__(self, in_channels: int, out_channels: int, stride: int | tuple[int, int] = 1):
         super().__init__()
-        self.depthwise = nn.Conv2d(in_channels, in_channels, kernel_size=3, padding=1, groups=in_channels)
+        # stride=1 (default) is the original block; CRNN below uses stride 2
+        # on some blocks to widen the receptive field. Stride has no
+        # parameters, so existing DSCNN checkpoints load unchanged.
+        self.depthwise = nn.Conv2d(
+            in_channels, in_channels, kernel_size=3, stride=stride, padding=1, groups=in_channels
+        )
         self.bn1 = nn.BatchNorm2d(in_channels)
         self.pointwise = nn.Conv2d(in_channels, out_channels, kernel_size=1)
         self.bn2 = nn.BatchNorm2d(out_channels)
@@ -76,6 +81,92 @@ class DSCNN(nn.Module):
         x = self.global_pool(x).flatten(1)
         x = self.dropout(x)
         return self.classifier(x)
+
+
+class CRNN(nn.Module):
+    """Depthwise-separable conv front end + bidirectional GRU + attention
+    pooling. A direct response to a receptive-field finding about DSCNN
+    above (EXPERIMENTS.md Experiment 28): DSCNN's stride-2 first conv
+    followed by stride-1 3x3 blocks gives each output unit only ~24
+    input frames (~240ms) of context before global average pooling —
+    it classifies a 3s command as an unordered bag of quarter-second
+    snippets, shorter than many single words ("temperature"). That
+    matches the log: Experiment 7->11's +6.4pp for ~2K extra params
+    came from one more block (a wider receptive field), and the
+    carrier-phrase confusions (VOLUME vs TEMPERATURE) resisted every
+    loss-level fix.
+
+    Three changes, all cheap in parameters:
+    1. Every second DS block strides by 2 in time and frequency, so the
+       conv stack's receptive field grows geometrically instead of
+       linearly (and the later blocks run on a much smaller map).
+    2. Frequency is then collapsed by a learned 1x1 projection into a
+       per-frame feature sequence.
+    3. A bidirectional GRU models word order across the whole clip, and
+       attention pooling (a learned per-frame weight, softmaxed over
+       time) replaces global average pooling, so the one frame that
+       says "up" vs "down" can dominate the summary instead of being
+       averaged away.
+
+    `sequence_features()` exposes the per-frame GRU outputs so an
+    auxiliary training-only head (e.g. CTC on transcripts) can attach
+    to them later without changing the deployed model.
+    """
+
+    def __init__(
+        self,
+        num_classes: int,
+        channels: int = 64,
+        num_blocks: int = 4,
+        rnn_hidden: int = 64,
+        n_mels: int = 40,
+        dropout: float = 0.1,
+    ):
+        super().__init__()
+        self.first_conv = nn.Sequential(
+            nn.Conv2d(1, channels, kernel_size=(10, 4), stride=(2, 2), padding=(4, 1)),
+            nn.BatchNorm2d(channels),
+            nn.ReLU(inplace=True),
+        )
+        self.ds_blocks = nn.ModuleList(
+            [DepthwiseSeparableBlock(channels, channels, stride=2 if i % 2 == 1 else 1) for i in range(num_blocks)]
+        )
+        freq_bins = n_mels // 2  # after first_conv's stride
+        for i in range(num_blocks):
+            if i % 2 == 1:
+                freq_bins = (freq_bins - 1) // 2 + 1  # 3x3, padding 1, stride 2
+        self.freq_proj = nn.Sequential(
+            nn.Conv1d(channels * freq_bins, rnn_hidden, kernel_size=1),
+            nn.BatchNorm1d(rnn_hidden),
+            nn.ReLU(inplace=True),
+        )
+        self.rnn = nn.GRU(rnn_hidden, rnn_hidden, batch_first=True, bidirectional=True)
+        self.attention = nn.Linear(2 * rnn_hidden, 1)
+        self.dropout = nn.Dropout(dropout)
+        self.classifier = nn.Linear(2 * rnn_hidden, num_classes)
+
+    def sequence_features(self, x: torch.Tensor) -> torch.Tensor:
+        """x: (batch, n_mels, n_frames) -> (batch, time, 2 * rnn_hidden)."""
+        x = x.unsqueeze(1)
+        x = self.first_conv(x)
+        for block in self.ds_blocks:
+            x = block(x)
+        b, c, f, t = x.shape
+        x = self.freq_proj(x.reshape(b, c * f, t))  # (B, H, T)
+        x, _ = self.rnn(x.transpose(1, 2))  # (B, T, 2H)
+        return x
+
+    def forward_with_sequence(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Logits plus the per-frame features they were pooled from, in one
+        pass — for training-only auxiliary heads (see sequence_features)."""
+        seq = self.sequence_features(x)
+        weights = torch.softmax(self.attention(seq), dim=1)  # (B, T, 1)
+        pooled = (weights * seq).sum(dim=1)
+        return self.classifier(self.dropout(pooled)), seq
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """x: (batch, n_mels, n_frames) -> logits (batch, num_classes)."""
+        return self.forward_with_sequence(x)[0]
 
 
 class BCResBlock(nn.Module):

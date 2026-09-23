@@ -42,17 +42,46 @@ _LOG_MEL_MEAN = -59.64
 _LOG_MEL_STD = 21.30
 
 
-def _fix_length(audio: np.ndarray, sample_rate: int) -> np.ndarray:
-    target_len = int(WINDOW_S * sample_rate)
+# Silence trimming (opt-in, EXPERIMENTS.md Experiment 29). Measured on a
+# 3,000-clip manifest sample: keep-the-first-3.0s cuts off speech in
+# 12.2% of clips overall and 29.6% of SLURP clips — SLURP being exactly
+# where real-speech accuracy is weakest. Trimming leading/trailing
+# silence first, plus a 5.0s window, leaves speech truncated in only
+# ~1% of clips (3.3% of SLURP). A small margin is kept on each side so
+# soft word onsets/offsets below the trim threshold aren't clipped.
+TRIM_TOP_DB = 30
+TRIM_MARGIN_S = 0.1
+
+
+def trim_silence(audio: np.ndarray, sample_rate: int) -> np.ndarray:
+    _, (start, end) = librosa.effects.trim(audio, top_db=TRIM_TOP_DB)
+    margin = int(TRIM_MARGIN_S * sample_rate)
+    return audio[max(0, start - margin) : min(len(audio), end + margin)]
+
+
+def _fix_length(audio: np.ndarray, sample_rate: int, window_s: float = WINDOW_S) -> np.ndarray:
+    target_len = int(window_s * sample_rate)
     if len(audio) >= target_len:
         return audio[:target_len]
     return np.pad(audio, (0, target_len - len(audio)))
 
 
-def extract_log_mel(audio: np.ndarray, sample_rate: int = SAMPLE_RATE) -> np.ndarray:
+def extract_log_mel(
+    audio: np.ndarray,
+    sample_rate: int = SAMPLE_RATE,
+    window_s: float = WINDOW_S,
+    trim: bool = False,
+) -> np.ndarray:
     """Return a (N_MELS, n_frames) float32 log-mel spectrogram for one fixed-length clip,
-    normalized to roughly zero-mean/unit-variance (see _LOG_MEL_MEAN/_LOG_MEL_STD above)."""
-    fixed = _fix_length(audio.astype("float32"), sample_rate)
+    normalized to roughly zero-mean/unit-variance (see _LOG_MEL_MEAN/_LOG_MEL_STD above).
+
+    window_s/trim default to the original behavior (keep the first 3.0s, no
+    trimming); a checkpoint records the values it was trained with under
+    "feature_config", and inference must pass the same ones."""
+    audio = audio.astype("float32")
+    if trim:
+        audio = trim_silence(audio, sample_rate)
+    fixed = _fix_length(audio, sample_rate, window_s)
     mel = librosa.feature.melspectrogram(
         y=fixed,
         sr=sample_rate,
