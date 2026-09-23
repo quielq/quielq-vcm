@@ -33,7 +33,8 @@ from vcm.train.losses import CONFUSABLE_GROUPS
 from vcm.train.train import MODELS
 
 
-def predict(ckpt_path: Path, rows: list, device: torch.device, num_workers: int) -> list[int]:
+def predict(ckpt_path: Path, rows: list, device: torch.device, num_workers: int) -> tuple[list[int], list[float]]:
+    """Predicted class and its softmax probability (the model's confidence) per row."""
     ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
     if tuple(ckpt["labels"]) != LABELS:
         raise SystemExit(f"{ckpt_path}: label list differs from vcm.train.dataset.LABELS")
@@ -44,10 +45,32 @@ def predict(ckpt_path: Path, rows: list, device: torch.device, num_workers: int)
     model.eval()
     loader = DataLoader(dataset, batch_size=256, shuffle=False, num_workers=num_workers)
     preds: list[int] = []
+    confidences: list[float] = []
     with torch.no_grad():
         for features, _ in loader:
-            preds.extend(model(features.to(device)).argmax(1).tolist())
-    return preds
+            top = torch.softmax(model(features.to(device)), dim=1).max(dim=1)
+            preds.extend(top.indices.tolist())
+            confidences.extend(top.values.tolist())
+    return preds, confidences
+
+
+def print_confidence_table(pairs: list[tuple[int, int]], confidences: list[float]) -> None:
+    """What a reject threshold ("didn't catch that, please repeat") would do:
+    for each threshold, how many utterances get rejected, how accurate the
+    accepted ones are, and what share of the model's errors get caught."""
+    n = len(pairs)
+    n_wrong = sum(t != p for t, p in pairs)
+    print(f"  {'threshold':>9} {'rejected':>9} {'acc of accepted':>16} {'errors caught':>14} {'correct lost':>13}")
+    for threshold in (0.0, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95):
+        accepted = [(t, p) for (t, p), c in zip(pairs, confidences) if c >= threshold]
+        rejected = [(t, p) for (t, p), c in zip(pairs, confidences) if c < threshold]
+        acc = sum(t == p for t, p in accepted) / max(len(accepted), 1)
+        caught = sum(t != p for t, p in rejected)
+        lost = sum(t == p for t, p in rejected)
+        print(
+            f"  {threshold:>9.2f} {len(rejected) / n:>9.1%} {acc:>16.2%} "
+            f"{caught / max(n_wrong, 1):>14.1%} {lost / n:>13.1%}"
+        )
 
 
 def accuracy(pairs: list[tuple[int, int]]) -> str:
@@ -72,9 +95,10 @@ def main() -> None:
     device = torch.device(args.device)
 
     for ckpt_path in args.checkpoints:
-        preds = predict(ckpt_path, rows, device, args.num_workers)
+        preds, confidences = predict(ckpt_path, rows, device, args.num_workers)
         pairs = list(zip(truth, preds))
         real_pairs = [pair for pair, real in zip(pairs, is_real_speech) if real]
+        real_confidences = [c for c, real in zip(confidences, is_real_speech) if real]
         synth_pairs = [pair for pair, row in zip(pairs, rows) if row.is_synthetic]
 
         print(f"\n=== {ckpt_path} ({args.split} split)")
@@ -104,6 +128,9 @@ def main() -> None:
         confusions = Counter((t, p) for t, p in pairs if t != p)
         for (t, p), count in confusions.most_common(10):
             print(f"  {LABELS[t]} -> {LABELS[p]}: {count}")
+
+        print("\nreject threshold on top-class confidence (real speech):")
+        print_confidence_table(real_pairs, real_confidences)
 
 
 if __name__ == "__main__":
