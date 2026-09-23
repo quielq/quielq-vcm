@@ -39,7 +39,12 @@ class FasterWhisperTranscriber:
         self._model = WhisperModel(model_size)
 
     def transcribe(self, audio_path: Path) -> str:
-        segments, _ = self._model.transcribe(str(audio_path))
+        # language="en" forced: without it, Whisper guesses the language
+        # from short/ambiguous/quiet audio and sometimes hallucinates a
+        # wrong one entirely (observed live: "-b송", "Pertunjukkan
+        # kembali." for English speech) -- this project's audio is always
+        # English, so there's no reason to leave the guess open.
+        segments, _ = self._model.transcribe(str(audio_path), language="en")
         return " ".join(segment.text for segment in segments).strip()
 
 
