@@ -147,3 +147,45 @@ class ConfusablePairLoss(nn.Module):
         confusable_for_target = self.confusable_mask[targets].to(probs.dtype)  # (batch, num_classes)
         confusion_mass = (probs * confusable_for_target).sum(dim=1)
         return (ce + self.alpha * confusion_mass).mean()
+
+
+class DistillationLoss(nn.Module):
+    """Wraps a base criterion (e.g. ConfusablePairLoss) and adds a
+    knowledge-distillation term (Hinton, Vinyals, Dean, "Distilling the
+    Knowledge in a Neural Network", 2015): KL divergence between the
+    student's predicted distribution and a teacher's soft labels.
+
+    The "teacher" here is the ASR-cascade (Experiment 26) — a model the
+    assignment explicitly rules out for deployment ("ASR models are not
+    desirable for on-device computing because of footprint"). That
+    constraint is about what runs at inference time; it says nothing
+    about how training data/signal is produced. The teacher's
+    predictions are generated once, offline (scripts/generate_distillation_labels.py),
+    and never touch the deployed model — only this tiny student
+    (DS-CNN) is ever exported/run on-device. See EXPERIMENTS.md
+    Experiment 27.
+
+    Rows with an all-zero teacher vector (no teacher available — e.g.
+    unknown_background, which has no transcript to classify) fall back
+    to the base criterion alone for that row, via a per-row mask.
+    """
+
+    def __init__(self, base_criterion: nn.Module, distill_weight: float = 1.0, temperature: float = 2.0):
+        super().__init__()
+        self.base_criterion = base_criterion
+        self.distill_weight = distill_weight
+        self.temperature = temperature
+
+    def forward(self, logits: torch.Tensor, targets: torch.Tensor, teacher_probs: torch.Tensor) -> torch.Tensor:
+        base_loss = self.base_criterion(logits, targets)
+        if self.distill_weight == 0.0:
+            return base_loss
+        has_teacher = teacher_probs.sum(dim=1) > 0.5
+        if not has_teacher.any():
+            return base_loss
+        student_log_probs = F.log_softmax(logits / self.temperature, dim=1)
+        kl = F.kl_div(student_log_probs, teacher_probs, reduction="none").sum(dim=1)  # (batch,)
+        kl = kl * (self.temperature**2)  # standard distillation temperature scaling
+        kl = kl * has_teacher.to(kl.dtype)
+        distill_loss = kl.sum() / has_teacher.to(kl.dtype).sum().clamp(min=1.0)
+        return base_loss + self.distill_weight * distill_loss

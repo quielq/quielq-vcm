@@ -27,8 +27,8 @@ from torch import nn
 from torch.utils.data import DataLoader
 
 from vcm.train.architectures import BCResNet, DSCNN
-from vcm.train.dataset import LABELS, ManifestDataset, cap_per_class, class_counts, class_weights
-from vcm.train.losses import ConfusablePairLoss, build_confusable_mask, effective_number_weights
+from vcm.train.dataset import LABELS, ManifestDataset, cap_per_class, class_counts, class_weights, load_distillation_labels
+from vcm.train.losses import ConfusablePairLoss, DistillationLoss, build_confusable_mask, effective_number_weights
 
 MODELS = {"dscnn": DSCNN, "bcresnet": BCResNet}
 # Generic --width/--depth CLI flags map to each model's own constructor
@@ -160,6 +160,31 @@ def main() -> None:
         "model already gets right, up-weights ones it doesn't. 0.0 (default) disables this, "
         "i.e. plain weighted cross-entropy. Try 2.0 (the paper's default).",
     )
+    parser.add_argument(
+        "--distill-weight",
+        type=float,
+        default=0.0,
+        help="Knowledge-distillation weight: adds a KL-divergence term against the "
+        "ASR-cascade's soft labels (scripts/generate_distillation_labels.py) on top of the "
+        "normal hard-label loss. The cascade is a training-time-only teacher, never part of "
+        "the deployed model — this is how ASR is used without violating the assignment's "
+        "no-ASR-on-device constraint. 0.0 (default) disables this. See EXPERIMENTS.md "
+        "Experiment 27.",
+    )
+    parser.add_argument(
+        "--distill-labels",
+        type=Path,
+        default=Path("data/distillation_labels.csv"),
+        help="Teacher soft-labels produced by scripts/generate_distillation_labels.py. Only "
+        "read when --distill-weight > 0.",
+    )
+    parser.add_argument(
+        "--distill-temperature",
+        type=float,
+        default=2.0,
+        help="Softmax temperature for the distillation KL term (Hinton et al. 2015's default "
+        "is a mild 2-4). Only used when --distill-weight > 0.",
+    )
     parser.add_argument("--out", type=Path, default=Path("checkpoints/best.pt"))
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--seed", type=int, default=0, help="Random seed, for comparable experiments")
@@ -187,6 +212,15 @@ def main() -> None:
         f"val: {len(val_ds)} examples",
         flush=True,
     )
+
+    use_distillation = args.distill_weight > 0.0
+    if use_distillation:
+        train_ds.distillation_labels = load_distillation_labels(args.distill_labels)
+        print(
+            f"Using knowledge distillation (weight={args.distill_weight}, "
+            f"temperature={args.distill_temperature}) from {args.distill_labels}",
+            flush=True,
+        )
 
     train_loader = DataLoader(
         train_ds, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, pin_memory=True
@@ -217,6 +251,11 @@ def main() -> None:
         )
     else:
         criterion = nn.CrossEntropyLoss(weight=weights)
+
+    if use_distillation:
+        distill_criterion = DistillationLoss(
+            criterion, distill_weight=args.distill_weight, temperature=args.distill_temperature
+        )
 
     model_kwargs: dict[str, int | float] = {"num_classes": len(LABELS)}
     if args.width is not None:
@@ -260,11 +299,16 @@ def main() -> None:
         t0 = time.time()
         running_loss = 0.0
         n_seen = 0
-        for features, labels in train_loader:
-            features, labels = features.to(device), labels.to(device)
+        for batch in train_loader:
+            if use_distillation:
+                features, labels, teacher_probs = batch
+                features, labels, teacher_probs = features.to(device), labels.to(device), teacher_probs.to(device)
+            else:
+                features, labels = batch
+                features, labels = features.to(device), labels.to(device)
             optimizer.zero_grad()
             logits = model(features)
-            loss = criterion(logits, labels)
+            loss = distill_criterion(logits, labels, teacher_probs) if use_distillation else criterion(logits, labels)
             loss.backward()
             optimizer.step()
             running_loss += loss.item() * labels.size(0)
@@ -300,6 +344,8 @@ def main() -> None:
                     "dropout": args.dropout,
                     "weight_decay": args.weight_decay,
                     "label_smoothing": args.label_smoothing,
+                    "distill_weight": args.distill_weight,
+                    "distill_temperature": args.distill_temperature if use_distillation else None,
                     "model_kwargs": model_kwargs,
                     "labels": LABELS,
                     "epoch": epoch,

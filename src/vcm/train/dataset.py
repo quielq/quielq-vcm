@@ -16,6 +16,7 @@ is self-contained here and in whatever checkpoint training produces.
 
 from __future__ import annotations
 
+import csv
 import random
 from pathlib import Path
 
@@ -32,10 +33,38 @@ LABELS: tuple[str, ...] = INTENT_LABELS + ("unknown_background",)
 LABEL_TO_INDEX: dict[str, int] = {label: i for i, label in enumerate(LABELS)}
 
 
+def load_distillation_labels(csv_path: Path) -> dict[str, torch.Tensor]:
+    """Load scripts/generate_distillation_labels.py's output: audio_path ->
+    a (len(LABELS),) teacher probability vector, remapped from the cascade
+    classifier's own label order into this module's LABELS order.
+    unknown_background always gets probability 0 (the cascade never
+    predicts it — it has no transcript to classify)."""
+    with csv_path.open() as f:
+        reader = csv.reader(f)
+        header = next(reader)
+        teacher_labels = header[1:]  # audio_path, then one column per cascade label
+        teacher_idx_in_labels = [LABEL_TO_INDEX[label] for label in teacher_labels]
+
+        result: dict[str, torch.Tensor] = {}
+        for row in reader:
+            audio_path, probs = row[0], [float(p) for p in row[1:]]
+            vec = torch.zeros(len(LABELS))
+            for i, p in zip(teacher_idx_in_labels, probs):
+                vec[i] = p
+            result[audio_path] = vec
+    return result
+
+
 class ManifestDataset(Dataset):
-    def __init__(self, rows: list[ManifestRow], augment: bool = False):
+    def __init__(
+        self,
+        rows: list[ManifestRow],
+        augment: bool = False,
+        distillation_labels: dict[str, torch.Tensor] | None = None,
+    ):
         self.rows = rows
         self.augment = augment
+        self.distillation_labels = distillation_labels
 
     @classmethod
     def from_csv(cls, csv_path: Path, split: str, augment: bool = False) -> "ManifestDataset":
@@ -45,7 +74,7 @@ class ManifestDataset(Dataset):
     def __len__(self) -> int:
         return len(self.rows)
 
-    def __getitem__(self, idx: int) -> tuple[torch.Tensor, int]:
+    def __getitem__(self, idx: int):
         row = self.rows[idx]
         audio, sample_rate = sf.read(row.audio_path, dtype="float32")
         if audio.ndim > 1:
@@ -53,7 +82,15 @@ class ManifestDataset(Dataset):
         features = torch.from_numpy(extract_log_mel(audio, sample_rate=sample_rate))
         if self.augment:
             features = spec_augment(features)
-        return features, LABEL_TO_INDEX[row.label]
+        label_idx = LABEL_TO_INDEX[row.label]
+        if self.distillation_labels is None:
+            return features, label_idx
+        # Rows with no teacher available (unknown_background — excluded when
+        # generating distillation labels, it has no transcript) get an
+        # all-zero vector; the loss treats an all-zero row as "skip the
+        # distillation term for this example, use hard-label loss only".
+        teacher_probs = self.distillation_labels.get(row.audio_path, torch.zeros(len(LABELS)))
+        return features, label_idx, teacher_probs
 
 
 def cap_per_class(rows: list[ManifestRow], max_per_class: int) -> list[ManifestRow]:

@@ -1,9 +1,10 @@
 import numpy as np
+import pytest
 import soundfile as sf
 import torch
 
 from vcm.dataset.manifest import ManifestRow, write_manifest
-from vcm.train.dataset import LABEL_TO_INDEX, LABELS, ManifestDataset, cap_per_class, class_weights
+from vcm.train.dataset import LABEL_TO_INDEX, LABELS, ManifestDataset, cap_per_class, class_weights, load_distillation_labels
 
 
 def _write_wav(path, duration_s=1.0, sample_rate=16000, seed=0):
@@ -108,3 +109,60 @@ def test_cap_per_class_total_matches_sum_of_per_label_caps():
     )
     capped = cap_per_class(rows, max_per_class=30)
     assert len(capped) == 30 + 30 + 5
+
+
+def _write_distillation_csv(path, rows):
+    """rows: list of (audio_path, {label: prob, ...}) — only needs a subset
+    of LABELS, matching how the cascade only covers 19 of 20 (no
+    unknown_background)."""
+    import csv
+
+    present_labels = sorted({label for _, probs in rows for label in probs})
+    with open(path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["audio_path", *present_labels])
+        for audio_path, probs in rows:
+            writer.writerow([audio_path, *[probs.get(label, 0.0) for label in present_labels]])
+
+
+def test_load_distillation_labels_remaps_into_labels_order(tmp_path):
+    csv_path = tmp_path / "distill.csv"
+    _write_distillation_csv(
+        csv_path,
+        [("a.wav", {"CALL": 0.7, "PLAY_MUSIC": 0.3})],
+    )
+    result = load_distillation_labels(csv_path)
+    vec = result["a.wav"]
+    assert vec.shape == (len(LABELS),)
+    assert vec[LABEL_TO_INDEX["CALL"]] == pytest.approx(0.7)
+    assert vec[LABEL_TO_INDEX["PLAY_MUSIC"]] == pytest.approx(0.3)
+    assert vec[LABEL_TO_INDEX["unknown_background"]] == 0.0
+    assert vec.sum() == pytest.approx(1.0)
+
+
+def test_manifest_dataset_returns_teacher_probs_when_available(tmp_path):
+    wav = _write_wav(tmp_path / "a.wav")
+    row = _row(audio_path=str(wav), label="CALL")
+    distill_path = tmp_path / "distill.csv"
+    _write_distillation_csv(distill_path, [(str(wav), {"CALL": 1.0})])
+    teacher_labels = load_distillation_labels(distill_path)
+
+    ds = ManifestDataset([row], distillation_labels=teacher_labels)
+    features, label_idx, teacher_probs = ds[0]
+    assert label_idx == LABEL_TO_INDEX["CALL"]
+    assert teacher_probs[LABEL_TO_INDEX["CALL"]] == pytest.approx(1.0)
+
+
+def test_manifest_dataset_gives_zero_teacher_vector_when_missing(tmp_path):
+    wav = _write_wav(tmp_path / "bg.wav")
+    row = _row(audio_path=str(wav), label="unknown_background")
+    ds = ManifestDataset([row], distillation_labels={})  # no teacher for this path
+    _, _, teacher_probs = ds[0]
+    assert teacher_probs.sum() == 0.0
+
+
+def test_manifest_dataset_without_distillation_returns_two_tuple(tmp_path):
+    wav = _write_wav(tmp_path / "a.wav")
+    ds = ManifestDataset([_row(audio_path=str(wav), label="CALL")])
+    result = ds[0]
+    assert len(result) == 2

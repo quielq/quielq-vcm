@@ -3,6 +3,7 @@ import torch
 from vcm.train.losses import (
     CONFUSABLE_GROUPS,
     ConfusablePairLoss,
+    DistillationLoss,
     build_confusable_mask,
     effective_number_weights,
 )
@@ -174,3 +175,68 @@ def test_label_smoothing_reduces_loss_for_a_confident_correct_prediction():
     plain = ConfusablePairLoss(weights, mask, alpha=0.0, label_smoothing=0.0)(logits, targets)
     smoothed = ConfusablePairLoss(weights, mask, alpha=0.0, label_smoothing=0.1)(logits, targets)
     assert smoothed > plain
+
+
+def test_distillation_weight_zero_matches_base_criterion():
+    base = torch.nn.CrossEntropyLoss()
+    logits = torch.randn(4, len(LABELS))
+    targets = torch.randint(0, len(LABELS), (4,))
+    teacher_probs = torch.rand(4, len(LABELS))
+    teacher_probs = teacher_probs / teacher_probs.sum(dim=1, keepdim=True)
+
+    plain = base(logits, targets)
+    wrapped = DistillationLoss(base, distill_weight=0.0)(logits, targets, teacher_probs)
+    assert torch.allclose(plain, wrapped)
+
+
+def test_distillation_falls_back_to_base_when_no_teacher_available():
+    base = torch.nn.CrossEntropyLoss()
+    logits = torch.randn(4, len(LABELS))
+    targets = torch.randint(0, len(LABELS), (4,))
+    teacher_probs = torch.zeros(4, len(LABELS))  # no teacher for any row
+
+    plain = base(logits, targets)
+    wrapped = DistillationLoss(base, distill_weight=1.0)(logits, targets, teacher_probs)
+    assert torch.allclose(plain, wrapped)
+
+
+def test_distillation_pulls_student_toward_teacher_distribution():
+    idx = {label: i for i, label in enumerate(LABELS)}
+    base = torch.nn.CrossEntropyLoss()
+    targets = torch.tensor([idx["CALL"]])
+
+    # Student already confidently correct on the hard label -- base loss is
+    # near zero either way -- but the teacher strongly prefers a different
+    # class. A student whose logits agree with the teacher should score a
+    # lower total (distillation-inclusive) loss than one that disagrees,
+    # even though both have ~identical hard-label loss.
+    teacher_probs = torch.zeros(1, len(LABELS))
+    teacher_probs[0, idx["CALL"]] = 0.9
+    teacher_probs[0, idx["LIGHT_ON"]] = 0.1
+
+    logits_agrees = torch.zeros(1, len(LABELS))
+    logits_agrees[0, idx["CALL"]] = 5.0
+    logits_agrees[0, idx["LIGHT_ON"]] = 3.0
+
+    logits_disagrees = torch.zeros(1, len(LABELS))
+    logits_disagrees[0, idx["CALL"]] = 5.0
+    logits_disagrees[0, idx["LIGHT_OFF"]] = 3.0
+
+    criterion = DistillationLoss(base, distill_weight=1.0, temperature=2.0)
+    loss_agrees = criterion(logits_agrees, targets, teacher_probs)
+    loss_disagrees = criterion(logits_disagrees, targets, teacher_probs)
+    assert loss_agrees < loss_disagrees
+
+
+def test_distillation_partial_teacher_availability_only_applies_to_those_rows():
+    base = torch.nn.CrossEntropyLoss(reduction="mean")
+    logits = torch.randn(4, len(LABELS))
+    targets = torch.randint(0, len(LABELS), (4,))
+    teacher_probs = torch.zeros(4, len(LABELS))
+    teacher_probs[0] = torch.nn.functional.softmax(torch.randn(len(LABELS)), dim=0)  # only row 0 has a teacher
+
+    # Should run without error and differ from the weight=0 case -- the
+    # one row with a teacher should still contribute a distillation term.
+    plain = base(logits, targets)
+    wrapped = DistillationLoss(base, distill_weight=1.0)(logits, targets, teacher_probs)
+    assert not torch.allclose(plain, wrapped)
