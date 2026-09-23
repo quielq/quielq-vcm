@@ -270,11 +270,54 @@ LIGHT_ON=0.81  LIGHT_OFF=0.12  COLOR=0.04
 
 ---
 
-## 2.9 Full Tier-1 smoke-test checklist
+### 2.9 Trained model live demo — ASR-cascade (higher accuracy, two models)
+
+A second, higher-accuracy path alongside 2.8's direct-audio model (see
+`MODEL.md` Section 9 and `EXPERIMENTS.md` Experiment 26): audio →
+Whisper transcript → text classifier → intent, instead of a single CNN
+classifying the spectrogram directly. **90.62% test accuracy on real
+audio vs. 75.45% for the direct-audio model** — but two models instead
+of one (real RAM/latency cost, not yet characterized on actual RPi
+hardware — an explicit "optimize later" tradeoff). Both demos are kept;
+use whichever you're validating.
+
+**Setup** (on top of 2.8's `pip install -e ".[train]"`):
+```bash
+pip install faster-whisper scikit-learn joblib
+```
+
+**Get the classifier**: like checkpoints, `checkpoints/cascade_classifier.joblib`
+is gitignored (regeneratable) — you'll need it sent to you, or
+reproduce it yourself:
+```bash
+python scripts/transcribe_corpus_for_cascade.py   # ~2 hours on a GPU, transcribes the full corpus
+python scripts/train_cascade_classifier.py         # seconds, trains + saves the classifier
+```
+
+```bash
+python scripts/demo_infer_cascade.py
+```
+
+**Expect**: `Loading Whisper (base)...` (a one-time ~10-40s model load),
+then `Loaded cascade classifier from checkpoints/cascade_classifier.joblib
+(19 labels)`, then the same `Hold spacebar... Ctrl+C to quit.` prompt as
+2.8. Hold, speak, release — it prints what Whisper heard, then the
+top-3 predicted labels:
+```
+  heard: "turn the volume up"
+VOLUME_UP=0.91  VOLUME_DOWN=0.06  TEMPERATURE=0.02
+```
+
+Same `--debug` flag as 2.8 (saves the WAV, prints the full label
+distribution instead of top-3) for diagnosing unexpected predictions.
+
+---
+
+## 2.10 Full Tier-1 smoke-test checklist
 
 Run once after any change that touches multiple modules, or before a demo:
 
-- [ ] `python -m pytest` — 89/89 pass
+- [ ] `python -m pytest` — 114/114 pass
 - [ ] `python -m vcm.main` — hold spacebar, speak, see `Heard intent: unknown_background`
 - [ ] TTS audible (2.1)
 - [ ] Bulb on/off/dim responds (2.4)
