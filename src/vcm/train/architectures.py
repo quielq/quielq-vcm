@@ -47,7 +47,7 @@ class DSCNN(nn.Module):
     direct response to that finding.
     """
 
-    def __init__(self, num_classes: int, num_filters: int = 64, num_blocks: int = 4):
+    def __init__(self, num_classes: int, num_filters: int = 64, num_blocks: int = 4, dropout: float = 0.0):
         super().__init__()
         self.first_conv = nn.Sequential(
             nn.Conv2d(1, num_filters, kernel_size=(10, 4), stride=(2, 2), padding=(4, 1)),
@@ -58,6 +58,13 @@ class DSCNN(nn.Module):
             [DepthwiseSeparableBlock(num_filters, num_filters) for _ in range(num_blocks)]
         )
         self.global_pool = nn.AdaptiveAvgPool2d(1)
+        # dropout=0.0 (default) is a no-op (nn.Dropout(0) is the identity),
+        # so this is a strict superset of the original architecture, not a
+        # behavior change for any existing checkpoint/experiment. Added
+        # during the class-imbalance-bias research pass (EXPERIMENTS.md
+        # Experiment 24) — DSCNN had no regularization at all before this,
+        # unlike BCResNet's BCResBlock (dropout=0.1 throughout).
+        self.dropout = nn.Dropout(dropout)
         self.classifier = nn.Linear(num_filters, num_classes)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -67,6 +74,7 @@ class DSCNN(nn.Module):
         for block in self.ds_blocks:
             x = block(x)
         x = self.global_pool(x).flatten(1)
+        x = self.dropout(x)
         return self.classifier(x)
 
 

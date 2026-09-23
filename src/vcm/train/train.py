@@ -99,6 +99,32 @@ def main() -> None:
         help="Override the model's block count (num_blocks, both models). Default: the "
         "model class's own default.",
     )
+    parser.add_argument(
+        "--dropout",
+        type=float,
+        default=None,
+        help="Dropout before the final classifier (dscnn only — BCResNet already has its own "
+        "internal dropout via BCResBlock). Default: the model's own default (0.0 for DSCNN, "
+        "i.e. no regularization at all through Experiment 23). Added to test whether DSCNN's "
+        "total lack of regularization is a real gap — see EXPERIMENTS.md Experiment 24.",
+    )
+    parser.add_argument(
+        "--weight-decay",
+        type=float,
+        default=0.0,
+        help="Adam weight_decay (L2 regularization). 0.0 (default) matches every experiment "
+        "through 23 — plain Adam had no weight decay at all.",
+    )
+    parser.add_argument(
+        "--label-smoothing",
+        type=float,
+        default=0.0,
+        help="Label smoothing for the cross-entropy term (plain CrossEntropyLoss's native "
+        "label_smoothing, or the same passed through to ConfusablePairLoss's internal CE). "
+        "0.0 (default) matches every experiment through 23. Motivated by observed overconfident "
+        "wrong predictions on live audio (e.g. 0.97 confidence for a wrong class) -- see "
+        "EXPERIMENTS.md Experiment 24.",
+    )
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument(
         "--resume-from",
@@ -175,21 +201,32 @@ def main() -> None:
     else:
         weights = class_weights(train_ds.rows).to(device)
 
-    if args.confusable_alpha > 0.0 or args.focal_gamma > 0.0:
+    if args.confusable_alpha > 0.0 or args.focal_gamma > 0.0 or args.label_smoothing > 0.0:
         confusable_mask = build_confusable_mask(LABELS).to(device)
-        criterion = ConfusablePairLoss(weights, confusable_mask, alpha=args.confusable_alpha, gamma=args.focal_gamma)
+        criterion = ConfusablePairLoss(
+            weights,
+            confusable_mask,
+            alpha=args.confusable_alpha,
+            gamma=args.focal_gamma,
+            label_smoothing=args.label_smoothing,
+        )
         print(
-            f"Using ConfusablePairLoss (alpha={args.confusable_alpha}, gamma={args.focal_gamma})",
+            f"Using ConfusablePairLoss (alpha={args.confusable_alpha}, gamma={args.focal_gamma}, "
+            f"label_smoothing={args.label_smoothing})",
             flush=True,
         )
     else:
         criterion = nn.CrossEntropyLoss(weight=weights)
 
-    model_kwargs: dict[str, int] = {"num_classes": len(LABELS)}
+    model_kwargs: dict[str, int | float] = {"num_classes": len(LABELS)}
     if args.width is not None:
         model_kwargs[WIDTH_KWARG[args.model]] = args.width
     if args.depth is not None:
         model_kwargs["num_blocks"] = args.depth
+    if args.dropout is not None:
+        if args.model != "dscnn":
+            raise SystemExit("--dropout is only wired up for --model dscnn (BCResNet has its own internal dropout)")
+        model_kwargs["dropout"] = args.dropout
     model = MODELS[args.model](**model_kwargs).to(device)
     n_params = sum(p.numel() for p in model.parameters())
     print(f"Model params: {n_params:,}", flush=True)
@@ -201,7 +238,7 @@ def main() -> None:
             f"(was epoch {resume_ckpt['epoch']}, val_acc {resume_ckpt['val_acc']:.4f})",
             flush=True,
         )
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     scheduler = None
     if args.warmup_epochs > 0:
@@ -260,6 +297,9 @@ def main() -> None:
                     "confusable_alpha": args.confusable_alpha,
                     "class_balance_beta": args.class_balance_beta,
                     "focal_gamma": args.focal_gamma,
+                    "dropout": args.dropout,
+                    "weight_decay": args.weight_decay,
+                    "label_smoothing": args.label_smoothing,
                     "model_kwargs": model_kwargs,
                     "labels": LABELS,
                     "epoch": epoch,

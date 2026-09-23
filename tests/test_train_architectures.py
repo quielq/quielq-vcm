@@ -46,3 +46,34 @@ def test_backward_pass_produces_gradients(model_cls):
     loss = torch.nn.functional.cross_entropy(model(x), labels)
     loss.backward()
     assert any(p.grad is not None and p.grad.abs().sum() > 0 for p in model.parameters())
+
+
+def test_dscnn_dropout_zero_is_deterministic_in_eval_mode():
+    # dropout=0.0 (the default) is a strict no-op, so two eval-mode passes
+    # over the same input must be bit-identical.
+    model = DSCNN(num_classes=20, dropout=0.0)
+    model.eval()
+    x = torch.randn(2, 40, 301)
+    with torch.no_grad():
+        out1, out2 = model(x), model(x)
+    assert torch.equal(out1, out2)
+
+
+def test_dscnn_dropout_positive_still_deterministic_in_eval_mode():
+    # nn.Dropout is a no-op in eval() mode regardless of its configured
+    # rate — only train() mode randomly zeroes activations.
+    model = DSCNN(num_classes=20, dropout=0.5)
+    model.eval()
+    x = torch.randn(2, 40, 301)
+    with torch.no_grad():
+        out1, out2 = model(x), model(x)
+    assert torch.equal(out1, out2)
+
+
+def test_dscnn_dropout_positive_varies_in_train_mode():
+    model = DSCNN(num_classes=20, dropout=0.5)
+    model.train()
+    x = torch.randn(8, 40, 301)
+    out1 = model(x)
+    out2 = model(x)
+    assert not torch.equal(out1, out2)

@@ -134,3 +134,43 @@ def test_effective_number_weights_uniform_counts_gives_uniform_weights():
     counts = torch.full((5,), 1000.0)
     weights = effective_number_weights(counts, beta=0.999)
     assert torch.allclose(weights, torch.ones(5), atol=1e-4)
+
+
+def test_label_smoothing_zero_matches_plain_cross_entropy():
+    torch.manual_seed(0)
+    weights = torch.ones(len(LABELS))
+    mask = build_confusable_mask(LABELS)
+    logits = torch.randn(8, len(LABELS))
+    targets = torch.randint(0, len(LABELS), (8,))
+
+    plain = torch.nn.functional.cross_entropy(logits, targets, weight=weights)
+    smoothed_off = ConfusablePairLoss(weights, mask, alpha=0.0, label_smoothing=0.0)(logits, targets)
+    assert torch.allclose(plain, smoothed_off)
+
+
+def test_label_smoothing_positive_differs_from_plain_cross_entropy():
+    torch.manual_seed(0)
+    weights = torch.ones(len(LABELS))
+    mask = build_confusable_mask(LABELS)
+    logits = torch.randn(8, len(LABELS))
+    targets = torch.randint(0, len(LABELS), (8,))
+
+    plain = torch.nn.functional.cross_entropy(logits, targets, weight=weights)
+    smoothed = ConfusablePairLoss(weights, mask, alpha=0.0, label_smoothing=0.1)(logits, targets)
+    assert not torch.allclose(plain, smoothed)
+
+
+def test_label_smoothing_reduces_loss_for_a_confident_correct_prediction():
+    # Label smoothing penalizes over-confidence, so a very confident correct
+    # prediction should score a *higher* loss under smoothing than without
+    # it (it's being told not to be that sure), not lower.
+    weights = torch.ones(len(LABELS))
+    mask = build_confusable_mask(LABELS)
+    idx = {label: i for i, label in enumerate(LABELS)}
+    targets = torch.tensor([idx["CALL"]])
+    logits = torch.zeros(1, len(LABELS))
+    logits[0, idx["CALL"]] = 10.0
+
+    plain = ConfusablePairLoss(weights, mask, alpha=0.0, label_smoothing=0.0)(logits, targets)
+    smoothed = ConfusablePairLoss(weights, mask, alpha=0.0, label_smoothing=0.1)(logits, targets)
+    assert smoothed > plain

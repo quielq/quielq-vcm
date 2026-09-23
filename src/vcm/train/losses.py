@@ -96,7 +96,7 @@ def build_confusable_mask(
 
 
 class ConfusablePairLoss(nn.Module):
-    """Weighted cross-entropy, optionally with two independent additions:
+    """Weighted cross-entropy, optionally with three independent additions:
 
     1. Focal modulation (Lin et al., "Focal Loss for Dense Object
        Detection", ICCV 2017): multiply each example's loss by
@@ -108,8 +108,13 @@ class ConfusablePairLoss(nn.Module):
     2. alpha * (probability mass placed on classes confusable with the
        true label) — see this module's docstring. alpha=0.0 (default)
        disables this.
+    3. Label smoothing on the base cross-entropy term (PyTorch's native
+       CrossEntropyLoss label_smoothing) — softens one-hot targets,
+       directly targeting the overconfident-wrong-prediction pattern
+       seen on live audio (e.g. 0.97 confidence for the wrong class).
+       0.0 (default) disables this.
 
-    Both default off, so this class is a strict superset of plain
+    All three default off, so this class is a strict superset of plain
     weighted cross-entropy, not a replacement — same design as before.
     """
 
@@ -119,15 +124,19 @@ class ConfusablePairLoss(nn.Module):
         confusable_mask: torch.Tensor,
         alpha: float = 1.0,
         gamma: float = 0.0,
+        label_smoothing: float = 0.0,
     ):
         super().__init__()
         self.register_buffer("class_weights", class_weights)
         self.register_buffer("confusable_mask", confusable_mask)
         self.alpha = alpha
         self.gamma = gamma
+        self.label_smoothing = label_smoothing
 
     def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
-        ce = F.cross_entropy(logits, targets, weight=self.class_weights, reduction="none")
+        ce = F.cross_entropy(
+            logits, targets, weight=self.class_weights, reduction="none", label_smoothing=self.label_smoothing
+        )
         if self.gamma > 0.0:
             probs_for_focal = F.softmax(logits, dim=1)
             p_t = probs_for_focal.gather(1, targets.unsqueeze(1)).squeeze(1)
