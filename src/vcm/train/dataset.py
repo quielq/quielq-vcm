@@ -20,17 +20,26 @@ import csv
 import random
 from pathlib import Path
 
+import librosa
+import numpy as np
 import soundfile as sf
 import torch
 from torch.utils.data import Dataset
 
-from vcm.audio.features import extract_log_mel
+from vcm.audio.capture import SAMPLE_RATE
+from vcm.audio.features import WINDOW_S, extract_log_mel, trim_silence
 from vcm.dataset.manifest import ManifestRow, read_manifest
 from vcm.dataset.sources.dataset_schema import INTENT_LABELS
 from vcm.train.augment import spec_augment
+from vcm.train.transcripts import pad_target
+from vcm.train.wave_augment import augment_waveform
 
 LABELS: tuple[str, ...] = INTENT_LABELS + ("unknown_background",)
 LABEL_TO_INDEX: dict[str, int] = {label: i for i, label in enumerate(LABELS)}
+
+# extract_log_mel's original behavior; every checkpoint before Experiment
+# 29 was trained with exactly this (and has no "feature_config" key).
+DEFAULT_FEATURE_CONFIG = {"window_s": WINDOW_S, "trim": False}
 
 
 def load_distillation_labels(csv_path: Path) -> dict[str, torch.Tensor]:
@@ -55,42 +64,90 @@ def load_distillation_labels(csv_path: Path) -> dict[str, torch.Tensor]:
     return result
 
 
+def _read_mono(path: str) -> tuple[np.ndarray, int]:
+    audio, sample_rate = sf.read(path, dtype="float32")
+    if audio.ndim > 1:
+        audio = audio.mean(axis=1)
+    return audio, sample_rate
+
+
+def load_noise_bank(rows: list[ManifestRow]) -> list[np.ndarray]:
+    """unknown_background clips from the given rows (callers pass the
+    *train* split only, so val/test noise never leaks into training),
+    resampled to SAMPLE_RATE, for vcm.train.wave_augment's noise mixing."""
+    bank = []
+    for row in rows:
+        if row.label != "unknown_background":
+            continue
+        audio, sample_rate = _read_mono(row.audio_path)
+        if sample_rate != SAMPLE_RATE:
+            audio = librosa.resample(audio, orig_sr=sample_rate, target_sr=SAMPLE_RATE)
+        bank.append(audio)
+    return bank
+
+
 class ManifestDataset(Dataset):
     def __init__(
         self,
         rows: list[ManifestRow],
         augment: bool = False,
         distillation_labels: dict[str, torch.Tensor] | None = None,
+        feature_config: dict | None = None,
+        noise_bank: list[np.ndarray] | None = None,
+        ctc_targets: dict[str, torch.Tensor] | None = None,
     ):
+        """feature_config: extract_log_mel's window_s/trim (see
+        DEFAULT_FEATURE_CONFIG). noise_bank: if given, waveform
+        augmentation (vcm.train.wave_augment) is applied — training data
+        only. ctc_targets: word-index targets from vcm.train.transcripts,
+        for the auxiliary CTC head (paths missing -> empty target)."""
         self.rows = rows
         self.augment = augment
         self.distillation_labels = distillation_labels
+        self.feature_config = {**DEFAULT_FEATURE_CONFIG, **(feature_config or {})}
+        self.noise_bank = noise_bank
+        self.ctc_targets = ctc_targets
 
     @classmethod
-    def from_csv(cls, csv_path: Path, split: str, augment: bool = False) -> "ManifestDataset":
+    def from_csv(cls, csv_path: Path, split: str, augment: bool = False, **kwargs) -> "ManifestDataset":
         rows = [r for r in read_manifest(csv_path) if r.split == split]
-        return cls(rows, augment=augment)
+        return cls(rows, augment=augment, **kwargs)
 
     def __len__(self) -> int:
         return len(self.rows)
 
     def __getitem__(self, idx: int):
         row = self.rows[idx]
-        audio, sample_rate = sf.read(row.audio_path, dtype="float32")
-        if audio.ndim > 1:
-            audio = audio.mean(axis=1)
-        features = torch.from_numpy(extract_log_mel(audio, sample_rate=sample_rate))
+        audio, sample_rate = _read_mono(row.audio_path)
+        window_s, trim = self.feature_config["window_s"], self.feature_config["trim"]
+        if self.noise_bank is not None:
+            # Trim before augmenting, then extract without re-trimming —
+            # otherwise the trim would strip wave_augment's random start
+            # shift right back off.
+            if trim:
+                audio = trim_silence(audio, sample_rate)
+            audio = augment_waveform(audio, sample_rate, self.noise_bank)
+            trim = False
+        features = torch.from_numpy(
+            extract_log_mel(audio, sample_rate=sample_rate, window_s=window_s, trim=trim)
+        )
         if self.augment:
             features = spec_augment(features)
         label_idx = LABEL_TO_INDEX[row.label]
-        if self.distillation_labels is None:
-            return features, label_idx
-        # Rows with no teacher available (unknown_background — excluded when
-        # generating distillation labels, it has no transcript) get an
-        # all-zero vector; the loss treats an all-zero row as "skip the
-        # distillation term for this example, use hard-label loss only".
-        teacher_probs = self.distillation_labels.get(row.audio_path, torch.zeros(len(LABELS)))
-        return features, label_idx, teacher_probs
+        # Returns (features, label) plus, in this order, whichever extras
+        # are enabled: teacher_probs (distillation), then ctc_target and
+        # ctc_length (auxiliary CTC).
+        item: tuple = (features, label_idx)
+        if self.distillation_labels is not None:
+            # Rows with no teacher available (unknown_background — excluded when
+            # generating distillation labels, it has no transcript) get an
+            # all-zero vector; the loss treats an all-zero row as "skip the
+            # distillation term for this example, use hard-label loss only".
+            item += (self.distillation_labels.get(row.audio_path, torch.zeros(len(LABELS))),)
+        if self.ctc_targets is not None:
+            target = self.ctc_targets.get(row.audio_path, torch.zeros(0, dtype=torch.long))
+            item += pad_target(target)
+        return item
 
 
 def cap_per_class(rows: list[ManifestRow], max_per_class: int) -> list[ManifestRow]:

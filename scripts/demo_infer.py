@@ -31,9 +31,7 @@ import torch.nn.functional as F
 from vcm.audio.capture import SAMPLE_RATE, record_while_held
 from vcm.audio.features import extract_log_mel
 from vcm.hal.button import get_button
-from vcm.train.architectures import BCResNet, DSCNN
-
-MODELS = {"dscnn": DSCNN, "bcresnet": BCResNet}
+from vcm.train.train import MODELS
 
 # The model always outputs a full softmax over all 20 classes, even for
 # silence — there's no built-in "nothing was said" option, and
@@ -47,6 +45,15 @@ MODELS = {"dscnn": DSCNN, "bcresnet": BCResNet}
 # to filter out "held the button, said nothing."
 SILENCE_RMS_THRESHOLD = 0.01
 
+# Below this top-class probability, ask the user to repeat instead of
+# acting. Chosen from Experiment 29b's real-speech *val* split (not test;
+# `scripts/evaluate_checkpoint.py --split val` prints the full table):
+# at 0.6 the model rejects 10.4% of utterances, catches 42% of its
+# errors, and is 90.5% accurate on the ones it accepts (vs 85.2% with no
+# threshold), at the cost of re-asking for 4.1% of utterances it would
+# have gotten right. 0.7 trades more re-asks (15.2%) for 92.3%.
+REJECT_THRESHOLD = 0.6
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -59,6 +66,13 @@ def main() -> None:
         default=SILENCE_RMS_THRESHOLD,
         help="RMS amplitude below which captured audio is treated as silence and skipped "
         "without running the model (0 disables this gate entirely)",
+    )
+    parser.add_argument(
+        "--reject-threshold",
+        type=float,
+        default=REJECT_THRESHOLD,
+        help="If the top class's probability is below this, report \"didn't catch that, please "
+        "repeat\" instead of a prediction (0 disables).",
     )
     parser.add_argument(
         "--debug",
@@ -81,6 +95,8 @@ def main() -> None:
     model = MODELS[ckpt["model_name"]](**model_kwargs).to(device)
     model.load_state_dict(ckpt["model_state_dict"])
     model.eval()
+    # Pre-Experiment-29 checkpoints have no feature_config -> extract_log_mel's defaults.
+    feature_config = ckpt.get("feature_config", {})
 
     print(
         f"Loaded {ckpt['model_name']} from {args.checkpoint} "
@@ -104,12 +120,16 @@ def main() -> None:
             if rms < args.silence_threshold:
                 print(f"(silence, rms={rms:.4f} < {args.silence_threshold} — skipped)")
                 continue
-            features = torch.from_numpy(extract_log_mel(audio)).unsqueeze(0).to(device)
+            features = torch.from_numpy(extract_log_mel(audio, **feature_config)).unsqueeze(0).to(device)
             with torch.no_grad():
                 probs = F.softmax(model(features), dim=1).squeeze(0)
             k = len(labels) if args.debug else min(args.top_k, len(labels))
             top = torch.topk(probs, k=k)
-            print("  ".join(f"{labels[i]}={p:.2f}" for p, i in zip(top.values.tolist(), top.indices.tolist())))
+            scores = "  ".join(f"{labels[i]}={p:.2f}" for p, i in zip(top.values.tolist(), top.indices.tolist()))
+            if top.values[0] < args.reject_threshold:
+                print(f"(didn't catch that, please repeat)  {scores}")
+            else:
+                print(scores)
         except KeyboardInterrupt:
             print("\nExiting.")
             break

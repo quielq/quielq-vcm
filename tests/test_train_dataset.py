@@ -166,3 +166,19 @@ def test_manifest_dataset_without_distillation_returns_two_tuple(tmp_path):
     ds = ManifestDataset([_row(audio_path=str(wav), label="CALL")])
     result = ds[0]
     assert len(result) == 2
+
+
+def test_manifest_dataset_appends_padded_ctc_target(tmp_path):
+    wav = _write_wav(tmp_path / "a.wav")
+    ds = ManifestDataset([_row(audio_path=str(wav), label="CALL")], ctc_targets={str(wav): torch.tensor([5, 7, 9])})
+    features, label_idx, target, length = ds[0]
+    assert length == 3
+    assert target[:3].tolist() == [5, 7, 9]
+    assert not target[3:].any()
+
+
+def test_manifest_dataset_ctc_target_empty_when_untranscribed(tmp_path):
+    wav = _write_wav(tmp_path / "bg.wav")
+    ds = ManifestDataset([_row(audio_path=str(wav), label="unknown_background")], ctc_targets={})
+    _, _, target, length = ds[0]
+    assert length == 0

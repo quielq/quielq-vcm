@@ -24,16 +24,27 @@ from pathlib import Path
 import numpy as np
 import torch
 from torch import nn
+from torch.nn import functional as F
 from torch.utils.data import DataLoader
 
-from vcm.train.architectures import BCResNet, DSCNN
-from vcm.train.dataset import LABELS, ManifestDataset, cap_per_class, class_counts, class_weights, load_distillation_labels
+from vcm.train.architectures import CRNN, BCResNet, DSCNN
+from vcm.train.dataset import (
+    DEFAULT_FEATURE_CONFIG,
+    LABELS,
+    ManifestDataset,
+    cap_per_class,
+    class_counts,
+    class_weights,
+    load_distillation_labels,
+    load_noise_bank,
+)
 from vcm.train.losses import ConfusablePairLoss, DistillationLoss, build_confusable_mask, effective_number_weights
+from vcm.train.transcripts import BLANK, build_vocab, encode_targets, load_transcripts
 
-MODELS = {"dscnn": DSCNN, "bcresnet": BCResNet}
+MODELS = {"dscnn": DSCNN, "bcresnet": BCResNet, "crnn": CRNN}
 # Generic --width/--depth CLI flags map to each model's own constructor
-# kwarg names (DSCNN: num_filters/num_blocks, BCResNet: channels/num_blocks).
-WIDTH_KWARG = {"dscnn": "num_filters", "bcresnet": "channels"}
+# kwarg names (DSCNN: num_filters/num_blocks, BCResNet/CRNN: channels/num_blocks).
+WIDTH_KWARG = {"dscnn": "num_filters", "bcresnet": "channels", "crnn": "channels"}
 
 
 def evaluate(model: nn.Module, loader: DataLoader, device: torch.device, criterion: nn.Module) -> tuple[float, float]:
@@ -125,6 +136,43 @@ def main() -> None:
         "wrong predictions on live audio (e.g. 0.97 confidence for a wrong class) -- see "
         "EXPERIMENTS.md Experiment 24.",
     )
+    parser.add_argument(
+        "--window-s",
+        type=float,
+        default=DEFAULT_FEATURE_CONFIG["window_s"],
+        help="Feature window length in seconds (default 3.0, every run through Experiment 28). "
+        "Saved in the checkpoint's feature_config so inference uses the same value.",
+    )
+    parser.add_argument(
+        "--trim-silence",
+        action="store_true",
+        help="Trim leading/trailing silence before fixing the window length (see "
+        "vcm.audio.features.trim_silence / EXPERIMENTS.md Experiment 29). Saved in the "
+        "checkpoint's feature_config.",
+    )
+    parser.add_argument(
+        "--wave-augment",
+        action="store_true",
+        help="Waveform augmentation on training data: background noise, speed perturbation, "
+        "synthetic reverb, random start shift (vcm.train.wave_augment). Unlike --augment "
+        "(SpecAugment), never masks any part of the utterance.",
+    )
+    parser.add_argument(
+        "--ctc-weight",
+        type=float,
+        default=0.0,
+        help="Weight of an auxiliary word-level CTC loss on the Whisper transcripts "
+        "(vcm.train.transcripts, EXPERIMENTS.md Experiment 30), via a training-only head on "
+        "CRNN's per-frame features. The head is not saved with the model — the deployed model "
+        "is unchanged in size and never outputs text. 0.0 (default) disables this.",
+    )
+    parser.add_argument("--ctc-transcripts", type=Path, default=Path("data/cascade_transcripts.csv"))
+    parser.add_argument(
+        "--ctc-min-count",
+        type=int,
+        default=3,
+        help="Words seen fewer times than this in train transcripts map to <unk>.",
+    )
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument(
         "--resume-from",
@@ -198,8 +246,17 @@ def main() -> None:
     device = torch.device(args.device)
     print(f"Using device: {device}, model: {args.model}, augment: {args.augment}, seed: {args.seed}", flush=True)
 
-    train_ds = ManifestDataset.from_csv(args.manifest, split="train", augment=args.augment)
-    val_ds = ManifestDataset.from_csv(args.manifest, split="val", augment=False)
+    feature_config = {"window_s": args.window_s, "trim": args.trim_silence}
+    train_ds = ManifestDataset.from_csv(
+        args.manifest, split="train", augment=args.augment, feature_config=feature_config
+    )
+    val_ds = ManifestDataset.from_csv(args.manifest, split="val", augment=False, feature_config=feature_config)
+    print(f"Feature config: {feature_config}", flush=True)
+    if args.wave_augment:
+        # Built before --max-per-class/--train-fraction so the noise bank is
+        # always the full train-split background set.
+        train_ds.noise_bank = load_noise_bank(train_ds.rows)
+        print(f"Waveform augmentation on, noise bank: {len(train_ds.noise_bank)} train-split clips", flush=True)
     if args.max_per_class is not None:
         before = len(train_ds.rows)
         train_ds.rows = cap_per_class(train_ds.rows, args.max_per_class)
@@ -219,6 +276,18 @@ def main() -> None:
         print(
             f"Using knowledge distillation (weight={args.distill_weight}, "
             f"temperature={args.distill_temperature}) from {args.distill_labels}",
+            flush=True,
+        )
+
+    use_ctc = args.ctc_weight > 0.0
+    ctc_vocab: list[str] = []
+    if use_ctc:
+        transcripts = load_transcripts(args.ctc_transcripts)
+        ctc_vocab = build_vocab(transcripts, min_count=args.ctc_min_count)
+        train_ds.ctc_targets = encode_targets(transcripts, ctc_vocab)
+        print(
+            f"Using auxiliary word-level CTC (weight={args.ctc_weight}) on {args.ctc_transcripts}: "
+            f"vocab {len(ctc_vocab)} (incl. blank/<unk>, min_count={args.ctc_min_count})",
             flush=True,
         )
 
@@ -263,8 +332,8 @@ def main() -> None:
     if args.depth is not None:
         model_kwargs["num_blocks"] = args.depth
     if args.dropout is not None:
-        if args.model != "dscnn":
-            raise SystemExit("--dropout is only wired up for --model dscnn (BCResNet has its own internal dropout)")
+        if args.model == "bcresnet":
+            raise SystemExit("--dropout is not wired up for --model bcresnet (it has its own internal dropout)")
         model_kwargs["dropout"] = args.dropout
     model = MODELS[args.model](**model_kwargs).to(device)
     n_params = sum(p.numel() for p in model.parameters())
@@ -277,7 +346,17 @@ def main() -> None:
             f"(was epoch {resume_ckpt['epoch']}, val_acc {resume_ckpt['val_acc']:.4f})",
             flush=True,
         )
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    params = list(model.parameters())
+    if use_ctc:
+        if not hasattr(model, "forward_with_sequence"):
+            raise SystemExit("--ctc-weight needs a model with per-frame features (--model crnn)")
+        # Training-only head: never part of model.state_dict(), so the saved
+        # (deployed) checkpoint is exactly the plain audio -> intent model.
+        ctc_head = nn.Linear(model.classifier.in_features, len(ctc_vocab)).to(device)
+        ctc_criterion = nn.CTCLoss(blank=BLANK, zero_infinity=True)
+        params += list(ctc_head.parameters())
+        print(f"Auxiliary CTC head (training only): {sum(p.numel() for p in ctc_head.parameters()):,} params", flush=True)
+    optimizer = torch.optim.Adam(params, lr=args.lr, weight_decay=args.weight_decay)
 
     scheduler = None
     if args.warmup_epochs > 0:
@@ -299,16 +378,27 @@ def main() -> None:
         t0 = time.time()
         running_loss = 0.0
         n_seen = 0
+        running_ctc = 0.0
         for batch in train_loader:
-            if use_distillation:
-                features, labels, teacher_probs = batch
-                features, labels, teacher_probs = features.to(device), labels.to(device), teacher_probs.to(device)
-            else:
-                features, labels = batch
-                features, labels = features.to(device), labels.to(device)
+            batch = [t.to(device) for t in batch]
+            features, labels, extras = batch[0], batch[1], batch[2:]
             optimizer.zero_grad()
-            logits = model(features)
-            loss = distill_criterion(logits, labels, teacher_probs) if use_distillation else criterion(logits, labels)
+            if use_ctc:
+                logits, seq = model.forward_with_sequence(features)
+            else:
+                logits = model(features)
+            if use_distillation:
+                teacher_probs, extras = extras[0], extras[1:]
+                loss = distill_criterion(logits, labels, teacher_probs)
+            else:
+                loss = criterion(logits, labels)
+            if use_ctc:
+                ctc_targets, ctc_lengths = extras
+                log_probs = F.log_softmax(ctc_head(seq), dim=2).transpose(0, 1)  # (T, B, vocab)
+                input_lengths = torch.full((seq.size(0),), seq.size(1), dtype=torch.long, device=device)
+                ctc_loss = ctc_criterion(log_probs, ctc_targets, input_lengths, ctc_lengths)
+                loss = loss + args.ctc_weight * ctc_loss
+                running_ctc += ctc_loss.item() * labels.size(0)
             loss.backward()
             optimizer.step()
             running_loss += loss.item() * labels.size(0)
@@ -318,8 +408,9 @@ def main() -> None:
         val_loss, val_acc = evaluate(model, val_loader, device, criterion)
         elapsed = time.time() - t0
         current_lr = optimizer.param_groups[0]["lr"]
+        ctc_str = f"ctc_loss={running_ctc / n_seen:.4f}  " if use_ctc else ""
         print(
-            f"epoch {epoch:3d}/{args.epochs}  train_loss={train_loss:.4f}  "
+            f"epoch {epoch:3d}/{args.epochs}  train_loss={train_loss:.4f}  {ctc_str}"
             f"val_loss={val_loss:.4f}  val_acc={val_acc:.4f}  lr={current_lr:.2e}  ({elapsed:.1f}s)",
             flush=True,
         )
@@ -347,6 +438,10 @@ def main() -> None:
                     "distill_weight": args.distill_weight,
                     "distill_temperature": args.distill_temperature if use_distillation else None,
                     "model_kwargs": model_kwargs,
+                    "feature_config": feature_config,
+                    "wave_augment": args.wave_augment,
+                    "ctc_weight": args.ctc_weight,
+                    "ctc_vocab_size": len(ctc_vocab),
                     "labels": LABELS,
                     "epoch": epoch,
                     "val_acc": val_acc,
