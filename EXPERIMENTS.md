@@ -50,6 +50,7 @@ init, batch shuffling), not purely the effect being tested. Experiment
 | 29a | Same as #28 + trim silence + 5.0s window, 3 seeds | none | 80 | 84.20 / 83.75 / 84.88% val; 80.7–80.8% real-speech test (≈ #28) | `logs/exp29a_*.log` |
 | 29b | Same as #29a + **waveform augmentation** (noise, speed, reverb, start shift), 3 seeds | waveform | 80 | 88.29 / 88.51 / 88.46% val; **85.1–85.7% real-speech test** — best deployable model | `logs/exp29b_*.log` |
 | 30 | Same as #29b + auxiliary word-level CTC head on the Whisper transcripts (training only); weight 0.5 × 3 seeds, 0.2 and 1.0 × seed 0 | waveform | 80 | 88.31 / 88.44 / 88.40% val; 84.6–84.8% real-speech test (weight 0.5) — **slightly worse than #29b, not adopted** | `logs/exp30_*.log` |
+| 31 | Same recipe as #29b on the base manifest **+ 4,357 targeted synthetic clips** (Chatterbox, cloned FSC/Timers speakers; schema phrasings + extra phrasings for PAUSE/STOP/PLAY_MUSIC/TIMER/COLOR/BRIGHTNESS), 3 seeds | waveform | 80 | 88.22 / 88.70 / 88.75% val; 84.9–85.3% real-speech test (≈ #29b); **98–99% on held-out targeted clips** (29b: 70–73%) | `logs/exp31_*.log`, `logs/exp31_report.md` |
 
 ## Parked / to-do
 
@@ -2033,3 +2034,85 @@ Next lever is data rather than architecture: targeted synthetic data for
 these phrasings (including verb minimal pairs like "play / pause / stop
 the song", the same idea that fixed the polarity confusion), a label
 audit, and real recordings once the adviser clears the recording tool.
+
+## Experiment 31 — targeted synthetic data for the live-test gaps
+
+**Motivation**: the 29b live test (above) failed outside the class
+schema's 3 phrasings/3 slot values per intent, the only ones Option B was
+generated from. Targets: PAUSE/STOP losing to PLAY_MUSIC ("pause audio",
+"stop the song"), TIMER durations beyond 10 s / 30 s / 1 min, COLOR
+beyond red/green/blue, plus BRIGHTNESS counterparts for the shared
+"set/change the lights to …" carrier.
+
+**Setup**:
+- **Phrasings** (`src/vcm/dataset/sources/targeted_synth.py`): the
+  schema's own phrasings, imported from `dataset_schema.py` and voiced
+  first so they're always covered, plus extras. Extras include
+  play/pause/stop verb minimal pairs over the same objects ("the song",
+  "the audio", "the track", …), 27 timer durations × 10 templates, 14
+  colors × 10 templates, and 10 brightness levels × 5 templates.
+- **Voices** (`scripts/generate_targeted_synthetic.py`): Chatterbox
+  (the same TTS as Option B, so no new engine signature confined to
+  these classes), cloning real FSC and Timers-and-Such speakers from
+  ~6–10 s of their own audio. Train clips use the 145 train-split
+  speakers; a held-out test set uses the 20 test-split speakers. Random
+  exaggeration 0.3–0.7 and cfg 0.3–0.6 per clip. 5,500 clips at
+  3.3 s/clip, 4 shards on one GPU, ~72 min.
+- **QA**: faster-whisper base; kept if WER ≤ 0.2 after number
+  normalization and, for PAUSE/STOP/PLAY_MUSIC, Whisper heard the
+  intended verb. 4,357 of 5,500 passed (79%). BRIGHTNESS 97%, COLOR 86%,
+  TIMER 79–85%, PAUSE/STOP/PLAY_MUSIC 68–77%. The PAUSE failures are
+  genuine TTS errors, mostly a dropped /p/ ("Daws.", "Pawsome",
+  "What's this song?"); short forms are worst ('pause song' failed 49 of
+  68). A first QA run rejected every "please …/can you …" media phrasing
+  through a verb-check bug, fixed in `b0156b3` before training.
+- **Manifest**: `scripts/add_targeted_synth_to_manifest.py` writes
+  `data/dataset_manifest_targeted.csv` (62,318 + 4,357 = 66,675 rows),
+  leaving `dataset_manifest.csv` untouched. The val split has no targeted
+  clips, so val stays comparable to 29b.
+- **Training**: exactly the 29b recipe on the new manifest, seeds
+  0/1/2, GPU 2.
+
+**Result — real speech flat, the targeted phrasings fixed**:
+
+| | Best val | Real-speech test | Targeted held-out test (unseen voices) |
+|---|---:|---:|---:|
+| Experiment 29b | 88.29 / 88.51 / 88.46% | 85.32 / 85.14 / 85.73% (mean 85.40) | 70.25 / 71.86 / 72.94% |
+| **Experiment 31** | 88.22 / 88.70 / 88.75% | 85.08 / 84.91 / 85.27% (mean 85.09) | **99.28 / 98.21 / 98.39%** |
+
+Both evaluated on the same test rows (`logs/eval_exp31_test.log`). The
+-0.3pp on real speech is inside the ~0.6pp seed spread, so there's no
+real-speech change either way. That's expected: the real test set barely
+contains the new phrasings. Its PAUSE/STOP rows were already 100%, and
+its real TIMER rows 96–98%. The gain shows on the phrasings themselves
+(3-seed means, all test rows including targeted clips):
+
+| Label | 29b | Exp 31 | Change |
+|---|---:|---:|---:|
+| PAUSE | 84.9% | **100.0%** | +15.1pp |
+| STOP | 86.8% | **100.0%** | +13.2pp |
+| TIMER | 89.2% | **98.9%** | +9.8pp |
+| COLOR | 70.9% | **81.3%** | +10.4pp |
+| BRIGHTNESS | 82.3% | 81.9% | -0.3pp |
+| PLAY_MUSIC | 79.0% | 78.7% | -0.3pp |
+
+**Caveats**:
+- The targeted test clips are Chatterbox clones, the same engine as
+  their training data, just unseen voices. 98–99% is therefore an upper
+  bound on how the phrasings transfer to real speech. The live-voice
+  retest is the real check.
+- Real-speech per class (3-seed means) moved within noise for most
+  classes, but **BRIGHTNESS fell 75.5% → 72.9%** (-2.6pp; two of three
+  seeds below every 29b seed) and CREATE_REMINDER 66.3% → 64.4%. Real
+  COLOR, which is SLURP free-form phrasing the new data doesn't cover,
+  stayed at 55.4% (+1.4pp). The BRIGHTNESS dip may come from the new
+  "set the lights to N percent" carrier, and is worth watching.
+- Reject threshold 0.6 behaves the same as for 29b: on val it rejects
+  11.8% and accepted accuracy is 91.1% (29b: 10.4% / 90.5%).
+
+**Standing recommendation**: `checkpoints/exp31_crnn_targeted_s2.pt`
+(85.27% real speech, the best Exp 31 seed) for live testing and the
+demo, pending a live retest. It matches 29b on real speech and covers
+every schema phrasing, which is what benchmarking is likely to test.
+Keep `exp29b_crnn_trim5s_waveaug_s2.pt` (85.73%) as the best
+real-speech-only checkpoint until the live retest confirms the switch.
