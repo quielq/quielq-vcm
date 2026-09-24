@@ -105,6 +105,10 @@ def main() -> None:
         print(f"all:          {accuracy(pairs)}")
         print(f"real speech:  {accuracy(real_pairs)}   <- comparable to the cascade's 90.62%")
         print(f"synthetic:    {accuracy(synth_pairs)}")
+        print("by source:")
+        for source in sorted({r.source for r in rows}):
+            source_pairs = [pair for pair, row in zip(pairs, rows) if row.source == source]
+            print(f"  {source:<16}{accuracy(source_pairs)}")
 
         print("\nper-class (all / real speech):")
         for i, label in enumerate(LABELS):
