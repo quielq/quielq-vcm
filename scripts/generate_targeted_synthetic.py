@@ -62,6 +62,11 @@ QA_MAX_WER = 0.2
 _MEDIA_VERBS = {"PAUSE": {"pause", "hold"}, "STOP": {"stop", "turn"}, "PLAY_MUSIC": {"play", "start", "put"}}
 
 
+def _first_verb(words: list[str], verbs: set[str]) -> str | None:
+    """First verb-set word, skipping polite prefixes like "please" / "can you"."""
+    return next((w for w in words if w in verbs), None)
+
+
 def _trim(audio: np.ndarray, sr: int, top_db: float = 30.0) -> np.ndarray:
     """Energy trim without librosa (not installed in the TTS venv)."""
     frame = int(0.02 * sr)
@@ -201,7 +206,7 @@ def qa() -> None:
         ref, hyp = normalize_for_qa(r["text"]), normalize_for_qa(heard)
         wer = word_error_rate(ref, hyp)
         verbs = _MEDIA_VERBS.get(r["label"])
-        verb_ok = verbs is None or (bool(hyp) and hyp[0] in verbs and hyp[0] == ref[0])
+        verb_ok = verbs is None or (_first_verb(hyp, verbs) is not None and _first_verb(hyp, verbs) == _first_verb(ref, verbs))
         r.update(whisper_text=heard, wer=f"{wer:.3f}", qa_pass=str(wer <= QA_MAX_WER and verb_ok))
         if i % 500 == 0:
             print(f"qa {i}/{len(rows)}", flush=True)
