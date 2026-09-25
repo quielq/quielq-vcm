@@ -29,6 +29,7 @@ reminder/volume vocabulary anywhere in the corpus). Unmatched examples
 
 from __future__ import annotations
 
+import hashlib
 import re
 
 MUSIC_REQUEST_RE = re.compile(r"\blisten to\b|\bplay\b.*\b(song|music|playlist)\b|\bput on\b.*\bmusic\b", re.I)
@@ -72,3 +73,26 @@ def classify(text: str) -> str | None:
     if ON_RE.search(t) and has_light_context:
         return "LIGHT_ON"
     return None
+
+
+_WORKER_ID_RE = re.compile(r"'id':\s*'([^']+)'")
+
+
+def speaker_key(speaker_id: str) -> str:
+    """Stable per-person key. The manifest's speaker_id is the dataset's
+    whole worker record ("snips_{'age': 26, ..., 'id': '546b...'}"); only
+    its 'id' identifies the person."""
+    match = _WORKER_ID_RE.search(speaker_id)
+    return match.group(1) if match else speaker_id
+
+
+def speaker_split(speaker_id: str) -> str:
+    """Deterministic 80/10/10 train/val/test split by *speaker*, so no
+    person's voice appears in more than one split.
+
+    Replaces the original split-by-row-position (every 10th row to test),
+    which scattered each speaker's recordings across all three splits and
+    let test-set voices leak into training (TODO.md / EXPERIMENTS.md
+    Experiment 32)."""
+    bucket = int(hashlib.md5(speaker_key(speaker_id).encode()).hexdigest(), 16) % 10
+    return "train" if bucket < 8 else "val" if bucket < 9 else "test"

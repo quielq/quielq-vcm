@@ -21,22 +21,10 @@ from datasets import Audio, load_dataset
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from vcm.dataset.sources.snips_lights import classify  # noqa: E402
+from vcm.dataset.sources.snips_lights import classify, speaker_split  # noqa: E402
 
 OUT_DIR = REPO_ROOT / "data/external/snips_lights"
 MANIFEST_FIELDS = ["audio_path", "label", "source", "is_synthetic", "speaker_id", "split"]
-
-
-def _assign_split(index: int) -> str:
-    # Simple deterministic 80/10/10 split by position (dataset has no
-    # official split or reliably-sized speaker pool to split by, see
-    # module docstring for why this wasn't worth chasing further).
-    bucket = index % 10
-    if bucket < 8:
-        return "train"
-    if bucket < 9:
-        return "val"
-    return "test"
 
 
 def main() -> None:
@@ -46,7 +34,7 @@ def main() -> None:
 
     manifest_rows = []
     matched = 0
-    for i, row in enumerate(ds):
+    for row in ds:
         label = classify(row["text"])
         if label is None:
             continue
@@ -59,7 +47,9 @@ def main() -> None:
                 "source": "snips_lights",
                 "is_synthetic": False,
                 "speaker_id": f"snips_{row['worker']}",
-                "split": _assign_split(i),
+                # By speaker, not row position: position-based splitting put
+                # the same voices in train and test (see speaker_split).
+                "split": speaker_split(f"snips_{row['worker']}"),
             }
         )
         matched += 1
