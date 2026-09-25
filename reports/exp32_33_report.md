@@ -854,9 +854,9 @@ peak process memory: 72 MB
 3. **Wakeword QA.**
    - The first run failed every label (<50%) and I stopped Exp 33 to ask you. The fix for the negatives is in `a701268`.
    - WAKE positives still pass only 44.9% (train) / 48.8% (test). Whisper-base mostly hears the Chatterbox "hey kiwi" clips as "Thank you…" (599 clips), "Kiwi" or "Okay, Kiwi". Those clips are normal length and loudness, so either the TTS says the wrong thing or Whisper mishears a short, unusual phrase. Only listening can tell; I sent you 4 samples.
-   - Exp 33 trained on the 1,249 train positives that passed (of 1,347; the trainer holds some out for val).
+   - The trainer reports 1,249 `wake` training items, fewer than the 1,347 train positives that passed. I didn't check where the other 98 went (probably the trainer's own val hold-out).
    - Whisper on GPU isn't deterministic: the first and second QA runs differ by 1–2 WAKE clips.
 4. **The wake word's suggested threshold (0.98) sits on a steep edge.** At 0.98 the chosen seed rejects 19.0% of clean and 29.2% of noisy "hey kiwi" to reach 0.13 false wake-ups per hour. At 0.95 it rejects 6.7% / 16.4% with 0.67 per hour. The negative stream is mostly other datasets' speech (7.48 h), so real-room false-wake rates need testing on the Pi.
-5. **GPU sharing.** GPU 1 was idle at the first check but another user took it before the full launch, so Exp 33 used GPU 7. Both GPUs stayed ours alone while jobs ran.
+5. **GPU sharing.** GPU 1 was idle at the first check but another user took it before the full launch, so Exp 33 used GPU 7. Neither GPU had another user's process at any of my checks (before each launch). I didn't monitor them continuously.
 6. **New data files are not gitignored.** These show as untracked and are not committed: `data/dataset_manifest_v2.csv`, `data/dataset_manifest_pre_exp32.csv`, `data/dataset_manifest_exp32.csv`, `data/slot_labels.csv`.
 7. **Setup notes.** `gh` lives in `~/.local/bin` (not on the default PATH). The ONNX export printed a GRU batch-size warning and an onnxruntime "consider pre-processing before quantization" warning. There were no tracebacks in any log.
