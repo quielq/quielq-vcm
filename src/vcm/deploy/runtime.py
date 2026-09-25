@@ -1,6 +1,6 @@
 """ONNX Runtime inference for the intent/slot model and the wake-word
-detector. The only dependencies are onnxruntime, numpy and the project's
-own feature extraction, which is what runs on the Raspberry Pi.
+detector. Dependencies: onnxruntime and numpy (feature extraction is
+numpy-only, vcm.audio.dsp). This is what runs on the Raspberry Pi.
 """
 
 from __future__ import annotations

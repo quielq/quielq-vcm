@@ -7,9 +7,9 @@ Section 5 architecture (DS-CNN/TC-ResNet) expects.
 
 from __future__ import annotations
 
-import librosa
 import numpy as np
 
+from vcm.audio import dsp
 from vcm.audio.capture import SAMPLE_RATE
 
 WINDOW_S = 3.0
@@ -54,7 +54,7 @@ TRIM_MARGIN_S = 0.1
 
 
 def trim_silence(audio: np.ndarray, sample_rate: int) -> np.ndarray:
-    _, (start, end) = librosa.effects.trim(audio, top_db=TRIM_TOP_DB)
+    start, end = dsp.trim_bounds(audio, top_db=TRIM_TOP_DB)
     margin = int(TRIM_MARGIN_S * sample_rate)
     return audio[max(0, start - margin) : min(len(audio), end + margin)]
 
@@ -111,13 +111,10 @@ def extract_log_mel(
     if trim:
         audio = trim_silence(audio, sample_rate)
     fixed = _fix_length(audio, sample_rate, window_s)
-    mel = librosa.feature.melspectrogram(
-        y=fixed,
-        sr=sample_rate,
-        n_fft=N_FFT,
-        hop_length=HOP_LENGTH,
-        n_mels=N_MELS,
-    )
-    log_mel = librosa.power_to_db(mel, ref=np.max)
+    # numpy re-implementations of librosa's melspectrogram / power_to_db
+    # (vcm.audio.dsp): identical output without librosa's ~300 MB of
+    # dependencies, so the same code runs on a 512 MB Pi Zero 2 W.
+    mel = dsp.melspectrogram(fixed, sample_rate, N_FFT, HOP_LENGTH, N_MELS)
+    log_mel = dsp.power_to_db_ref_max(mel)
     normalized = (log_mel - _LOG_MEL_MEAN) / _LOG_MEL_STD
     return normalized.astype("float32")

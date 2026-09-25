@@ -13,16 +13,29 @@ What runs on the Pi is two small ONNX files, int8-quantized, with no torch:
 | Wake word | `models/kiwi_wakeword.int8.onnx` | ~95 KB | Always on: scores a 1.5 s window every 0.1 s |
 | Intent + slots | `models/vcm_intent.int8.onnx` | ~300 KB | Runs once per command: 20 intents + TIMER/ALARM/BRIGHTNESS/COLOR values |
 
-Together they're well under the 1 MB budget. On an M-series Mac, a command
-takes ~3.4 ms and the wake word uses ~1% of one core; `scripts/benchmark_pi.py`
-measures the real numbers on the Pi (step 6).
+Together they're well under the 1 MB budget. The runtime needs only
+**numpy, onnxruntime and sounddevice**: features are computed with a numpy
+re-implementation of librosa (`vcm/audio/dsp.py`, tested to match it), so
+there's no librosa/scipy/numba and no torch on the device. The whole
+pipeline peaks at **~90 MB of memory** (measured on an M-series Mac, where a
+command takes ~3.5 ms and the wake word uses ~1% of one core).
+`scripts/benchmark_pi.py` measures the real numbers on the board (step 6).
+
+### Which boards
+
+| Board | RAM | Works? | Notes |
+|---|---:|---|---|
+| Raspberry Pi 5 / 4 (any RAM, incl. 2 GB) | 2–8 GB | Yes | The target. Lots of headroom. |
+| **Raspberry Pi Zero 2 W** | 512 MB | Yes (expected) | Same steps with 64-bit Pi OS Lite. Its 1 GHz Cortex-A53 is roughly 8–15× slower than a Mac core, which is still ~10% of one core for the wake word and ~50 ms per command, by estimate. Measure with step 6. |
+| Raspberry Pi Zero / Zero W (original) | 512 MB | No | ARMv6, 32-bit only: no onnxruntime builds exist for it. It would need a pure-numpy model runtime (feasible for a model this small, but not built). |
 
 ## 1. Flash the SD card with SSH already set up (on your laptop)
 
 1. Install [Raspberry Pi Imager](https://www.raspberrypi.com/software/).
-2. Choose **Raspberry Pi 5**, then **Raspberry Pi OS Lite (64-bit)**. Lite
-   has no desktop, which you don't need without a monitor, and it leaves
-   more memory free.
+2. Choose your board (**Raspberry Pi 5**, or **Raspberry Pi Zero 2 W**),
+   then **Raspberry Pi OS Lite (64-bit)**. Lite has no desktop, which you
+   don't need without a monitor, and it leaves more memory free. It must be
+   the 64-bit OS: onnxruntime has no 32-bit ARM builds.
 3. Before writing, open the settings (**Edit Settings** when asked "apply
    OS customisation", or `Ctrl+Shift+X`) and set:
    - **Hostname**: `kiwi` (you'll connect to `kiwi.local`)
@@ -58,7 +71,7 @@ connection: `tmux new -s kiwi` starts a session, `Ctrl-b d` detaches, and
 
 ```bash
 sudo apt update && sudo apt full-upgrade -y
-sudo apt install -y git python3-venv python3-dev libportaudio2 libsndfile1 alsa-utils tmux
+sudo apt install -y git python3-venv libportaudio2 alsa-utils tmux
 ```
 
 ## 4. Get the code and models
@@ -80,9 +93,10 @@ from wherever they were exported (for example the DGX), *from the laptop*:
 scp models/vcm_intent.int8.onnx models/kiwi_wakeword.int8.onnx <username>@kiwi.local:~/quielq-vcm/models/
 ```
 
-Then create the Python environment *on the Pi*. Only the runtime
-libraries are installed; the rest of the project's dependencies (torch,
-python-miio, pynput) aren't needed for the voice pipeline:
+Then create the Python environment *on the Pi*. Only the three runtime
+libraries are installed (`requirements-pi.txt`); the rest of the project's
+dependencies (torch, librosa, python-miio, pynput) are for training and the
+home-automation features, not the voice pipeline:
 ```bash
 cd ~/quielq-vcm
 python3 -m venv .venv

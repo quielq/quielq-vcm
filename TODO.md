@@ -33,6 +33,9 @@ a button, and the target device is a Raspberry Pi 5 with a model under
 - [ ] Diagnose the live-test COLOR → VOLUME_UP confusion (needs `--debug`
   recordings of the phrases used).
 
+- [ ] Measure on a Pi Zero 2 W if one is available (`scripts/benchmark_pi.py`).
+  The original Pi Zero (ARMv6) would need a pure-numpy model runtime.
+
 ## Accuracy toward 90% (real speech)
 
 - [ ] Label audit: list clips where the ASR-cascade confidently disagrees
@@ -46,6 +49,9 @@ a button, and the target device is a Raspberry Pi 5 with a model under
 
 ## Done recently
 
+- [x] Pi runtime slimmed to numpy + onnxruntime + sounddevice: numpy
+  log-mel (`vcm/audio/dsp.py`, matches librosa) cut peak memory from
+  ~330 MB to ~90 MB, so a 512 MB Pi Zero 2 W is viable.
 - [x] Wake word chosen: "Hey Kiwi" (EXPERIMENTS.md, "Wake-word selection").
 - [x] Snips speaker leakage: splits now by speaker
   (`scripts/resplit_snips_by_speaker.py`); applying it to the DGX
