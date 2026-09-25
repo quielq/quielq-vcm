@@ -29,6 +29,26 @@ command takes ~3.5 ms and the wake word uses ~1% of one core).
 | **Raspberry Pi Zero 2 W** | 512 MB | Yes (expected) | Same steps with 64-bit Pi OS Lite. Its 1 GHz Cortex-A53 is roughly 8–15× slower than a Mac core, which is still ~10% of one core for the wake word and ~50 ms per command, by estimate. Measure with step 6. |
 | Raspberry Pi Zero / Zero W (original) | 512 MB | No | ARMv6, 32-bit only: no onnxruntime builds exist for it. It would need a pure-numpy model runtime (feasible for a model this small, but not built). |
 
+### Minimum RAM
+
+| What | Memory |
+|---|---:|
+| Our process, peak (wake word listening + commands) | **~96 MB** (measured) |
+| of which the two models themselves | ~8.5 MB |
+| Raspberry Pi OS Lite (64-bit), idle, including SSH | ~60–100 MB (typical; confirm with `free -m`, step 6) |
+| **Total needed** | **~150–200 MB**, so plan for **~250 MB** with headroom |
+| **Smallest workable board** | **512 MB** (Pi Zero 2 W, Pi 3 A+): about half of it stays free |
+
+So any current Raspberry Pi with 512 MB or more has enough memory; with
+this runtime, the limit is the CPU architecture (64-bit ARM, for
+onnxruntime), not RAM. The process numbers come from an M-series Mac (see
+[FOOTPRINT_COMPARISON.md](FOOTPRINT_COMPARISON.md)); Linux on the Pi will
+differ somewhat, so step 6 checks them on the board. Things that did *not*
+shrink it further: turning off ONNX Runtime's memory arena
+(`enable_cpu_mem_arena=False`) saved nothing measurable, because the
+running overhead is Python and numpy working memory, not ONNX Runtime.
+Nothing here needs swap.
+
 ## 1. Flash the SD card with SSH already set up (on your laptop)
 
 1. Install [Raspberry Pi Imager](https://www.raspberrypi.com/software/).
@@ -131,6 +151,13 @@ silence gate on the laptop to be heard, fix the input level here instead.
 
 This prints per-command latency, the wake word's share of one CPU core,
 model sizes and memory use. These are the deployment numbers to report.
+
+To confirm the minimum-RAM numbers above on the board, check the OS's own
+use before starting the pipeline, and the pipeline's use while it runs:
+```bash
+free -m                      # "used" with nothing of ours running = the OS baseline
+.venv/bin/python scripts/measure_footprint.py ours --clips <dir of 16 kHz wavs>   # our process, stage by stage
+```
 
 ## 7. Run it
 

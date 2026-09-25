@@ -16,6 +16,7 @@ what the extra accuracy of the ASR cascade (Experiment 26) would cost.
 |---|---:|---:|---:|
 | Model files | **363 KB** (intent 270 + wake word 93) | **~149 MB** (Whisper 145 MB + tokenizer 2 MB + classifier 2 MB) | ~410× |
 | Peak memory | **86–96 MB** | **478–696 MB** | 5–7× |
+| Minimum board RAM (with OS, ~60–100 MB) | **512 MB** (~150–200 MB actually used) | **1 GB+** (~550–800 MB used) | |
 | Memory for the models once loaded | ~8.5 MB | ~290–370 MB | ~40× |
 | Latency per command | **3.2–3.4 ms** (1 thread) | **440–950 ms** (see below) | ~150–300× |
 | Python packages to install | ~149 MB: numpy, onnxruntime, sounddevice | ~330 MB: adds faster-whisper, CTranslate2, PyAV, tokenizers, scikit-learn, scipy | ~2× |
@@ -42,8 +43,10 @@ far too slow to listen continuously.
 | + wake-word model loaded | 57.0 MB | +0.9 |
 | Running: 30 s of wake-word listening + commands | 86–96 MB | +29–39 |
 
-The models themselves account for about 8.5 MB. Most of the running
-overhead is ONNX Runtime keeping working memory around for reuse.
+The models themselves account for about 8.5 MB. The running overhead is
+Python and numpy working memory (feature arrays and buffers): turning off
+ONNX Runtime's memory arena made no measurable difference (84.7–86.0 MB vs
+85.8–94.8 MB, within run-to-run noise).
 
 Removing librosa mattered here. Features used to be computed with librosa,
 which pulls in numba, LLVM and scipy: importing and using it once added
