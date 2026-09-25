@@ -23,13 +23,12 @@ import argparse
 import time
 from pathlib import Path
 
-import numpy as np
 import soundfile as sf
 import torch
 import torch.nn.functional as F
 
 from vcm.audio.capture import SAMPLE_RATE, record_while_held
-from vcm.audio.features import extract_log_mel
+from vcm.audio.features import extract_log_mel, speech_level
 from vcm.hal.button import get_button
 from vcm.train.train import MODELS
 
@@ -39,11 +38,18 @@ from vcm.train.train import MODELS
 # white noise, a running tap, an exercise bike, a dishwasher, a cat,
 # pink noise), not general quiet-room silence, so it has no strong
 # learned basis for recognizing plain silence either. This is a simple
-# RMS-energy gate as a stopgap: skip classification entirely below this
+# energy gate as a stopgap: skip classification entirely below this
 # threshold rather than trust the model's (currently uncalibrated)
 # handling of near-silent audio. Not a trained VAD — just loud enough
 # to filter out "held the button, said nothing."
-SILENCE_RMS_THRESHOLD = 0.01
+#
+# Measured on the loudest 300ms (vcm.audio.features.speech_level), not
+# the whole clip: a whole-clip RMS gate at 0.01 skipped many real
+# commands at 0.0065-0.0099, because silence before/after the words
+# dilutes it. 0.008 sits between recordings with no speech (loudest
+# window <= 0.0048) and the quietest real command (0.0165) in 133 real
+# push-to-talk recordings — see speech_level's docstring.
+SILENCE_THRESHOLD = 0.008
 
 # Below this top-class probability, ask the user to repeat instead of
 # acting. Chosen from Experiment 29b's real-speech *val* split (not test;
@@ -63,9 +69,9 @@ def main() -> None:
     parser.add_argument(
         "--silence-threshold",
         type=float,
-        default=SILENCE_RMS_THRESHOLD,
-        help="RMS amplitude below which captured audio is treated as silence and skipped "
-        "without running the model (0 disables this gate entirely)",
+        default=SILENCE_THRESHOLD,
+        help="Skip without running the model if the loudest 300ms of the recording has an RMS "
+        "below this (vcm.audio.features.speech_level); 0 disables the gate",
     )
     parser.add_argument(
         "--reject-threshold",
@@ -112,13 +118,13 @@ def main() -> None:
             if len(audio) == 0:
                 print("(no audio captured, try again)")
                 continue
-            rms = float(np.sqrt(np.mean(np.square(audio))))
+            level = speech_level(audio)
             if args.debug:
-                wav_path = debug_dir / f"{time.strftime('%Y%m%d_%H%M%S')}_rms{rms:.4f}.wav"
+                wav_path = debug_dir / f"{time.strftime('%Y%m%d_%H%M%S')}_level{level:.4f}.wav"
                 sf.write(wav_path, audio, SAMPLE_RATE)
-                print(f"(saved {wav_path}, {len(audio)/SAMPLE_RATE:.2f}s, rms={rms:.4f})")
-            if rms < args.silence_threshold:
-                print(f"(silence, rms={rms:.4f} < {args.silence_threshold} — skipped)")
+                print(f"(saved {wav_path}, {len(audio)/SAMPLE_RATE:.2f}s, speech level={level:.4f})")
+            if level < args.silence_threshold:
+                print(f"(silence, speech level={level:.4f} < {args.silence_threshold} — skipped)")
                 continue
             features = torch.from_numpy(extract_log_mel(audio, **feature_config)).unsqueeze(0).to(device)
             with torch.no_grad():

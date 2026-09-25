@@ -59,6 +59,35 @@ def trim_silence(audio: np.ndarray, sample_rate: int) -> np.ndarray:
     return audio[max(0, start - margin) : min(len(audio), end + margin)]
 
 
+SPEECH_LEVEL_WINDOW_S = 0.3
+_SPEECH_LEVEL_FRAME_S = 0.02
+
+
+def speech_level(audio: np.ndarray, sample_rate: int = SAMPLE_RATE) -> float:
+    """RMS of the loudest SPEECH_LEVEL_WINDOW_S of the clip — for a "was
+    anything said?" gate before classification.
+
+    Replaces a whole-clip RMS gate, which the silence before and after
+    the words diluted: a longer push-to-talk hold lowered the value, and
+    live-tested commands were skipped as silence unless spoken quickly.
+    The loudest window doesn't depend on hold length. Calibrated on 133
+    real push-to-talk recordings (debug_recordings/, one Mac mic): clips
+    with no speech peak at 0.0023-0.0048, the quietest real command at
+    0.0165, the median command at 0.032.
+    """
+    audio = audio.astype("float32")
+    if len(audio) == 0:
+        return 0.0
+    frame = int(_SPEECH_LEVEL_FRAME_S * sample_rate)
+    n = len(audio) // frame
+    if n == 0:
+        return float(np.sqrt(np.mean(audio**2)))
+    frame_power = np.mean(audio[: n * frame].reshape(n, frame) ** 2, axis=1)
+    w = min(n, max(1, round(SPEECH_LEVEL_WINDOW_S / _SPEECH_LEVEL_FRAME_S)))
+    window_power = np.convolve(frame_power, np.ones(w) / w, mode="valid")
+    return float(np.sqrt(window_power.max()))
+
+
 def _fix_length(audio: np.ndarray, sample_rate: int, window_s: float = WINDOW_S) -> np.ndarray:
     target_len = int(window_s * sample_rate)
     if len(audio) >= target_len:
