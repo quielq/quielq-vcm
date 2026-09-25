@@ -30,6 +30,7 @@ from vcm.audio.capture import SAMPLE_RATE
 from vcm.audio.features import WINDOW_S, extract_log_mel, trim_silence
 from vcm.dataset.manifest import ManifestRow, read_manifest
 from vcm.dataset.sources.dataset_schema import INTENT_LABELS
+from vcm.slots import slot_target
 from vcm.train.augment import spec_augment
 from vcm.train.transcripts import pad_target
 from vcm.train.wave_augment import augment_waveform
@@ -95,18 +96,22 @@ class ManifestDataset(Dataset):
         feature_config: dict | None = None,
         noise_bank: list[np.ndarray] | None = None,
         ctc_targets: dict[str, torch.Tensor] | None = None,
+        slot_labels: dict[str, tuple[str, str, str]] | None = None,
     ):
         """feature_config: extract_log_mel's window_s/trim (see
         DEFAULT_FEATURE_CONFIG). noise_bank: if given, waveform
         augmentation (vcm.train.wave_augment) is applied — training data
         only. ctc_targets: word-index targets from vcm.train.transcripts,
-        for the auxiliary CTC head (paths missing -> empty target)."""
+        for the auxiliary CTC head (paths missing -> empty target).
+        slot_labels: vcm.slots.load_slot_labels output; adds a per-slot-head
+        target vector (-1 = no label for that head)."""
         self.rows = rows
         self.augment = augment
         self.distillation_labels = distillation_labels
         self.feature_config = {**DEFAULT_FEATURE_CONFIG, **(feature_config or {})}
         self.noise_bank = noise_bank
         self.ctc_targets = ctc_targets
+        self.slot_labels = slot_labels
 
     @classmethod
     def from_csv(cls, csv_path: Path, split: str, augment: bool = False, **kwargs) -> "ManifestDataset":
@@ -136,7 +141,7 @@ class ManifestDataset(Dataset):
         label_idx = LABEL_TO_INDEX[row.label]
         # Returns (features, label) plus, in this order, whichever extras
         # are enabled: teacher_probs (distillation), then ctc_target and
-        # ctc_length (auxiliary CTC).
+        # ctc_length (auxiliary CTC), then slot_targets (slot heads).
         item: tuple = (features, label_idx)
         if self.distillation_labels is not None:
             # Rows with no teacher available (unknown_background — excluded when
@@ -147,6 +152,9 @@ class ManifestDataset(Dataset):
         if self.ctc_targets is not None:
             target = self.ctc_targets.get(row.audio_path, torch.zeros(0, dtype=torch.long))
             item += pad_target(target)
+        if self.slot_labels is not None:
+            label, value, _ = self.slot_labels.get(row.audio_path, (row.label, None, ""))
+            item += (torch.tensor(slot_target(label, value), dtype=torch.long),)
         return item
 
 

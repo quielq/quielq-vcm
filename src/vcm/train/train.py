@@ -39,6 +39,7 @@ from vcm.train.dataset import (
     load_noise_bank,
 )
 from vcm.train.losses import ConfusablePairLoss, DistillationLoss, build_confusable_mask, effective_number_weights
+from vcm.slots import SLOT_INTENTS, SLOT_VOCAB, load_slot_labels
 from vcm.train.transcripts import BLANK, build_vocab, encode_targets, load_transcripts
 
 MODELS = {"dscnn": DSCNN, "bcresnet": BCResNet, "crnn": CRNN}
@@ -47,20 +48,33 @@ MODELS = {"dscnn": DSCNN, "bcresnet": BCResNet, "crnn": CRNN}
 WIDTH_KWARG = {"dscnn": "num_filters", "bcresnet": "channels", "crnn": "channels"}
 
 
-def evaluate(model: nn.Module, loader: DataLoader, device: torch.device, criterion: nn.Module) -> tuple[float, float]:
+def evaluate(
+    model: nn.Module, loader: DataLoader, device: torch.device, criterion: nn.Module, with_slots: bool = False
+) -> tuple[float, float, float | None]:
+    """(val loss, intent accuracy, slot accuracy or None). Slot accuracy is
+    over clips that have a slot label, reading the head of their *true*
+    intent (so it measures the slot heads, not intent errors)."""
     model.eval()
-    correct = 0
-    total = 0
+    correct = total = slot_correct = slot_total = 0
     loss_sum = 0.0
     with torch.no_grad():
-        for features, labels in loader:
-            features, labels = features.to(device), labels.to(device)
-            logits = model(features)
+        for batch in loader:
+            features, labels = batch[0].to(device), batch[1].to(device)
+            if with_slots:
+                logits, slot_logits = model.forward_with_slots(features)
+                targets = batch[-1].to(device)
+                for i, logit in enumerate(slot_logits.values()):
+                    mask = targets[:, i] >= 0
+                    slot_correct += (logit[mask].argmax(1) == targets[mask, i]).sum().item()
+                    slot_total += mask.sum().item()
+            else:
+                logits = model(features)
             loss = criterion(logits, labels)
             loss_sum += loss.item() * labels.size(0)
             correct += (logits.argmax(1) == labels).sum().item()
             total += labels.size(0)
-    return loss_sum / total, correct / total
+    slot_acc = slot_correct / slot_total if with_slots and slot_total else None
+    return loss_sum / total, correct / total, slot_acc
 
 
 def main() -> None:
@@ -172,6 +186,19 @@ def main() -> None:
         type=int,
         default=3,
         help="Words seen fewer times than this in train transcripts map to <unk>.",
+    )
+    parser.add_argument(
+        "--slot-labels",
+        type=Path,
+        default=None,
+        help="Train slot-value heads (vcm.slots, EXPERIMENTS.md Experiment 32) from this "
+        "scripts/build_slot_labels.py output. CRNN only. Default: intent only.",
+    )
+    parser.add_argument(
+        "--slot-weight",
+        type=float,
+        default=1.0,
+        help="Weight of the slot-value loss relative to the intent loss (only with --slot-labels).",
     )
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument(
@@ -291,6 +318,16 @@ def main() -> None:
             flush=True,
         )
 
+    use_slots = args.slot_labels is not None
+    if use_slots:
+        if args.model != "crnn":
+            raise SystemExit("--slot-labels needs --model crnn")
+        slot_labels = load_slot_labels(args.slot_labels)
+        train_ds.slot_labels = slot_labels
+        val_ds.slot_labels = slot_labels
+        n_train_labeled = sum(r.audio_path in slot_labels for r in train_ds.rows)
+        print(f"Slot heads on: {n_train_labeled} labeled train clips, weight {args.slot_weight}", flush=True)
+
     train_loader = DataLoader(
         train_ds, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, pin_memory=True
     )
@@ -335,6 +372,8 @@ def main() -> None:
         if args.model == "bcresnet":
             raise SystemExit("--dropout is not wired up for --model bcresnet (it has its own internal dropout)")
         model_kwargs["dropout"] = args.dropout
+    if use_slots:
+        model_kwargs["slot_sizes"] = {intent: len(SLOT_VOCAB[intent]) for intent in SLOT_INTENTS}
     model = MODELS[args.model](**model_kwargs).to(device)
     n_params = sum(p.numel() for p in model.parameters())
     print(f"Model params: {n_params:,}", flush=True)
@@ -383,7 +422,7 @@ def main() -> None:
             batch = [t.to(device) for t in batch]
             features, labels, extras = batch[0], batch[1], batch[2:]
             optimizer.zero_grad()
-            if use_ctc:
+            if use_ctc or use_slots:
                 logits, seq = model.forward_with_sequence(features)
             else:
                 logits = model(features)
@@ -393,22 +432,34 @@ def main() -> None:
             else:
                 loss = criterion(logits, labels)
             if use_ctc:
-                ctc_targets, ctc_lengths = extras
+                ctc_targets, ctc_lengths = extras[:2]
                 log_probs = F.log_softmax(ctc_head(seq), dim=2).transpose(0, 1)  # (T, B, vocab)
                 input_lengths = torch.full((seq.size(0),), seq.size(1), dtype=torch.long, device=device)
                 ctc_loss = ctc_criterion(log_probs, ctc_targets, input_lengths, ctc_lengths)
                 loss = loss + args.ctc_weight * ctc_loss
                 running_ctc += ctc_loss.item() * labels.size(0)
+                extras = extras[2:]
+            if use_slots:
+                slot_targets = extras[0]
+                slot_losses = [
+                    F.cross_entropy(logit, slot_targets[:, i], ignore_index=-1)
+                    for i, logit in enumerate(model.slot_logits(seq).values())
+                    if (slot_targets[:, i] >= 0).any()
+                ]
+                if slot_losses:
+                    loss = loss + args.slot_weight * torch.stack(slot_losses).mean()
             loss.backward()
             optimizer.step()
             running_loss += loss.item() * labels.size(0)
             n_seen += labels.size(0)
 
         train_loss = running_loss / n_seen
-        val_loss, val_acc = evaluate(model, val_loader, device, criterion)
+        val_loss, val_acc, val_slot_acc = evaluate(model, val_loader, device, criterion, with_slots=use_slots)
         elapsed = time.time() - t0
         current_lr = optimizer.param_groups[0]["lr"]
         ctc_str = f"ctc_loss={running_ctc / n_seen:.4f}  " if use_ctc else ""
+        if val_slot_acc is not None:
+            ctc_str += f"val_slot_acc={val_slot_acc:.4f}  "
         print(
             f"epoch {epoch:3d}/{args.epochs}  train_loss={train_loss:.4f}  {ctc_str}"
             f"val_loss={val_loss:.4f}  val_acc={val_acc:.4f}  lr={current_lr:.2e}  ({elapsed:.1f}s)",
@@ -442,6 +493,8 @@ def main() -> None:
                     "wave_augment": args.wave_augment,
                     "ctc_weight": args.ctc_weight,
                     "ctc_vocab_size": len(ctc_vocab),
+                    "slot_vocab": {i: list(SLOT_VOCAB[i]) for i in SLOT_INTENTS} if use_slots else None,
+                    "val_slot_acc": val_slot_acc,
                     "labels": LABELS,
                     "epoch": epoch,
                     "val_acc": val_acc,
