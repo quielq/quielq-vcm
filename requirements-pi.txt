@@ -1,0 +1,8 @@
+# Runtime for the voice pipeline on the Raspberry Pi (DEPLOYMENT.md):
+# ONNX Runtime instead of torch, plus feature extraction and audio I/O.
+# Install with: pip install -r requirements-pi.txt && pip install --no-deps -e .
+numpy
+librosa
+soundfile
+sounddevice
+onnxruntime
