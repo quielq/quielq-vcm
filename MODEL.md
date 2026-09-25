@@ -349,6 +349,12 @@ accommodate the footprint** (e.g. a benchmark reference, or a future
 deployment target with more compute than an RPi4/5), not as something
 that competes with Options 1/2 for the actual deliverable.
 
+**Measured runtime footprint** (see [FOOTPRINT_COMPARISON.md](FOOTPRINT_COMPARISON.md)):
+the deployed pipeline (CRNN intent model + "Hey Kiwi" wake word, int8 ONNX)
+is 363 KB of models, peaks at ~90 MB of memory and takes ~3 ms per command.
+The ASR-cascade needs ~149 MB of models, peaks at 478–696 MB and takes
+440–950 ms per command, and it would still need a separate wake-word model.
+
 **Option 1 vs. Option 2** — the real tradeoff, not a clean upgrade:
 distillation (Option 2) uses the ASR-cascade purely as an offline
 training-time teacher (see Experiment 27) — the deployed model is
