@@ -44,14 +44,19 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from vcm.dataset.sources.targeted_synth import (  # noqa: E402
-    CLIPS_PER_LABEL,
-    PHRASES,
+    BATCHES,
+    batch_phrases,
     normalize_for_qa,
     schema_phrases,
     word_error_rate,
 )
+from vcm.slots import parse_slot  # noqa: E402
 
-OUT_ROOT = REPO_ROOT / "data/external/targeted_synth"
+# Reference voices are shared by every batch (built once, under round1's folder).
+REFS_ROOT = REPO_ROOT / "data/external/targeted_synth/refs"
+OUT_ROOT = REPO_ROOT / BATCHES["round1"]["out_dir"]  # reset by main() from --batch
+CLIPS_PER_LABEL = BATCHES["round1"]["clips"]
+BATCH = "round1"
 REF_SOURCES = ("fsc", "timers_and_such")
 REF_MIN_S, REF_MAX_S = 6.0, 10.0
 TARGET_SR = 16000
@@ -82,12 +87,12 @@ def build_refs(manifest: Path, seed: int) -> None:
     by_speaker: dict[tuple[str, str], list[str]] = defaultdict(list)
     with manifest.open(newline="") as f:
         for r in csv.DictReader(f):
-            if r["source"] in REF_SOURCES and r["split"] in CLIPS_PER_LABEL:
+            if r["source"] in REF_SOURCES and r["split"] in ("train", "test"):
                 by_speaker[(r["split"], r["speaker_id"])].append(r["audio_path"])
     rng = random.Random(seed)
     n_written = 0
     for (split, speaker), paths in sorted(by_speaker.items()):
-        out = OUT_ROOT / "refs" / split / f"{speaker}.wav"
+        out = REFS_ROOT / split / f"{speaker}.wav"
         if out.exists():
             continue
         rng.shuffle(paths)
@@ -112,7 +117,7 @@ def build_refs(manifest: Path, seed: int) -> None:
         out.parent.mkdir(parents=True, exist_ok=True)
         sf.write(out, ref, sr)
         n_written += 1
-    counts = {s: len(list((OUT_ROOT / "refs" / s).glob("*.wav"))) for s in CLIPS_PER_LABEL}
+    counts = {s: len(list((REFS_ROOT / s).glob("*.wav"))) for s in ("train", "test")}
     print(f"wrote {n_written} new reference voices; total per split: {counts}")
 
 
@@ -124,21 +129,23 @@ def plan(seed: int) -> list[dict]:
     smaller than its phrase count."""
     rng = random.Random(seed)
     jobs = []
+    all_phrases = batch_phrases(BATCH)
     for split, per_label in CLIPS_PER_LABEL.items():
-        speakers = sorted(p.stem for p in (OUT_ROOT / "refs" / split).glob("*.wav"))
+        speakers = sorted(p.stem for p in (REFS_ROOT / split).glob("*.wav"))
         for label, n in per_label.items():
-            n_schema = len(schema_phrases(label))
-            extras = list(PHRASES[label][n_schema:])
+            n_schema = len(schema_phrases(label)) if BATCH == "round1" else 0
+            extras = list(all_phrases[label][n_schema:])
             rng.shuffle(extras)
-            phrases = list(PHRASES[label][:n_schema]) + extras
+            phrases = list(all_phrases[label][:n_schema]) + extras
             for i in range(n):
-                text = phrases[i % len(phrases)]
+                text, slot_value = phrases[i % len(phrases)]
                 jobs.append(
                     {
                         "id": f"{label}_{split}_{i:04d}",
                         "split": split,
                         "label": label,
                         "text": text,
+                        "slot_value": slot_value,
                         "speaker_id": rng.choice(speakers),
                         "exaggeration": round(rng.uniform(0.3, 0.7), 2),
                         "cfg_weight": round(rng.uniform(0.3, 0.6), 2),
@@ -161,7 +168,7 @@ def synth(shard: int, num_shards: int, seed: int, limit: int | None = None) -> N
     if meta_path.exists():
         with meta_path.open(newline="") as f:
             done = {r["id"] for r in csv.DictReader(f)}
-    fields = ["id", "audio_path", "label", "text", "speaker_id", "split", "exaggeration", "cfg_weight"]
+    fields = ["id", "audio_path", "label", "text", "slot_value", "speaker_id", "split", "exaggeration", "cfg_weight"]
     with meta_path.open("a", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fields)
         if not done:
@@ -169,7 +176,7 @@ def synth(shard: int, num_shards: int, seed: int, limit: int | None = None) -> N
         for k, job in enumerate(jobs):
             if job["id"] in done:
                 continue
-            ref = OUT_ROOT / "refs" / job["split"] / f"{job['speaker_id']}.wav"
+            ref = REFS_ROOT / job["split"] / f"{job['speaker_id']}.wav"
             sentence = job["text"][0].upper() + job["text"][1:] + "."
             wav = model.generate(
                 sentence,
@@ -207,7 +214,16 @@ def qa() -> None:
         wer = word_error_rate(ref, hyp)
         verbs = _MEDIA_VERBS.get(r["label"])
         verb_ok = verbs is None or (_first_verb(hyp, verbs) is not None and _first_verb(hyp, verbs) == _first_verb(ref, verbs))
-        r.update(whisper_text=heard, wer=f"{wer:.3f}", qa_pass=str(wer <= QA_MAX_WER and verb_ok))
+        passed = wer <= QA_MAX_WER and verb_ok
+        if BATCH == "slots2":
+            # The slot value is the point of this batch: Whisper must hear the
+            # intended value. WER is looser because "A.M."/"AM"/"in the
+            # morning" transcribe inconsistently.
+            passed = parse_slot(r["label"], heard) == r["slot_value"] and wer <= 0.34
+        elif BATCH == "wakeword":
+            heard_wake = "hey kiwi" in " ".join(hyp)
+            passed = heard_wake if r["label"] == "WAKE" else (not heard_wake and wer <= 0.34)
+        r.update(whisper_text=heard, wer=f"{wer:.3f}", qa_pass=str(passed))
         if i % 500 == 0:
             print(f"qa {i}/{len(rows)}", flush=True)
     out = OUT_ROOT / "manifest.csv"
@@ -227,12 +243,24 @@ def qa() -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("stage", choices=["refs", "synth", "qa", "plan"])
+    parser.add_argument(
+        "--batch",
+        choices=sorted(BATCHES),
+        default="round1",
+        help="Which phrase set to generate (vcm.dataset.sources.targeted_synth.BATCHES): round1 = "
+        "Experiment 31's clips, slots2 = slot-value coverage, wakeword = Hey Kiwi. Each writes to "
+        "its own folder; reference voices are shared.",
+    )
     parser.add_argument("--manifest", type=Path, default=REPO_ROOT / "data/dataset_manifest.csv")
     parser.add_argument("--shard", type=int, default=0)
     parser.add_argument("--num-shards", type=int, default=1)
     parser.add_argument("--limit", type=int, default=None, help="synth: only the first N jobs of this shard (smoke test)")
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
+    global OUT_ROOT, CLIPS_PER_LABEL, BATCH
+    BATCH = args.batch
+    OUT_ROOT = REPO_ROOT / BATCHES[BATCH]["out_dir"]
+    CLIPS_PER_LABEL = BATCHES[BATCH]["clips"]
     if args.stage == "refs":
         build_refs(args.manifest, args.seed)
     elif args.stage == "plan":
