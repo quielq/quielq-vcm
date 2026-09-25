@@ -36,8 +36,8 @@ def timed(fn, n: int) -> float:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--intent-model", type=Path, default=REPO_ROOT / "models/vcm_intent.int8.onnx")
-    parser.add_argument("--wake-model", type=Path, default=REPO_ROOT / "models/kiwi_wakeword.int8.onnx")
+    parser.add_argument("--intent-model", type=Path, default=REPO_ROOT / "models/vcm_intent.onnx")
+    parser.add_argument("--wake-model", type=Path, default=REPO_ROOT / "models/kiwi_wakeword.onnx")
     parser.add_argument("-n", type=int, default=50)
     args = parser.parse_args()
 
