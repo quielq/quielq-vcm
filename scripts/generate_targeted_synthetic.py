@@ -164,6 +164,7 @@ def synth(shard: int, num_shards: int, seed: int, limit: int | None = None) -> N
     t0 = time.time()
     jobs = plan(seed)[shard::num_shards][:limit]
     meta_path = OUT_ROOT / f"synth_shard{shard}.csv"
+    meta_path.parent.mkdir(parents=True, exist_ok=True)
     done = set()
     if meta_path.exists():
         with meta_path.open(newline="") as f:
