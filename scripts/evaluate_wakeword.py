@@ -62,6 +62,20 @@ def main() -> None:
     parser.add_argument("--wake-manifest", type=Path, default=REPO_ROOT / "data/external/wakeword_synth/manifest.csv")
     parser.add_argument("--intent-manifest", type=Path, default=REPO_ROOT / "data/dataset_manifest.csv")
     parser.add_argument("--split", default="test")
+    parser.add_argument(
+        "--extra-wake-manifest",
+        type=Path,
+        action="append",
+        default=[],
+        help="real recordings (scripts/record_wakeword.py); their test-split 'hey kiwi' takes add a "
+        "'false reject (real voice)' column",
+    )
+    parser.add_argument(
+        "--max-false-wakes-per-hour",
+        type=float,
+        default=1.0,
+        help="false wake-up budget for the suggested threshold",
+    )
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = parser.parse_args()
 
@@ -71,12 +85,18 @@ def main() -> None:
         wake_rows = [r for r in csv.DictReader(f) if r["qa_pass"] == "True" and r["split"] == args.split]
     positives = [r["audio_path"] for r in wake_rows if r["label"] == "WAKE"]
     near_misses = [r["audio_path"] for r in wake_rows if r["label"] == "NOT_WAKE"]
+    real_positives = []
+    for manifest in args.extra_wake_manifest:
+        with manifest.open(newline="") as f:
+            real_positives += [r["audio_path"] for r in csv.DictReader(f) if r["label"] == "WAKE" and r["split"] == "test"]
     intent_rows = [r for r in read_manifest(args.intent_manifest) if r.split == args.split]
     background = [_read(r.audio_path) for r in intent_rows if r.label == "unknown_background"]
 
     # False rejects: best (max) streaming score per clip, clean and in noise.
     quiet = np.zeros(SAMPLE_RATE, dtype="float32")
     per_clip = {"clean": [], "noisy": []}
+    if real_positives:  # as recorded: the room's own noise, no added noise
+        per_clip["real"] = [window_scores(np.concatenate([quiet, _read(p), quiet]), score) for p in real_positives]
     for path in positives:
         clip = np.concatenate([quiet, _read(path), quiet])
         per_clip["clean"].append(window_scores(clip, score))
@@ -97,19 +117,24 @@ def main() -> None:
     hours = len(stream) / SAMPLE_RATE / 3600
     stream_scores = window_scores(stream, score)
     print(f"model: {args.model}")
-    print(f"positives: {len(positives)} held-out 'hey kiwi' clips (test voices); negative stream: {len(negatives)} clips, {hours:.2f} h\n")
+    real_note = f", {len(real_positives)} real recorded takes" if real_positives else ""
+    print(f"positives: {len(positives)} held-out 'hey kiwi' clips (test voices){real_note}; negative stream: {len(negatives)} clips, {hours:.2f} h\n")
 
-    print(f"{'threshold':>9}{'false reject (clean)':>22}{'false reject (10dB noise)':>27}{'false wake-ups':>16}{'per hour':>10}")
+    real_head = f"{'false reject (real voice)':>27}" if real_positives else ""
+    print(f"{'threshold':>9}{'false reject (clean)':>22}{'false reject (10dB noise)':>27}{real_head}{'false wake-ups':>16}{'per hour':>10}")
     results = []
     for t in THRESHOLDS:
         frr = {k: sum(not triggers(s, t) for s in v) / max(len(v), 1) for k, v in per_clip.items()}
         fired = triggers(stream_scores, t)
         results.append((t, frr, fired))
-        print(f"{t:>9.2f}{frr['clean']:>22.1%}{frr['noisy']:>27.1%}{len(fired):>16}{len(fired) / hours:>10.2f}")
+        real_col = f"{frr['real']:>27.1%}" if real_positives else ""
+        print(f"{t:>9.2f}{frr['clean']:>22.1%}{frr['noisy']:>27.1%}{real_col}{len(fired):>16}{len(fired) / hours:>10.2f}")
 
-    ok = [r for r in results if len(r[2]) / hours <= 0.5]
-    chosen = min(ok, key=lambda r: (r[1]["noisy"], r[1]["clean"])) if ok else results[-1]
-    print(f"\nsuggested threshold: {chosen[0]} (lowest noisy false-reject rate with <= 0.5 false wake-ups/hour)")
+    budget = args.max_false_wakes_per_hour
+    ok = [r for r in results if len(r[2]) / hours <= budget]
+    key = "real" if real_positives else "noisy"
+    chosen = min(ok, key=lambda r: (r[1][key], r[1]["noisy"], r[1]["clean"])) if ok else results[-1]
+    print(f"\nsuggested threshold: {chosen[0]} (lowest {key} false-reject rate with <= {budget} false wake-ups/hour)")
     hop = int(HOP_S * SAMPLE_RATE)
     culprits = Counter(owner[min(i * hop + int(0.75 * SAMPLE_RATE), len(owner) - 1)] for i in chosen[2])
     print(f"false wake-ups at that threshold, by clip: {culprits.most_common(15)}")
