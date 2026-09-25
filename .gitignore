@@ -37,3 +37,6 @@ logs/
 
 # scripts/demo_infer.py --debug output — local diagnostic recordings
 debug_recordings/
+
+# macOS Finder metadata
+.DS_Store
