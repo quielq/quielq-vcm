@@ -6,6 +6,7 @@ Runs the same way on the Raspberry Pi (USB mic, over SSH) and on a laptop
 
     python scripts/vcm_listen.py
     python scripts/vcm_listen.py --trigger button     # push-to-talk instead (spacebar / GPIO 17)
+    python scripts/vcm_listen.py --server http://127.0.0.1:8000   # act on commands (vcm.home.server)
 
 After the wake word fires, it records until you stop talking (0.7 s below
 the speech level, or 5 s max), then classifies. Every result prints with
@@ -50,7 +51,22 @@ def record_command(chunks: "queue.Queue[np.ndarray]", lead_in: np.ndarray) -> np
     return np.concatenate(audio)
 
 
-def report(model: OnnxIntentModel, audio: np.ndarray, t_end: float) -> None:
+def send_to_server(server: str, intent: str, slot: str | None, confidence: float) -> None:
+    """POST the command to vcm.home.server, which acts on it, speaks the
+    reply and updates the dashboard. Standard library only (urllib)."""
+    import json
+    import urllib.request
+
+    body = json.dumps({"intent": intent, "slot": slot, "confidence": round(confidence, 3), "source": "voice"}).encode()
+    request = urllib.request.Request(f"{server.rstrip('/')}/api/command", data=body, headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            print(f"  home: {json.loads(response.read()).get('reply', '')}")
+    except OSError as exc:
+        print(f"  (home server unreachable at {server}: {exc})")
+
+
+def report(model: OnnxIntentModel, audio: np.ndarray, t_end: float, server: str | None = None) -> None:
     level = speech_level(audio)
     if level < SILENCE_THRESHOLD:
         print(f"  (silence, speech level={level:.4f} — skipped)")
@@ -61,6 +77,8 @@ def report(model: OnnxIntentModel, audio: np.ndarray, t_end: float) -> None:
     slot = f"  {pred.slot_value} ({pred.slot_confidence:.2f})" if pred.slot_value else ""
     verdict = "didn't catch that, please repeat" if pred.confidence < REJECT_THRESHOLD else "->"
     print(f"  {verdict} {pred.intent} ({pred.confidence:.2f}){slot}   [model {ms:.0f} ms, {time.perf_counter() - t_end:.2f} s after end of command]")
+    if server and pred.confidence >= REJECT_THRESHOLD:
+        send_to_server(server, pred.intent, pred.slot_value, pred.confidence)
 
 
 def main() -> None:
@@ -71,6 +89,11 @@ def main() -> None:
     parser.add_argument("--trigger", choices=["wakeword", "button"], default="wakeword")
     parser.add_argument("--device", default=None, help="sounddevice input device (name or index); default: system default")
     parser.add_argument("--show-scores", action="store_true", help="print the wake-word score continuously (tuning)")
+    parser.add_argument(
+        "--server",
+        default=None,
+        help="home server URL (python -m vcm.home.server) to act on commands, e.g. http://127.0.0.1:8000",
+    )
     args = parser.parse_args()
 
     import sounddevice as sd
@@ -86,7 +109,7 @@ def main() -> None:
         print("Hold the button (spacebar on a Mac) and speak. Ctrl+C to quit.")
         while True:
             audio = record_while_held(button)
-            report(model, audio, time.perf_counter())
+            report(model, audio, time.perf_counter(), args.server)
 
     detector = WakeWordDetector(onnx_scorer(args.wake_model), threshold=args.wake_threshold)
     chunks: queue.Queue[np.ndarray] = queue.Queue()
@@ -107,7 +130,7 @@ def main() -> None:
                     print(f"\n[wake word, score {detector.last_score:.2f}] listening...")
                     t_wake = time.perf_counter()
                     audio = record_command(chunks, lead_in=np.zeros(0, dtype="float32"))
-                    report(model, audio, time.perf_counter())
+                    report(model, audio, time.perf_counter(), args.server)
                     print(f"  ({time.perf_counter() - t_wake:.1f} s from wake word to result)")
                     detector.reset()
                     while not chunks.empty():  # drop audio queued while classifying

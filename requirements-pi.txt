@@ -5,3 +5,5 @@
 numpy
 sounddevice
 onnxruntime
+# home server integrations (Spotify, weather, phone bridge)
+requests
