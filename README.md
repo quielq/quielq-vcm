@@ -66,7 +66,10 @@ step from a fresh clone, including expected output.
 ("Hey Kiwi" wake word → command → intent + slot value) on a Raspberry Pi 5
 over SSH, with no monitor: flashing, microphone checks, benchmarking,
 field-testing the wake word, and starting on boot. The same
-`scripts/vcm_listen.py` runs on a laptop for testing. Open work is
+`scripts/vcm_listen.py` runs on a laptop for testing. Commands act through
+`vcm.home.server`, which also serves a live web dashboard (virtual lamp and
+thermostat, reminders, timers, alarms, music, calls): see DEPLOYMENT.md
+step 8b. Open work is
 tracked in **[TODO.md](TODO.md)**.
 
 ## Training

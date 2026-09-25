@@ -33,11 +33,13 @@ command takes ~3.5 ms and the wake word uses ~1% of one core).
 
 | What | Memory |
 |---|---:|
-| Our process, peak (wake word listening + commands) | **~96 MB** (measured) |
+| Voice pipeline, peak (wake word listening + commands) | **~96 MB** (measured) |
 | of which the two models themselves | ~8.5 MB |
+| Home server + dashboard (`vcm.home.server`, step 8b) | **~30 MB** (measured) |
 | Raspberry Pi OS Lite (64-bit), idle, including SSH | ~60–100 MB (typical; confirm with `free -m`, step 6) |
-| **Total needed** | **~150–200 MB**, so plan for **~250 MB** with headroom |
-| **Smallest workable board** | **512 MB** (Pi Zero 2 W, Pi 3 A+): about half of it stays free |
+| raspotify (Spotify speaker), if used | ~20–40 MB (typical, not measured) |
+| **Total needed** | **~200–270 MB**, so plan for **~300 MB** with headroom |
+| **Smallest workable board** | **512 MB** (Pi Zero 2 W, Pi 3 A+): about 40% of it stays free |
 
 So any current Raspberry Pi with 512 MB or more has enough memory; with
 this runtime, the limit is the CPU architecture (64-bit ARM, for
@@ -201,6 +203,77 @@ Compare these with the offline estimates in EXPERIMENTS.md. If false
 wake-ups come mostly from one kind of audio, save a sample (step 5's
 `arecord`) and add it to the wake-word training negatives.
 
+## 8b. Actions and the web dashboard
+
+Recognizing a command is half the job; `vcm.home.server` acts on it. It
+runs the action (music, lamp, timers, reminders, calls...), speaks the
+reply, and serves a **live dashboard** showing the virtual lamp and
+thermostat, reminders, timers, alarms, music, calls and a command log.
+
+```bash
+# terminal 1 (tmux window): the home server
+.venv/bin/python -m vcm.home.server            # --no-speak to stay silent
+# terminal 2: the voice loop, sending each command to it
+.venv/bin/python scripts/vcm_listen.py --server http://127.0.0.1:8000
+```
+Open **http://kiwi.local:8000** on your laptop or phone (same Wi-Fi). The
+dashboard also has a "Simulate a command" box, so every action can be
+tested without speaking. On a Mac, the same two commands work with
+`http://127.0.0.1:8000`.
+
+The server has **no login**: anyone on the same network can open it.
+Keep it on your home network (TODO.md).
+
+What each command does, and what it needs in `configs/settings.toml`:
+
+| Commands | Action | Setup |
+|---|---|---|
+| LIGHT_ON/OFF, BRIGHTNESS, COLOR, TEMPERATURE | Virtual lamp / thermostat on the dashboard | none; `[xiaomi]` also drives a real bulb |
+| TIMER, ALARM, CREATE/LIST_REMINDERS | Scheduled / stored on the device, spoken alerts | none |
+| TIME | System clock | none |
+| WEATHER | OpenWeatherMap | `[weather] api_key` (free) |
+| PLAY_MUSIC, PAUSE, STOP, NEXT | Spotify Connect; local files if Spotify isn't available | `[spotify]` (Premium) and/or `[music] media_dir` + `mpv` |
+| VOLUME_UP/DOWN | The speaker's volume (USB or Bluetooth) | none |
+| CALL, MESSAGE | Your iPhone, through your Mac | `[phone]` + the Mac bridge; otherwise simulated |
+
+**Spotify (needs Premium).**
+1. Create an app at <https://developer.spotify.com/dashboard> with the
+   redirect URI `http://127.0.0.1:8888/callback` and "Web API" ticked.
+2. On the **Mac**, run
+   `python scripts/spotify_auth.py --client-id <id> --client-secret <secret>`,
+   log in, and paste the printed `[spotify]` block into `configs/settings.toml`
+   on the Mac and on the Pi.
+3. Make the Pi a Spotify speaker with raspotify (a packaged librespot,
+   <https://github.com/dtcooper/raspotify>; read its install script before
+   piping it to a shell):
+   ```bash
+   curl -sL https://dtcooper.github.io/raspotify/install.sh | sh
+   sudo sed -i 's/^#\?LIBRESPOT_NAME=.*/LIBRESPOT_NAME="kiwi"/' /etc/raspotify/conf
+   sudo systemctl restart raspotify
+   ```
+   Then set `device_name = "kiwi"` in `[spotify]`. While testing on the Mac,
+   leave `device_name` empty: commands then control your Spotify app.
+
+**Calls and messages via your Mac.**
+1. On the Mac, sign Messages in to your Apple ID and enable **iPhone >
+   Settings > Phone > Calls on Other Devices** for the Mac (plus **Text
+   Message Forwarding** for SMS to non-iPhones).
+2. Start the bridge on the Mac with a secret of your choice:
+   `python scripts/mac_phone_bridge.py --token <secret>` (add `--dry-run`
+   first to test without sending anything).
+3. In the device's `configs/settings.toml`, set `[phone] bridge_url`
+   (`http://<mac-name>.local:8765` from the Pi, `http://127.0.0.1:8765` on
+   the Mac), `bridge_token = "<secret>"`, and `contacts = { Mom = "+63..." }`.
+
+Messages send automatically. Calls open macOS's call prompt, where one click
+on **Call** is needed (macOS doesn't allow fully automatic calls). The first
+message triggers a macOS prompt allowing Terminal to control Messages. The
+Mac must be awake. Other phone routes are in TODO.md.
+
+**Speaker.** Plug in a USB speaker, or pair a Bluetooth one over SSH with
+`bluetoothctl` (`scan on`, `pair <MAC>`, `trust <MAC>`, `connect <MAC>`).
+Either becomes the default output, and VOLUME_UP/DOWN controls it.
+
 ## 9. Start on boot (optional)
 
 ```bash
@@ -208,18 +281,31 @@ mkdir -p ~/.config/systemd/user
 cat > ~/.config/systemd/user/vcm.service <<'UNIT'
 [Unit]
 Description=VCM voice pipeline (Hey Kiwi)
-After=sound.target
+After=sound.target vcm-home.service
 
 [Service]
 WorkingDirectory=%h/quielq-vcm
-ExecStart=%h/quielq-vcm/.venv/bin/python scripts/vcm_listen.py
+ExecStart=%h/quielq-vcm/.venv/bin/python scripts/vcm_listen.py --server http://127.0.0.1:8000
+Restart=always
+
+[Install]
+WantedBy=default.target
+UNIT
+cat > ~/.config/systemd/user/vcm-home.service <<'UNIT'
+[Unit]
+Description=VCM home server and dashboard
+After=network-online.target
+
+[Service]
+WorkingDirectory=%h/quielq-vcm
+ExecStart=%h/quielq-vcm/.venv/bin/python -m vcm.home.server
 Restart=always
 
 [Install]
 WantedBy=default.target
 UNIT
 systemctl --user daemon-reload
-systemctl --user enable --now vcm
+systemctl --user enable --now vcm-home vcm
 sudo loginctl enable-linger $USER      # keep user services running without an SSH login
 journalctl --user -u vcm -f             # follow the output
 ```
@@ -228,7 +314,7 @@ journalctl --user -u vcm -f             # follow the output
 
 ```bash
 cd ~/quielq-vcm && git pull          # or rsync from the laptop, as in step 4
-systemctl --user restart vcm         # if you set up step 9
+systemctl --user restart vcm-home vcm   # if you set up step 9
 ```
 
 ## Troubleshooting
