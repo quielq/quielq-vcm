@@ -222,8 +222,10 @@ def qa() -> None:
             # morning" transcribe inconsistently.
             passed = parse_slot(r["label"], heard) == r["slot_value"] and wer <= 0.34
         elif BATCH == "wakeword":
+            # A negative only has to not sound like the wake word; a WER check
+            # rejected most two-word negatives over a single misheard name.
             heard_wake = "hey kiwi" in " ".join(hyp)
-            passed = heard_wake if r["label"] == "WAKE" else (not heard_wake and wer <= 0.34)
+            passed = heard_wake if r["label"] == "WAKE" else not heard_wake
         r.update(whisper_text=heard, wer=f"{wer:.3f}", qa_pass=str(passed))
         if i % 500 == 0:
             print(f"qa {i}/{len(rows)}", flush=True)
