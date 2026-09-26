@@ -1,7 +1,7 @@
 """The home server: receives recognized commands, runs them, serves the dashboard.
 
     python -m vcm.home.server [--port 8000] [--no-speak]
-    open http://127.0.0.1:8000 (or http://kiwi.local:8000 from another device)
+    open http://127.0.0.1:8000 (or http://raspberrypi.local:8000 from another device)
 
 Endpoints:
 - POST /api/command {intent, slot?, confidence?, source?} -> {reply}. What
