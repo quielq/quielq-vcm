@@ -6,6 +6,10 @@ everything happens over SSH from your laptop. For the rest of the device
 (pushbutton wiring, Sense HAT, lights, TTS, music), see
 [TESTING.md Part 3](TESTING.md#part-3--raspberry-pi-5-hardware-setup-and-testing).
 
+**Already set up? [STARTUP.md](STARTUP.md)** is the short runbook for
+starting everything (what runs on the Pi, the Mac and the iPhone) and the
+problems hit so far.
+
 What runs on the Pi is two small ONNX files (fp32), with no torch:
 
 | Model | File | Size | Job |
@@ -205,12 +209,16 @@ free -m                      # "used" with nothing of ours running = the OS base
 ```bash
 tmux new -s kiwi
 cd ~/quielq-vcm
-.venv/bin/python scripts/vcm_listen.py --device "USB PnP"
+.venv/bin/python scripts/vcm_listen.py
 ```
 
-`--device` matches by name, so it keeps working when the card number
-changes. A numeric index from `sd.query_devices()` also works, but like
-the card number it can shift.
+Without `--device` it uses the system default input. On Pi OS that's
+PipeWire, which picks the USB mic and delivers 16 kHz itself.
+`--device "USB PnP"` selects the mic by name, so it keeps working when the
+card number changes. That raw device only records at 44.1/48 kHz, so
+`vcm_listen.py` records at 48 kHz and resamples to 16 kHz
+(`vcm/audio/resample.py`). A numeric index from `sd.query_devices()`
+also works, but like the card number it can shift.
 
 Say **"Hey Kiwi"**, pause briefly, then say a command. Each result prints
 the intent, the slot value, the confidence, and timing:
@@ -408,4 +416,7 @@ systemctl --user restart vcm-home vcm   # if you set up step 9
 | Never wakes | Run with `--show-scores`. If scores stay low even up close, the mic level is too low (step 5). |
 | Wakes on everything | Raise `--wake-threshold`; check that the value matches EXPERIMENTS.md's recommendation. |
 | Slow, or results lag | `vcgencmd get_throttled` (anything other than `0x0` means under-voltage or heat throttling); `vcgencmd measure_temp`; use the official 27 W power supply. |
+| `Invalid sample rate [PaErrorCode -9997]` | The mic's raw device can't record at 16 kHz. Current `vcm_listen.py` resamples; update the Pi, or leave out `--device` to use PipeWire's default input. |
+| `Permission denied (publickey,password)` over SSH | No key installed on the Pi: run `ssh-copy-id raspberrypi.local` on the laptop once. |
+| No spoken replies | No speaker: `pactl list short sinks` only shows `auto_null`. Plug in or pair one (step 8b). |
 | `Illegal instruction` on import | Make sure the OS is 64-bit: `uname -m` should print `aarch64`. |
