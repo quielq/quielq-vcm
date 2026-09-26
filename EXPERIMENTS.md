@@ -2116,3 +2116,46 @@ demo, pending a live retest. It matches 29b on real speech and covers
 every schema phrasing, which is what benchmarking is likely to test.
 Keep `exp29b_crnn_trim5s_waveaug_s2.pt` (85.73%) as the best
 real-speech-only checkpoint until the live retest confirms the switch.
+
+## Wake-word selection: "Hey Kiwi"
+
+**Why**: the course requires a wake word instead of the push-to-talk
+button. Candidates were scored for **false-trigger risk** before any model
+was built, with `scripts/wakeword_confusability.py`. It converts each of
+the 62,836 Whisper transcripts of this project's command audio into one
+phoneme stream (CMUdict, across word boundaries) and counts utterances
+containing a stretch within one phoneme edit of the candidate. It also
+counts common English words (wordfreq Zipf ≥ 3) within one edit.
+
+| Wake word | Near-matches per 1,000 commands | Common sound-alikes (freq. per million words) | What collides |
+|---|---:|---:|---|
+| Carina | 0.02 | 2 (8.4) | "screen of"; Serena, Katrina |
+| Crayon | 0.03 | 2 (9.9) | "pray and"; crane, craven |
+| Conan | 0.05 | 7 (40.3) | "phone and"; canon, colon |
+| Cronin | 0.08 | 0 (0.0) | "screen in" |
+| Kernel | 0.33 | 3 (86.0) | "make an alarm", "turn a light"; journal, colonel |
+| **Kiwi** | **0.67** | **2 (5.3)** | "queen", "every week(day)"; pee-wee, kiki |
+| Nini | 1.48 | 7 (22.0) | "we need"; Nina, nanny |
+| Orly | 17.7 | 5 (11.2) | "for me", "for p.m.", "more heat", "your lights" |
+| Corinne | 38.0 | 16 (359) | "temperature in", "current", "weather in" |
+| Ellie | 79.2 | 44 (2,417) | "please", "tell", "only"; any, early, else |
+| Cory | 85.0 | 37 (1,186) | "increase", "decrease", "create" |
+
+For reference on the English half: Alexa has 1 sound-alike (1.3 per
+million), and Siri has 19 (1,160: city, series, sorry).
+
+**Decision: "Hey Kiwi".** It has the fewest everyday-English
+sound-alikes of any candidate and the second-lowest command collision
+rate, which is still ~125× fewer than Cory. It's spelled as it sounds,
+has one pronunciation (including in Filipino English), and isn't a common
+name, unlike Carina, Orly and Nini. It starts with a hard "k" that's easier
+to detect than Alexa's opening vowel, and it's a play on the author's
+surname (Quiwa). Carina scored lower on command collisions but is a
+common name in the Philippines. Cory, the first idea, would have
+triggered on roughly 1 in 12 commands through "increase", "decrease" and
+"create". The collision words become the detector's hard negatives
+(`vcm.dataset.sources.targeted_synth.NOT_WAKE_PHRASES`).
+
+**Limits**: CMUdict is American English, and this is a text proxy for
+false-trigger risk, not a trained detector. The detector's measured false
+wake-ups per hour are in Experiment 33.

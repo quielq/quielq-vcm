@@ -60,6 +60,15 @@ generator-agnostic synthetic-audio QA gate, all in `src/vcm/dataset/`.
 See **[DATASET.md](DATASET.md)** for exact commands to reproduce every
 step from a fresh clone, including expected output.
 
+## Deployment
+
+**[DEPLOYMENT.md](DEPLOYMENT.md)** covers running the voice pipeline
+("Hey Kiwi" wake word → command → intent + slot value) on a Raspberry Pi 5
+over SSH, with no monitor: flashing, microphone checks, benchmarking,
+field-testing the wake word, and starting on boot. The same
+`scripts/vcm_listen.py` runs on a laptop for testing. Open work is
+tracked in **[TODO.md](TODO.md)**.
+
 ## Training
 
 Training runs on a shared DGX node. **[TRAINING.md](TRAINING.md)** is

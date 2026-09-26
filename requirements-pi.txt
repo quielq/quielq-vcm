@@ -1,0 +1,7 @@
+# Runtime for the voice pipeline on the Raspberry Pi (DEPLOYMENT.md): ONNX
+# Runtime instead of torch, and numpy feature extraction (vcm.audio.dsp)
+# instead of librosa, so it fits small boards (Pi Zero 2 W, 512 MB).
+# Install with: pip install -r requirements-pi.txt && pip install --no-deps -e .
+numpy
+sounddevice
+onnxruntime

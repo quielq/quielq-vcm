@@ -121,7 +121,13 @@ class CRNN(nn.Module):
         rnn_hidden: int = 64,
         n_mels: int = 40,
         dropout: float = 0.1,
+        slot_sizes: dict[str, int] | None = None,
     ):
+        """slot_sizes: {intent: number of values} adds one slot-value head per
+        slotted intent (vcm.slots, Experiment 32). Each head has its own
+        attention pooling, so it can focus on where the value is spoken
+        rather than on what makes the intent recognizable. None (default)
+        is the plain intent model."""
         super().__init__()
         self.first_conv = nn.Sequential(
             nn.Conv2d(1, channels, kernel_size=(10, 4), stride=(2, 2), padding=(4, 1)),
@@ -144,6 +150,9 @@ class CRNN(nn.Module):
         self.attention = nn.Linear(2 * rnn_hidden, 1)
         self.dropout = nn.Dropout(dropout)
         self.classifier = nn.Linear(2 * rnn_hidden, num_classes)
+        slot_sizes = slot_sizes or {}
+        self.slot_attention = nn.ModuleDict({k: nn.Linear(2 * rnn_hidden, 1) for k in slot_sizes})
+        self.slot_classifier = nn.ModuleDict({k: nn.Linear(2 * rnn_hidden, n) for k, n in slot_sizes.items()})
 
     def sequence_features(self, x: torch.Tensor) -> torch.Tensor:
         """x: (batch, n_mels, n_frames) -> (batch, time, 2 * rnn_hidden)."""
@@ -167,6 +176,18 @@ class CRNN(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """x: (batch, n_mels, n_frames) -> logits (batch, num_classes)."""
         return self.forward_with_sequence(x)[0]
+
+    def slot_logits(self, seq: torch.Tensor) -> dict[str, torch.Tensor]:
+        """Per-slotted-intent value logits from sequence_features' output."""
+        out = {}
+        for name, attention in self.slot_attention.items():
+            weights = torch.softmax(attention(seq), dim=1)
+            out[name] = self.slot_classifier[name](self.dropout((weights * seq).sum(dim=1)))
+        return out
+
+    def forward_with_slots(self, x: torch.Tensor) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+        logits, seq = self.forward_with_sequence(x)
+        return logits, self.slot_logits(seq)
 
 
 class BCResBlock(nn.Module):

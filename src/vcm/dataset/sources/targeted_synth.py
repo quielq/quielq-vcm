@@ -136,6 +136,8 @@ PHRASES["BRIGHTNESS"] = tuple(t.format(p=p) for t, p in itertools.product(_BRIGH
 
 
 def schema_phrases(label: str) -> tuple[str, ...]:
+    if label not in FIXED_INTENTS and label not in SLOTTED_INTENTS:
+        return ()
     if label in FIXED_INTENTS:
         return tuple(p.lower() for p in FIXED_INTENTS[label])
     slot = SLOTTED_INTENTS[label]
@@ -197,7 +199,7 @@ def word_error_rate(reference: list[str], hypothesis: list[str]) -> float:
     return d[len(hypothesis)] / max(len(reference), 1)
 
 
-def load_manifest(csv_path: Path) -> list[ManifestRow]:
+def load_manifest(csv_path: Path, source: str = "targeted_synth") -> list[ManifestRow]:
     """Rows of scripts/generate_targeted_synthetic.py's manifest that passed QA."""
     rows = []
     with Path(csv_path).open(newline="") as f:
@@ -208,7 +210,7 @@ def load_manifest(csv_path: Path) -> list[ManifestRow]:
                 ManifestRow(
                     audio_path=r["audio_path"],
                     label=r["label"],
-                    source="targeted_synth",
+                    source=source,
                     is_synthetic=True,
                     speaker_id=r["speaker_id"],
                     split=r["split"],
@@ -218,3 +220,120 @@ def load_manifest(csv_path: Path) -> list[ManifestRow]:
 
 
 PHRASES = {label: _with_schema(label, extra) for label, extra in PHRASES.items()}
+
+
+# --- Batch "slots2" (Experiment 32): slot-value coverage ---------------------
+# Every value in vcm.slots.SLOT_VOCAB gets voiced examples. ALARM had none
+# beyond the schema's 3 times; BRIGHTNESS lacked 25%/75%. Each phrase is
+# (text, slot value), and QA checks that Whisper's transcript parses to
+# that value, not just a low WER.
+_HOUR_WORDS = ("twelve", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve")
+_ALARM_TEMPLATES = (
+    "alarm {t}",
+    "wake me up at {t}",
+    "set an alarm for {t}",
+    "set my alarm for {t}",
+    "alarm at {t}",
+    "set the alarm to {t}",
+    "can you set an alarm for {t}",
+)
+
+
+def _alarm_spoken_forms(value: str) -> list[str]:
+    """"6:30 AM" -> ["six thirty AM", "six thirty in the morning"]; on-the-hour
+    PM evenings also get "... in the evening" / "... at night"."""
+    clock, meridiem = value.split()
+    hour, minute = (int(x) for x in clock.split(":"))
+    spoken = _HOUR_WORDS[hour] + (" thirty" if minute == 30 else "")
+    forms = [f"{spoken} {meridiem}"]
+    if meridiem == "AM" and 5 <= hour <= 11:
+        forms.append(f"{spoken} in the morning")
+    if meridiem == "PM" and 5 <= hour <= 8:
+        forms.append(f"{spoken} in the evening")
+    if meridiem == "PM" and 8 <= hour <= 11:
+        forms.append(f"{spoken} at night")
+    return forms
+
+
+_NUM_WORDS = {10: "ten", 15: "fifteen", 20: "twenty", 25: "twenty five", 30: "thirty", 40: "forty", 45: "forty five",
+              50: "fifty", 60: "sixty", 70: "seventy", 75: "seventy five", 80: "eighty", 90: "ninety", 100: "one hundred"}  # fmt: skip
+
+
+def _duration_spoken(label: str) -> str:
+    m = re.fullmatch(r"(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?", label)
+    h, mi, se = (int(x) if x else 0 for x in m.groups())
+    parts = []
+    small = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six", 7: "seven", 8: "eight", 12: "twelve"}
+    word = lambda n: small.get(n) or _NUM_WORDS[n]  # noqa: E731
+    if h:
+        parts.append(f"{word(h)} hour" + ("s" if h > 1 else ""))
+    if mi:
+        parts.append(f"{word(mi)} minute" + ("s" if mi > 1 else ""))
+    if se:
+        parts.append(f"{word(se)} seconds")
+    return " and ".join(parts)
+
+
+def _slots2_phrases() -> dict[str, tuple[tuple[str, str], ...]]:
+    from vcm.slots import SLOT_VOCAB
+
+    timer = tuple(
+        (t.format(d=_duration_spoken(v)), v) for v in SLOT_VOCAB["TIMER"] for t in _TIMER_TEMPLATES[:6]
+    )
+    alarm = tuple((t.format(t=form), v) for v in SLOT_VOCAB["ALARM"] for form in _alarm_spoken_forms(v) for t in _ALARM_TEMPLATES)
+    brightness = tuple(
+        (t.format(p=_NUM_WORDS[int(v[:-1])]), v)
+        for v in SLOT_VOCAB["BRIGHTNESS"]
+        for t in _BRIGHTNESS_TEMPLATES + ("make the lights {p} percent", "turn the brightness to {p} percent")
+    )
+    color = tuple((t.format(c=c), c) for c in SLOT_VOCAB["COLOR"] for t in _COLOR_TEMPLATES)
+    return {"ALARM": alarm, "TIMER": timer, "BRIGHTNESS": brightness, "COLOR": color}
+
+
+# --- Batch "wakeword" (Hey Kiwi) ----------------------------------------------
+# Positives, plus hard negatives taken from the wake-word confusability
+# analysis (TODO.md): the transcript near-matches ("queen", "every week"),
+# English sound-alikes ("pee-wee", "kiki"), "kiwi" without "hey", and
+# other "hey <name>" greetings, so the detector must hear the whole phrase.
+WAKE_PHRASES = ("hey kiwi", "hey, kiwi", "hey kiwi!")
+NOT_WAKE_PHRASES = (
+    "kiwi", "a kiwi", "hey", "queen", "hey queen", "every week", "every weekday", "like a week", "week we",
+    "pee-wee", "hey pee-wee", "kiki", "hey kiki", "hey key", "hey kid", "hey kitty", "hey Kevin", "hey Kimmy",
+    "hey quickly", "hey sweetie", "hey Siri", "hey Alexa", "hey Mikey", "hey Ricky", "heavy week", "hey, we need",
+    "hey, weekly", "hey Tiwi", "hey Wiwi", "okay", "he keeps", "hey keep it",
+)  # fmt: skip
+
+BATCHES = {
+    "round1": {
+        "out_dir": "data/external/targeted_synth",
+        "source": "targeted_synth",
+        "phrases": {label: tuple((p, "") for p in phrases) for label, phrases in PHRASES.items()},
+        "clips": CLIPS_PER_LABEL,
+    },
+    "slots2": {
+        "out_dir": "data/external/targeted_synth_slots2",
+        "source": "targeted_synth_slots2",
+        "phrases": None,  # built lazily by batch_phrases (needs vcm.slots)
+        "clips": {
+            "train": {"ALARM": 1400, "TIMER": 600, "BRIGHTNESS": 500, "COLOR": 300},
+            "test": {"ALARM": 200, "TIMER": 100, "BRIGHTNESS": 80, "COLOR": 50},
+        },
+    },
+    "wakeword": {
+        "out_dir": "data/external/wakeword_synth",
+        "source": "wakeword_synth",
+        "phrases": {
+            "WAKE": tuple((p, "") for p in WAKE_PHRASES),
+            "NOT_WAKE": tuple((p, "") for p in NOT_WAKE_PHRASES),
+        },
+        "clips": {"train": {"WAKE": 3000, "NOT_WAKE": 2000}, "test": {"WAKE": 400, "NOT_WAKE": 300}},
+    },
+}
+
+
+def batch_phrases(batch: str) -> dict[str, tuple[tuple[str, str], ...]]:
+    """label -> ((text, slot_value), ...) for a generation batch. round1 keeps
+    exactly its original phrase order, so its job plan (and resumable
+    generation) is unchanged."""
+    phrases = BATCHES[batch]["phrases"]
+    return _slots2_phrases() if phrases is None else phrases

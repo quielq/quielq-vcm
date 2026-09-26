@@ -17,7 +17,10 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest"]
 rpi = ["gpiozero", "sense-hat"]
-train = ["torch"]
+# ONNX Runtime inference: what the Raspberry Pi needs instead of torch (DEPLOYMENT.md).
+deploy = ["onnxruntime"]
+# Exporting/quantizing a trained checkpoint to ONNX (scripts/export_onnx.py).
+train = ["torch", "onnx", "onnxruntime", "onnxscript"]
 
 [build-system]
 requires = ["setuptools>=68"]

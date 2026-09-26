@@ -68,3 +68,23 @@ def test_unrelated_text_is_unmatched():
     assert classify("What's the weather like today?") is None
     assert classify("Set an alarm for six AM") is None
     assert classify("") is None
+
+
+def test_speaker_split_uses_worker_id_and_is_deterministic():
+    from vcm.dataset.sources.snips_lights import speaker_key, speaker_split
+
+    a = "snips_{'age': 26, 'country': 'United States', 'gender': 'M', 'id': '546bfda8'}"
+    b = "snips_{'age': 27, 'country': 'Canada', 'gender': 'M', 'id': '546bfda8'}"  # same person
+    assert speaker_key(a) == "546bfda8"
+    assert speaker_split(a) == speaker_split(b)
+    assert speaker_split(a) in ("train", "val", "test")
+
+
+def test_speaker_split_is_roughly_80_10_10():
+    from collections import Counter
+
+    from vcm.dataset.sources.snips_lights import speaker_split
+
+    counts = Counter(speaker_split(f"snips_{{'id': 'w{i}'}}") for i in range(2000))
+    assert 0.75 < counts["train"] / 2000 < 0.85
+    assert 0.07 < counts["test"] / 2000 < 0.13
