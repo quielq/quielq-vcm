@@ -161,20 +161,28 @@ python3 -m venv .venv
 
 Plug in the USB microphone, then check that it's seen:
 ```bash
-arecord -l                                  # note the card number, e.g. "card 1"
+arecord -l                                  # note the card number, e.g. "card 2: Device [USB PnP Sound Device]"
 .venv/bin/python -c "import sounddevice as sd; print(sd.query_devices())"
 ```
 
+**The card number is not fixed.** It depends on what else the Pi has
+(HDMI audio, headphone jack) and can change after a reboot or when the mic
+moves to another USB port. On this Pi it's card 2. Check `arecord -l`
+again whenever a command below fails, and replace `N` with that number.
+
 Record 3 seconds and copy it back to your laptop to listen, since the Pi
-has no screen or speaker. Use the card number from `arecord -l`:
+has no screen or speaker:
 ```bash
-arecord -D plughw:1,0 -f S16_LE -r 16000 -c 1 -d 3 ~/mictest.wav     # on the Pi
-scp raspberrypi.local:~/mictest.wav . && afplay mictest.wav        # on the Mac
+arecord -D plughw:N,0 -f S16_LE -r 16000 -c 1 -d 3 ~/mictest.wav     # on the Pi
+scp quielq@raspberrypi.local:~/mictest.wav . && afplay mictest.wav   # on the Mac, not in the SSH session
 ```
 
-If it's too quiet, raise the capture level with `alsamixer -c 1` (`F4`
+If it's too quiet, raise the capture level with `alsamixer -c N` (`F4`
 switches to capture controls, arrow keys adjust). If you had to lower the
 silence gate on the laptop to be heard, fix the input level here instead.
+If it sounds like static or knocking, lower the capture level (clipping),
+move the mic to a black USB 2 port instead of a blue USB 3 one, and
+check `vcgencmd get_throttled` prints `0x0` (no undervoltage).
 
 ## 6. Benchmark (no microphone needed)
 
@@ -197,8 +205,12 @@ free -m                      # "used" with nothing of ours running = the OS base
 ```bash
 tmux new -s kiwi
 cd ~/quielq-vcm
-.venv/bin/python scripts/vcm_listen.py --device <mic index from step 5>
+.venv/bin/python scripts/vcm_listen.py --device "USB PnP"
 ```
+
+`--device` matches by name, so it keeps working when the card number
+changes. A numeric index from `sd.query_devices()` also works, but like
+the card number it can shift.
 
 Say **"Hey Kiwi"**, pause briefly, then say a command. Each result prints
 the intent, the slot value, the confidence, and timing:
