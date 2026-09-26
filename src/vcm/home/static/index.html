@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kiwi Home</title>
+<style>
+  :root {
+    --bg: #f4f5f2; --card: #ffffff; --ink: #1d2320; --muted: #6b736e; --line: #e2e5e0;
+    --accent: #3f8f4f; --accent-ink: #ffffff; --warn: #b3541e; --chip: #eef3ec;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #141816; --card: #1d2320; --ink: #e8ece9; --muted: #98a19b; --line: #2d3531;
+      --accent: #6fbf7e; --accent-ink: #0f1411; --warn: #e8935b; --chip: #25302a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--ink); }
+  header { display: flex; align-items: center; gap: 12px; padding: 16px 20px; flex-wrap: wrap; }
+  header h1 { margin: 0; font-size: 20px; }
+  .status { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); }
+  .dot.live { background: var(--accent); }
+  main { display: grid; gap: 14px; padding: 0 16px 24px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); max-width: 1200px; margin: 0 auto; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; min-width: 0; }
+  .card h2 { margin: 0 0 10px; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .wide { grid-column: 1 / -1; }
+  .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .big { font-size: 28px; font-weight: 650; }
+  .muted { color: var(--muted); font-size: 13px; }
+  button, select, input { font: inherit; color: inherit; }
+  button { background: var(--chip); border: 1px solid var(--line); border-radius: 9px; padding: 6px 12px; cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+  select, input[type=text] { background: var(--card); border: 1px solid var(--line); border-radius: 9px; padding: 6px 8px; min-width: 0; }
+  input[type=range] { flex: 1; accent-color: var(--accent); }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-top: 1px solid var(--line); }
+  li:first-child { border-top: 0; }
+  li .grow { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .x { background: none; border: 0; color: var(--muted); padding: 2px 6px; }
+  .lamp { width: 84px; height: 84px; border-radius: 50%; border: 2px solid var(--line); transition: all .25s; flex: none; }
+  .alerts { position: sticky; top: 0; z-index: 2; display: grid; gap: 6px; padding: 0 16px; max-width: 1200px; margin: 0 auto 8px; }
+  .alert { background: var(--warn); color: #fff; border-radius: 10px; padding: 10px 14px; display: flex; gap: 10px; align-items: center; }
+  .alert span { flex: 1; }
+  .alert button { background: rgba(255,255,255,.2); border: 0; color: #fff; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  td, th { text-align: left; padding: 6px 6px; border-top: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; border-top: 0; }
+  .tag { background: var(--chip); border-radius: 6px; padding: 1px 6px; font-size: 12px; white-space: nowrap; }
+  .scroll { overflow-x: auto; }
+  @media (max-width: 480px) { main { padding: 0 10px 20px; } .big { font-size: 24px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>🥝 Kiwi Home</h1>
+  <div class="status"><span class="dot" id="dot"></span><span id="status">connecting…</span></div>
+</header>
+<div class="alerts" id="alerts"></div>
+<main>
+  <section class="card wide">
+    <h2>Simulate a command</h2>
+    <div class="row">
+      <select id="intent" aria-label="intent"></select>
+      <select id="slot" aria-label="slot value"></select>
+      <button class="primary" id="send">Send</button>
+      <span class="muted" id="reply"></span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Lamp</h2>
+    <div class="row">
+      <div class="lamp" id="lamp"></div>
+      <div style="flex:1;min-width:140px">
+        <div class="big" id="lampState">Off</div>
+        <div class="muted" id="lampDetail"></div>
+      </div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button id="lampToggle">Turn on</button>
+      <select id="lampColor" aria-label="color"></select>
+    </div>
+    <div class="row" style="margin-top:8px"><span class="muted">Brightness</span><input type="range" min="0" max="100" step="5" id="lampBright" aria-label="brightness"></div>
+  </section>
+
+  <section class="card">
+    <h2>Thermostat</h2>
+    <div class="big" id="thermoTarget">24°C</div>
+    <div class="muted" id="thermoNow">Room temperature: —</div>
+    <div class="row" style="margin-top:10px"><button id="thermoDown">− 1°</button><button id="thermoUp">+ 1°</button></div>
+  </section>
+
+  <section class="card">
+    <h2>Music</h2>
+    <div class="big" id="musicState">Stopped</div>
+    <div class="muted" id="musicTrack">Nothing playing</div>
+    <div class="row" style="margin-top:10px">
+      <button data-cmd="PLAY_MUSIC">▶ Play</button><button data-cmd="PAUSE">⏸ Pause</button><button data-cmd="NEXT">⏭ Next</button>
+    </div>
+    <div class="row" style="margin-top:8px"><span class="muted">Volume</span><button data-cmd="VOLUME_DOWN">−</button><span id="vol">50%</span><button data-cmd="VOLUME_UP">+</button></div>
+  </section>
+
+  <section class="card">
+    <h2>Timers</h2>
+    <ul id="timers"></ul>
+    <h2 style="margin-top:14px">Alarms</h2>
+    <ul id="alarms"></ul>
+  </section>
+
+  <section class="card">
+    <h2>Reminders</h2>
+    <ul id="reminders"></ul>
+    <div class="row" style="margin-top:8px"><input type="text" id="newReminder" placeholder="Add a reminder" style="flex:1" aria-label="new reminder"><button id="addReminder">Add</button></div>
+  </section>
+
+  <section class="card">
+    <h2>Weather &amp; time</h2>
+    <div class="big" id="clock">--:--</div>
+    <div class="muted" id="weather">Ask "what's the weather?"</div>
+  </section>
+
+  <section class="card">
+    <h2>Calls &amp; messages</h2>
+    <ul id="calls"></ul>
+  </section>
+
+  <section class="card wide">
+    <h2>Command log</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>Time</th><th>Intent</th><th>Value</th><th>Conf.</th><th>Reply</th></tr></thead>
+      <tbody id="log"></tbody>
+    </table></div>
+  </section>
+</main>
+<script>
+const COLORS = {"red":"#ff4d4d","blue":"#4d7dff","green":"#4ccf6a","yellow":"#ffe14d","orange":"#ffa53d","purple":"#a45cff",
+  "pink":"#ff7ac8","white":"#ffffff","warm white":"#ffd9a0","cool white":"#e3edff","cyan":"#4de0ff","magenta":"#ff4de6",
+  "violet":"#8f5cff","teal":"#2cc4b0"};
+const $ = id => document.getElementById(id);
+let state = null, meta = null, skew = 0;
+
+function el(tag, text, cls) { const e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; }
+async function post(path, body) {
+  const r = await fetch(path, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+  return r.json();
+}
+const act = body => post("/api/action", body);
+const cmd = (intent, slot) => post("/api/command", {intent, slot: slot || null, confidence: null, source: "dashboard"})
+  .then(r => { $("reply").textContent = r.reply || r.error || ""; });
+const now = () => Date.now() / 1000 + skew;
+const fmtTime = t => new Date(t * 1000).toLocaleTimeString([], {hour: "numeric", minute: "2-digit"});
+function fmtLeft(s) { s = Math.max(0, Math.round(s)); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60;
+  return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(x).padStart(2, "0"); }
+function list(ul, items, render, empty) { ul.replaceChildren(...(items.length ? items.map(render) : [el("li", empty, "muted")])); }
+function xButton(onClick, label) { const b = el("button", "✕", "x"); b.title = label; b.setAttribute("aria-label", label); b.onclick = onClick; return b; }
+
+function render() {
+  if (!state) return;
+  const L = state.lights, c = COLORS[L.color] || "#ffd9a0";
+  // Brightness scales the glow and a white highlight, not opacity, so dim
+  // colors stay readable on a dark background.
+  const b = L.brightness / 100;
+  $("lamp").style.background = L.on ? `radial-gradient(circle at 38% 35%, #fff ${Math.round(8 + 22 * b)}%, ${c} 62%)` : "transparent";
+  $("lamp").style.filter = L.on ? `brightness(${0.55 + 0.45 * b})` : "none";
+  $("lamp").style.boxShadow = L.on ? `0 0 ${8 + 30 * b}px ${Math.round(2 + 8 * b)}px ${c}` : "none";
+  $("lampState").textContent = L.on ? "On" : "Off";
+  $("lampDetail").textContent = `${L.color}, ${L.brightness}%`;
+  $("lampToggle").textContent = L.on ? "Turn off" : "Turn on";
+  if (document.activeElement !== $("lampBright")) $("lampBright").value = L.brightness;
+  $("lampColor").value = L.color;
+
+  const T = state.thermostat;
+  $("thermoTarget").textContent = `${T.target_c}°C`;
+  $("thermoNow").textContent = `Room temperature: ${T.current_c == null ? "—" : T.current_c.toFixed(1) + "°C"}`;
+
+  const M = state.music;
+  $("musicState").textContent = M.playing ? "Playing" : (M.source ? "Paused" : "Stopped");
+  $("musicTrack").textContent = (M.track || "Nothing playing") + (M.source ? ` · ${M.source}` : "");
+  $("vol").textContent = `${M.volume}%`;
+
+  list($("timers"), state.timers, t => { const li = el("li"); li.append(el("span", t.label, "tag"), el("span", fmtLeft(t.ends_at - now()), "grow"));
+    li.dataset.ends = t.ends_at; li.append(xButton(() => act({action: "timer_cancel", id: t.id}), "Cancel timer")); return li; }, "No timers");
+  list($("alarms"), state.alarms, a => { const li = el("li"); li.append(el("span", a.time, "grow"),
+    el("span", new Date(a.next_at * 1000).toLocaleDateString([], {weekday: "short"}), "muted"),
+    xButton(() => act({action: "alarm_delete", id: a.id}), "Delete alarm")); return li; }, "No alarms");
+  list($("reminders"), state.reminders, r => { const li = el("li"), span = el("span", r.text, "grow");
+    span.contentEditable = "true"; span.setAttribute("aria-label", "reminder text");
+    span.onblur = () => { const t = span.textContent.trim(); if (t && t !== r.text) act({action: "reminder_edit", id: r.id, text: t}); };
+    span.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); span.blur(); } };
+    li.append(span, xButton(() => act({action: "reminder_delete", id: r.id}), "Delete reminder")); return li; }, "No reminders");
+  list($("calls"), [...state.calls].reverse().slice(0, 6), c => { const li = el("li");
+    li.append(el("span", c.kind === "call" ? "📞" : "💬"), el("span", `${c.contact}${c.text ? ": " + c.text : ""}`, "grow"), el("span", fmtTime(c.at), "muted"));
+    li.title = c.status; return li; }, "No calls or messages");
+  $("weather").textContent = state.weather ? `${state.weather.text} (as of ${fmtTime(state.weather.updated)})` : 'Ask "what\'s the weather?"';
+
+  $("log").replaceChildren(...[...state.log].reverse().slice(0, 15).map(e => { const tr = el("tr");
+    tr.append(el("td", fmtTime(e.at)), el("td", e.intent), el("td", e.slot || ""), el("td", e.confidence == null ? e.source : e.confidence.toFixed(2)), el("td", e.reply));
+    return tr; }));
+  $("alerts").replaceChildren(...state.alerts.slice(-3).map(a => { const d = el("div", null, "alert");
+    const b = el("button", "Dismiss"); b.onclick = () => act({action: "alert_dismiss", id: a.id}); d.append(el("span", "⏰ " + a.text), b); return d; }));
+}
+
+function tick() {
+  $("clock").textContent = new Date().toLocaleTimeString([], {hour: "numeric", minute: "2-digit"});
+  document.querySelectorAll("#timers li[data-ends]").forEach(li => li.children[1].textContent = fmtLeft(li.dataset.ends - now()));
+}
+
+function setupSlots() {
+  const intent = $("intent").value, values = (meta.slots || {})[intent] || [];
+  $("slot").replaceChildren(el("option", values.length ? "(no value)" : "—"), ...values.map(v => { const o = el("option", v); o.value = v; return o; }));
+  $("slot").options[0].value = ""; $("slot").disabled = !values.length;
+}
+
+async function init() {
+  meta = await (await fetch("/api/meta")).json();
+  $("intent").replaceChildren(...meta.intents.map(i => el("option", i)));
+  $("intent").onchange = setupSlots; setupSlots();
+  $("lampColor").replaceChildren(...Object.keys(COLORS).map(c => el("option", c)));
+  $("send").onclick = () => cmd($("intent").value, $("slot").value);
+  document.querySelectorAll("[data-cmd]").forEach(b => b.onclick = () => cmd(b.dataset.cmd));
+  $("lampToggle").onclick = () => act({action: "lights", on: !state.lights.on});
+  $("lampColor").onchange = e => act({action: "lights", color: e.target.value, on: true});
+  $("lampBright").onchange = e => act({action: "lights", brightness: +e.target.value, on: true});
+  $("thermoUp").onclick = () => act({action: "thermostat", target_c: state.thermostat.target_c + 1});
+  $("thermoDown").onclick = () => act({action: "thermostat", target_c: state.thermostat.target_c - 1});
+  const add = () => { const t = $("newReminder").value.trim(); if (t) act({action: "reminder_add", text: t}).then(() => $("newReminder").value = ""); };
+  $("addReminder").onclick = add; $("newReminder").onkeydown = e => { if (e.key === "Enter") add(); };
+
+  const connect = () => {
+    const es = new EventSource("/api/events");
+    es.onopen = () => { $("dot").className = "dot live"; $("status").textContent = "live"; };
+    es.onmessage = m => { state = JSON.parse(m.data); skew = state.now - Date.now() / 1000; render(); };
+    es.onerror = () => { $("dot").className = "dot"; $("status").textContent = "reconnecting…"; };
+  };
+  connect(); setInterval(tick, 1000); tick();
+}
+init();
+</script>
+</body>
+</html>

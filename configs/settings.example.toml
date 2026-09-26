@@ -32,3 +32,23 @@ storage_path = "data/reminders.json"
 [tts]
 # "mac_say" (default, zero-install on macOS), "espeak_ng", or "piper"
 backend = "mac_say"
+
+[spotify]
+# Needs Spotify Premium. Create an app at developer.spotify.com (redirect URI
+# http://127.0.0.1:8888/callback), then run scripts/spotify_auth.py to get
+# the refresh_token. device_name: the raspotify name on the Pi ("kiwi");
+# leave empty to control whichever Spotify app is active (e.g. on your Mac).
+client_id = ""
+client_secret = ""
+refresh_token = ""
+device_name = ""
+default_uri = ""   # optional playlist/album URI to start when nothing is playing
+
+[phone]
+# CALL / MESSAGE go through scripts/mac_phone_bridge.py on your Mac.
+# Empty bridge_url = calls/messages are simulated on the dashboard.
+bridge_url = ""          # e.g. "http://127.0.0.1:8765", or "http://<mac-name>.local:8765" from the Pi
+bridge_token = ""        # same value as the bridge's --token
+default_contact = "Mom"
+default_message = "Hi! This is a message from my voice assistant."
+contacts = { Mom = "" }  # e.g. { Mom = "+639171234567" }

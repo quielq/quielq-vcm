@@ -23,6 +23,65 @@ a button, and the target device is a Raspberry Pi 5 with a model under
   Experiment 32's slot accuracy (83.4%) at 84.8% intent. If the seeds
   hold at ~85%, ship it instead of the frozen model (+6 points slots).
 
+## Actions and dashboard (built: `vcm/home/`, DEPLOYMENT.md step 8b)
+
+Working now: all 19 intents act (virtual lamp/thermostat, timers, alarms,
+reminders, clock, weather, Spotify + local music, speaker volume,
+calls/messages through the Mac), with a live web dashboard. To do:
+
+- [ ] Try it with real accounts: Spotify (Premium + raspotify on the Pi),
+  OpenWeatherMap key, the Mac phone bridge with a real contact.
+- [ ] Run the home server and voice loop together on the Pi (systemd, step 9).
+
+### Phone / mobile (testing through the Mac for now)
+
+- [ ] **Bluetooth hands-free on the Pi (HFP)**: pair the iPhone to the Pi
+  like a car kit (BlueZ + oFono/PipeWire) and dial real calls with audio
+  through the Pi's mic and speaker. Works without the Mac, but Linux
+  Bluetooth setup is fiddly, and iPhones don't allow sending SMS this way.
+- [ ] **Phone notification route**: the Pi sends a push notification
+  (e.g. ntfy) that opens the call/message on the iPhone with one tap. No
+  Mac needed; reliable.
+- [ ] **iOS Shortcuts route**: a Shortcut on the iPhone triggered by the
+  device (via a notification or an HTTP automation) that sends the message
+  without the Mac.
+- [ ] Contacts beyond the default ("call Mom" only for now); needs a
+  contact slot in the model (below).
+- [ ] Dashboard as an installable phone web app (PWA icon, offline shell).
+
+### Tech debt
+
+- [ ] **Model gaps that limit actions** (need a DGX run each):
+  - TEMPERATURE has no direction or value ("turn up the heat" and "turn it
+    down" share one label), so voice can only *report* the temperature;
+    the dashboard buttons change the target. Fix: a TEMPERATURE slot
+    (up / down / 16–30 °C) from the FSC transcripts plus schema phrasings.
+  - CREATE_REMINDER can't capture its text (closed-set model). Fix: a slot
+    head for the schema's reminder tasks, plus saving the spoken audio as
+    a playable voice note on the dashboard. Until then, text is typed on
+    the dashboard.
+  - CALL/MESSAGE have no contact or message content: always the default
+    contact and default message.
+- [ ] Reminders have no due time, so they're never announced; only timers
+  and alarms fire. Alarms are one-shot (no repeat days).
+- [ ] The home server and dashboard have **no authentication**: anyone on
+  the same network can control them. Add a token or a login before using
+  it outside a home network.
+- [ ] Remove the old pipeline: `vcm/dispatch.py`, `vcm/taxonomy.py` (the
+  10-category labels), the stub model in `vcm/inference/model.py`, and
+  `vcm/main.py` are superseded by `vcm_listen.py` + `vcm/home/`. Rewire or
+  delete them and their tests.
+- [ ] `pyproject.toml` base dependencies still include training/desktop
+  libraries (librosa, pynput, python-miio, soundfile); the Pi installs with
+  `--no-deps` from `requirements-pi.txt` to avoid them. Split them into
+  extras so a plain install is minimal.
+- [ ] Spoken replies use `say` (Mac) / espeak-ng (Pi); the Piper TTS
+  backend is still a stub.
+- [ ] The real Xiaomi bulb only gets on/off/brightness from the
+  dispatcher; color isn't sent to it yet.
+- [ ] Spotify: "play <song>" isn't possible (no song slot), only
+  resume/default playlist. STOP maps to pause (Spotify has no stop).
+
 ## Next
 
 - [ ] Integrate into `vcm/main.py`: `dispatch.py` still uses the older
