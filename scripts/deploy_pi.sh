@@ -3,9 +3,12 @@
 # steps 3, 4, 6 and optionally 9 in one go). Safe to re-run: it's also how to
 # update the Pi after pulling new code or models.
 #
-#   scripts/deploy_pi.sh <user>@kiwi.local              # code + models + venv + benchmark
-#   scripts/deploy_pi.sh <user>@kiwi.local --services   # also start on boot (systemd)
-#   scripts/deploy_pi.sh <user>@kiwi.local --settings   # overwrite the Pi's settings.toml with the laptop's
+#   scripts/deploy_pi.sh raspberrypi.local              # code + models + venv + benchmark
+#   scripts/deploy_pi.sh raspberrypi.local --services   # also start on boot (systemd)
+#   scripts/deploy_pi.sh raspberrypi.local --settings   # overwrite the Pi's settings.toml with the laptop's
+#
+# The target is anything `ssh` accepts: a ~/.ssh/config Host (DEPLOYMENT.md
+# step 2 sets up raspberrypi.local with User quielq) or user@host.
 #
 # configs/settings.toml is copied only the first time, so edits made on the Pi
 # (Spotify device_name, the Mac bridge URL) survive re-runs; the copy switches
@@ -13,7 +16,7 @@
 # steps 1-2); sudo on the Pi may ask for its password once for apt.
 set -euo pipefail
 
-TARGET="${1:?usage: scripts/deploy_pi.sh <user>@<host> [--services] [--settings]}"
+TARGET="${1:?usage: scripts/deploy_pi.sh raspberrypi.local (or user@host) [--services] [--settings]}"
 shift
 SERVICES=0
 SETTINGS=0

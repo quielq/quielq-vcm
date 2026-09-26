@@ -63,7 +63,7 @@ and 6 from the laptop. It installs the system packages, copies the code
 and models (~2 MB; no datasets, checkpoints or recordings), builds the
 Pi's Python environment and runs the benchmark:
 ```bash
-scripts/deploy_pi.sh <username>@kiwi.local              # add --services to also do step 9
+scripts/deploy_pi.sh raspberrypi.local              # add --services to also do step 9
 ```
 It copies `configs/settings.toml` the first time, switched to the
 espeak-ng voice; later runs keep the Pi's copy unless you pass
@@ -79,8 +79,8 @@ espeak-ng voice; later runs keep the Pi's copy unless you pass
    the 64-bit OS: onnxruntime has no 32-bit ARM builds.
 3. Before writing, open the settings (**Edit Settings** when asked "apply
    OS customisation", or `Ctrl+Shift+X`) and set:
-   - **Hostname**: `kiwi` (you'll connect to `kiwi.local`)
-   - **Username / password**: your choice
+   - **Hostname**: `raspberrypi` (you'll connect to `raspberrypi.local`)
+   - **Username**: `quielq`, and a password of your choice (needed for `sudo`)
    - **Wi-Fi**: network name, password, and country `PH`
    - **Services tab → Enable SSH → Allow public-key authentication only**,
      and paste your laptop's public key:
@@ -94,13 +94,23 @@ espeak-ng voice; later runs keep the Pi's copy unless you pass
 
 ## 2. Connect over SSH
 
+Add the Pi to `~/.ssh/config` on the laptop, so every command below can
+use just `raspberrypi.local` (the user is filled in):
+```
+Host raspberrypi.local
+  HostName raspberrypi.local
+  User quielq
+```
+Then:
 ```bash
-ssh <username>@kiwi.local
+ssh raspberrypi.local
 ```
 
-If `kiwi.local` doesn't resolve, the Pi and laptop may be on different
+If `raspberrypi.local` doesn't resolve, the Pi and laptop may be on different
 networks, or the Wi-Fi settings didn't take. Check your router's
-connected-devices list for the Pi's IP and use `ssh <username>@<ip>`.
+connected-devices list for the Pi's IP and use `ssh quielq@<ip>` (or set `HostName <ip>` in `~/.ssh/config`). If
+another Pi on the network also uses the default name `raspberrypi`,
+`.local` may reach the wrong one: give this one a unique hostname.
 Some campus and hotel networks block device-to-device traffic entirely;
 a phone hotspot that both devices join is the quickest workaround.
 
@@ -127,13 +137,13 @@ git clone https://github.com/quielq/quielq-vcm.git ~/quielq-vcm
 If it's **private**, the simplest route is to copy it from your laptop.
 Run this *on the laptop*:
 ```bash
-rsync -a --exclude .venv --exclude data --exclude checkpoints --exclude debug_recordings ~/quielq-vcm/ <username>@kiwi.local:~/quielq-vcm/
+rsync -a --exclude .venv --exclude data --exclude checkpoints --exclude debug_recordings ~/quielq-vcm/ raspberrypi.local:~/quielq-vcm/
 ```
 
 The two model files live in `models/`. If they aren't there yet, copy them
 from wherever they were exported (for example the DGX), *from the laptop*:
 ```bash
-scp models/vcm_intent.onnx models/kiwi_wakeword.onnx <username>@kiwi.local:~/quielq-vcm/models/
+scp models/vcm_intent.onnx models/kiwi_wakeword.onnx raspberrypi.local:~/quielq-vcm/models/
 ```
 
 Then create the Python environment *on the Pi*. Only the three runtime
@@ -159,7 +169,7 @@ Record 3 seconds and copy it back to your laptop to listen, since the Pi
 has no screen or speaker. Use the card number from `arecord -l`:
 ```bash
 arecord -D plughw:1,0 -f S16_LE -r 16000 -c 1 -d 3 ~/mictest.wav     # on the Pi
-scp <username>@kiwi.local:~/mictest.wav . && afplay mictest.wav        # on the Mac
+scp raspberrypi.local:~/mictest.wav . && afplay mictest.wav        # on the Mac
 ```
 
 If it's too quiet, raise the capture level with `alsamixer -c 1` (`F4`
@@ -262,7 +272,7 @@ thermostat, reminders, timers, alarms, music, calls and a command log.
 # terminal 2: the voice loop, sending each command to it
 .venv/bin/python scripts/vcm_listen.py --server http://127.0.0.1:8000
 ```
-Open **http://kiwi.local:8000** on your laptop or phone (same Wi-Fi). The
+Open **http://raspberrypi.local:8000** on your laptop or phone (same Wi-Fi). The
 dashboard also has a "Simulate a command" box, so every action can be
 tested without speaking. On a Mac, the same two commands work with
 `http://127.0.0.1:8000`.
@@ -281,6 +291,12 @@ What each command does, and what it needs in `configs/settings.toml`:
 | PLAY_MUSIC, PAUSE, STOP, NEXT | Spotify Connect; local files if Spotify isn't available | `[spotify]` (Premium) and/or `[music] media_dir` + `mpv` |
 | VOLUME_UP/DOWN | The speaker's volume (USB or Bluetooth) | none |
 | CALL, MESSAGE | Your iPhone, through your Mac | `[phone]` + the Mac bridge; otherwise simulated |
+
+**Weather (free).** Sign up at <https://home.openweathermap.org/users/sign_up>,
+copy the key from **API keys** (<https://home.openweathermap.org/api_keys>)
+into `[weather] api_key`, and set `default_location` ("City,CC", e.g.
+`"Quezon City,PH"`). A new key can take up to ~2 hours to activate (HTTP 401
+until then). The free "Current Weather" API is enough; no card needed.
 
 **Spotify (needs Premium).**
 1. Create an app at <https://developer.spotify.com/dashboard> with the
@@ -307,9 +323,17 @@ What each command does, and what it needs in `configs/settings.toml`:
 2. Start the bridge on the Mac with a secret of your choice:
    `python scripts/mac_phone_bridge.py --token <secret>` (add `--dry-run`
    first to test without sending anything).
-3. In the device's `configs/settings.toml`, set `[phone] bridge_url`
+3. Pick the token yourself: any long random string, e.g. from
+   `openssl rand -hex 16`. Find the Mac's `.local` name with
+   `scutil --get LocalHostName` (e.g. `Quiels-MacBook-Air` →
+   `http://Quiels-MacBook-Air.local:8765`).
+4. In the device's `configs/settings.toml`, set `[phone] bridge_url`
    (`http://<mac-name>.local:8765` from the Pi, `http://127.0.0.1:8765` on
    the Mac), `bridge_token = "<secret>"`, and `contacts = { Mom = "+63..." }`.
+   Numbers go in international format (`+639171234567`); the bridge
+   accepts phone numbers only, not emails. CALL and MESSAGE have no
+   contact slot yet, so both always go to `default_contact`, which must
+   be a key in `contacts` (TODO.md).
 
 Messages send automatically. Calls open macOS's call prompt, where one click
 on **Call** is needed (macOS doesn't allow fully automatic calls). The first
@@ -359,7 +383,7 @@ journalctl --user -u vcm -f             # follow the output
 ## Updating
 
 ```bash
-scripts/deploy_pi.sh <username>@kiwi.local   # from the laptop; or on the Pi:
+scripts/deploy_pi.sh raspberrypi.local   # from the laptop; or on the Pi:
 cd ~/quielq-vcm && git pull          # or rsync from the laptop, as in step 4
 systemctl --user restart vcm-home vcm   # if you set up step 9
 ```
