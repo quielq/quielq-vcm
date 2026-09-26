@@ -20,10 +20,10 @@ what the extra accuracy of the ASR cascade (Experiment 26) would cost.
 | Memory for the models once loaded | ~8.5 MB | ~290–370 MB | ~40× |
 | Latency per command | **3.1–3.4 ms** (1 thread) | **440–950 ms** (see below) | ~150–300× |
 | Python packages to install | ~149 MB: numpy, onnxruntime, sounddevice | ~330 MB: adds faster-whisper, CTranslate2, PyAV, tokenizers, scikit-learn, scipy | ~2× |
-| Real-speech test accuracy | 85.1% (Experiment 31) | **90.6%** (Experiment 26) | ASR +5.5 points |
+| Real-speech test accuracy | 85.5% (Experiment 34) | **90.6%** (Experiment 26) | ASR +5.1 points |
 | Works as the always-on wake word? | Yes, ~1% of one core | **No.** Scoring a 1.5 s window every 0.1 s would need ~4.6 s of compute per second of audio | |
 
-**In short:** the ASR cascade buys about 5.5 accuracy points for roughly
+**In short:** the ASR cascade buys about 5 accuracy points for roughly
 **280× the disk, 5–7× the memory and 150–300× the latency**, and it would
 *still* need a separate wake-word model in front of it, because Whisper is
 far too slow to listen continuously.
@@ -101,6 +101,9 @@ core about 8–15× slower. `scripts/benchmark_pi.py` and
 - **Our models:** the stage-by-stage table used Experiment 31's intent model
   (int8) and a same-size toy wake-word model; the fp32 re-measurement used
   the exported Experiment 32 intent + slot model and Experiment 33 wake word.
+  Experiment 34's models have the same architectures and file sizes (426 +
+  107 KB), so these numbers carry over; its DGX benchmark measured 4.8 ms
+  per command and 61 MB peak on x86 (reports/exp34_report.md).
 - **Package sizes:** installed size in site-packages. Ours comes from a
   clean environment built from `requirements-pi.txt`; the ASR stack's is
   the sum of faster-whisper and its dependencies plus scikit-learn and

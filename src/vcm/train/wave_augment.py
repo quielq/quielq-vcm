@@ -32,11 +32,12 @@ REVERB_RT60_S = (0.2, 0.8)
 SHIFT_MAX_S = 0.3
 
 
-def add_noise(audio: np.ndarray, noise: np.ndarray, snr_db: float) -> np.ndarray:
-    """Mix a random segment of `noise` (tiled if shorter) into `audio` at `snr_db`."""
+def add_noise(audio: np.ndarray, noise: np.ndarray, snr_db: float, rng: random.Random | None = None) -> np.ndarray:
+    """Mix a random segment of `noise` (tiled if shorter) into `audio` at `snr_db`.
+    Pass `rng` for a reproducible segment (evaluation); training uses the global one."""
     if len(noise) < len(audio):
         noise = np.tile(noise, len(audio) // len(noise) + 1)
-    start = random.randint(0, len(noise) - len(audio))
+    start = (rng or random).randint(0, len(noise) - len(audio))
     noise = noise[start : start + len(audio)]
     signal_power = float(np.mean(audio**2)) + 1e-10
     noise_power = float(np.mean(noise**2)) + 1e-10

@@ -70,3 +70,13 @@ def test_extract_log_mel_window_s_sets_frame_count():
 def test_extract_log_mel_trim_handles_pure_silence():
     features = extract_log_mel(np.zeros(SAMPLE_RATE, "float32"), trim=True)
     assert np.isfinite(features).all()
+
+
+def test_add_noise_with_rng_is_reproducible():
+    import random
+
+    audio = np.ones(1000, dtype="float32")
+    noise = np.random.default_rng(0).standard_normal(5000).astype("float32")
+    a = add_noise(audio, noise, 10.0, random.Random(3))
+    b = add_noise(audio, noise, 10.0, random.Random(3))
+    assert np.array_equal(a, b)

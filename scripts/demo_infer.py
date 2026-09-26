@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Standalone mic-to-intent demo for a trained checkpoint.
+"""Standalone mic-to-intent demo for a trained model (exported .onnx or a .pt checkpoint).
 
 Runs entirely on your local machine (Mac laptop or RPi) — this is a
 quick sanity check of the trained model's real predictions before any
@@ -10,7 +10,8 @@ since the training label space (vcm.dataset.sources.dataset_schema,
 main.py/dispatch.py use.
 
 Usage:
-    python scripts/demo_infer.py --checkpoint checkpoints/dscnn_bigcap_confusable2_best.pt
+    python scripts/demo_infer.py                                   # models/vcm_intent.onnx (Experiment 34)
+    python scripts/demo_infer.py --checkpoint checkpoints/exp31_crnn_targeted_s2.pt
 
 Hold the spacebar to record (same push-to-talk mock main.py uses on a
 Mac; on the RPi this uses the real HAL pushbutton), release to
@@ -23,12 +24,14 @@ import argparse
 import time
 from pathlib import Path
 
+import numpy as np
 import soundfile as sf
 import torch
 import torch.nn.functional as F
 
 from vcm.audio.capture import SAMPLE_RATE, record_while_held
 from vcm.audio.features import extract_log_mel, speech_level
+from vcm.deploy.runtime import OnnxIntentModel
 from vcm.hal.button import get_button
 from vcm.train.train import MODELS
 
@@ -52,18 +55,52 @@ from vcm.train.train import MODELS
 SILENCE_THRESHOLD = 0.008
 
 # Below this top-class probability, ask the user to repeat instead of
-# acting. Chosen from Experiment 29b's real-speech *val* split (not test;
-# `scripts/evaluate_checkpoint.py --split val` prints the full table):
-# at 0.6 the model rejects 10.4% of utterances, catches 42% of its
-# errors, and is 90.5% accurate on the ones it accepts (vs 85.2% with no
-# threshold), at the cost of re-asking for 4.1% of utterances it would
-# have gotten right. 0.7 trades more re-asks (15.2%) for 92.3%.
+# acting. Chosen on the real-speech *val* split (not test;
+# `scripts/evaluate_checkpoint.py --split val` prints the full table).
+# For the Experiment 34 model at 0.6 it rejects 11.1% of utterances,
+# catches 47% of its errors, and is 91.8% accurate on the ones it accepts
+# (vs 86.2% with no threshold), at the cost of re-asking for 4.6% of
+# utterances it would have gotten right. 0.7 trades more re-asks (15.5%)
+# for 93.5%.
 REJECT_THRESHOLD = 0.6
+
+
+def load_model(path: Path, device: torch.device):
+    """-> (labels, feature_config, predict), predict(features) -> (intent probs, {intent: (slot, conf)})."""
+    if path.suffix == ".onnx":
+        model = OnnxIntentModel(path)
+        print(f"Loaded {path} ({len(model.labels)} labels, slots for {sorted(model.slot_vocab) or 'none'})")
+
+        def predict(features: np.ndarray):
+            probs = model.probabilities(features)
+            slots = {}
+            for intent, values in model.slot_vocab.items():
+                p = probs[f"slot_{intent}"][0]
+                slots[intent] = (values[int(p.argmax())], float(p.max()))
+            return probs["intent"][0], slots
+
+        return model.labels, model.feature_config, predict
+
+    ckpt = torch.load(path, map_location=device, weights_only=False)
+    labels = list(ckpt["labels"])
+    model_kwargs = ckpt.get("model_kwargs", {"num_classes": len(labels)})
+    torch_model = MODELS[ckpt["model_name"]](**model_kwargs).to(device)
+    torch_model.load_state_dict(ckpt["model_state_dict"])
+    torch_model.eval()
+    print(f"Loaded {ckpt['model_name']} from {path} (epoch {ckpt['epoch']}, val_acc {ckpt['val_acc']:.4f}, {len(labels)} labels)")
+
+    def predict(features: np.ndarray):
+        with torch.no_grad():
+            logits = torch_model(torch.from_numpy(features).unsqueeze(0).to(device))
+        return F.softmax(logits, dim=1).squeeze(0).cpu().numpy(), {}
+
+    # Pre-Experiment-29 checkpoints have no feature_config -> extract_log_mel's defaults.
+    return labels, ckpt.get("feature_config", {}), predict
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--checkpoint", type=Path, default=Path("checkpoints/dscnn_bigcap_confusable2_best.pt"))
+    parser.add_argument("--checkpoint", type=Path, default=Path("models/vcm_intent.onnx"))
     parser.add_argument("--top-k", type=int, default=3)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument(
@@ -94,20 +131,7 @@ def main() -> None:
         debug_dir = Path("debug_recordings")
         debug_dir.mkdir(exist_ok=True)
 
-    device = torch.device(args.device)
-    ckpt = torch.load(args.checkpoint, map_location=device, weights_only=False)
-    labels = list(ckpt["labels"])
-    model_kwargs = ckpt.get("model_kwargs", {"num_classes": len(labels)})
-    model = MODELS[ckpt["model_name"]](**model_kwargs).to(device)
-    model.load_state_dict(ckpt["model_state_dict"])
-    model.eval()
-    # Pre-Experiment-29 checkpoints have no feature_config -> extract_log_mel's defaults.
-    feature_config = ckpt.get("feature_config", {})
-
-    print(
-        f"Loaded {ckpt['model_name']} from {args.checkpoint} "
-        f"(epoch {ckpt['epoch']}, val_acc {ckpt['val_acc']:.4f}, {len(labels)} labels)"
-    )
+    labels, feature_config, predict = load_model(args.checkpoint, torch.device(args.device))
 
     button = get_button()
     print("Hold spacebar (Mac) or the pushbutton (RPi) and speak a command. Ctrl+C to quit.")
@@ -126,13 +150,13 @@ def main() -> None:
             if level < args.silence_threshold:
                 print(f"(silence, speech level={level:.4f} < {args.silence_threshold} — skipped)")
                 continue
-            features = torch.from_numpy(extract_log_mel(audio, **feature_config)).unsqueeze(0).to(device)
-            with torch.no_grad():
-                probs = F.softmax(model(features), dim=1).squeeze(0)
-            k = len(labels) if args.debug else min(args.top_k, len(labels))
-            top = torch.topk(probs, k=k)
-            scores = "  ".join(f"{labels[i]}={p:.2f}" for p, i in zip(top.values.tolist(), top.indices.tolist()))
-            if top.values[0] < args.reject_threshold:
+            probs, slots = predict(extract_log_mel(audio, **feature_config))
+            order = np.argsort(probs)[::-1][: len(labels) if args.debug else min(args.top_k, len(labels))]
+            scores = "  ".join(f"{labels[i]}={probs[i]:.2f}" for i in order)
+            top = labels[order[0]]
+            if top in slots:
+                scores += f"  [{top} slot: {slots[top][0]} ({slots[top][1]:.2f})]"
+            if probs[order[0]] < args.reject_threshold:
                 print(f"(didn't catch that, please repeat)  {scores}")
             else:
                 print(scores)

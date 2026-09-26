@@ -181,10 +181,12 @@ the intent, the slot value, the confidence, and timing:
 ```
 - `--show-scores` prints the live wake-word score, which is useful for
   seeing how close near-misses get.
-- `--wake-threshold` sets the trigger level (default 0.95: in Experiment 33
-  it missed 6.7% of clean and 16% of noisy "hey kiwi" with 0.67 false
-  wake-ups per hour of test speech). Raise it if it wakes too often, lower it
-  if it misses you.
+- `--wake-threshold` sets the trigger level (default 0.95: in Experiment 34
+  it missed 14% of clean and 22–24% of noisy synthetic "hey kiwi", none of
+  the author's 10 held-out real takes, with 1.34 false wake-ups per hour of
+  test speech, mostly deliberate near-misses). 0.98 cuts false wake-ups to
+  0.4/h but missed 3 of the 10 real takes. Raise it if it wakes too often,
+  lower it if it misses you.
 - `--trigger button` skips the wake word and uses the GPIO 17 pushbutton
   instead (push-to-talk).
 

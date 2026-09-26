@@ -100,7 +100,7 @@ def main() -> None:
     for path in positives:
         clip = np.concatenate([quiet, _read(path), quiet])
         per_clip["clean"].append(window_scores(clip, score))
-        noisy = add_noise(clip + 1e-4, rng.choice(background), 10.0) if background else clip
+        noisy = add_noise(clip + 1e-4, rng.choice(background), 10.0, rng) if background else clip
         per_clip["noisy"].append(window_scores(noisy.astype("float32"), score))
 
     # False wake-ups: one long stream of everything that isn't the phrase.
