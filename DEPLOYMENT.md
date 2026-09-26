@@ -56,6 +56,20 @@ shrink it further: turning off ONNX Runtime's memory arena
 running overhead is Python and numpy working memory, not ONNX Runtime.
 Nothing here needs swap.
 
+### Quick path: one script from the laptop
+
+Once you can SSH in (steps 1–2), `scripts/deploy_pi.sh` does steps 3, 4
+and 6 from the laptop. It installs the system packages, copies the code
+and models (~2 MB; no datasets, checkpoints or recordings), builds the
+Pi's Python environment and runs the benchmark:
+```bash
+scripts/deploy_pi.sh <username>@kiwi.local              # add --services to also do step 9
+```
+It copies `configs/settings.toml` the first time, switched to the
+espeak-ng voice; later runs keep the Pi's copy unless you pass
+`--settings`. Re-run it to update the Pi. Then continue with step 5
+(microphone) and step 7.
+
 ## 1. Flash the SD card with SSH already set up (on your laptop)
 
 1. Install [Raspberry Pi Imager](https://www.raspberrypi.com/software/).
@@ -98,8 +112,10 @@ connection: `tmux new -s kiwi` starts a session, `Ctrl-b d` detaches, and
 
 ```bash
 sudo apt update && sudo apt full-upgrade -y
-sudo apt install -y git python3-venv libportaudio2 alsa-utils tmux
+sudo apt install -y git python3-venv libportaudio2 alsa-utils tmux espeak-ng
 ```
+`espeak-ng` is the device's voice: set `backend = "espeak_ng"` under
+`[tts]` in the Pi's `configs/settings.toml` (`mac_say` only exists on macOS).
 
 ## 4. Get the code and models
 
@@ -198,6 +214,16 @@ Mac's built-in microphone:
 .venv/bin/python scripts/vcm_listen.py
 ```
 The Mac needs `onnxruntime` in its environment (`pip install -e ".[deploy]"`).
+
+**Checked on the Mac before deploying** (Experiment 34 models, a clean venv
+with only `requirements-pi.txt`, no torch or librosa):
+- `benchmark_pi.py`: 3.2 ms per command, the wake word uses 1% of one
+  core, and the process peaks at 82 MB.
+- The author's recorded takes, streamed through the detector: all 30
+  "hey kiwi" takes trigger at 0.95 (23 of 30 at 0.98), and none of the 12
+  near-misses do.
+- `vcm.home.server`: every simulated command works, and the dashboard
+  serves.
 
 ## 8. Field-test the wake word
 
@@ -333,6 +359,7 @@ journalctl --user -u vcm -f             # follow the output
 ## Updating
 
 ```bash
+scripts/deploy_pi.sh <username>@kiwi.local   # from the laptop; or on the Pi:
 cd ~/quielq-vcm && git pull          # or rsync from the laptop, as in step 4
 systemctl --user restart vcm-home vcm   # if you set up step 9
 ```
