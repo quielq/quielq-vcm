@@ -1,28 +1,30 @@
 # To-do
 
 Current state (see EXPERIMENTS.md): the deployable model is the CRNN
-(Experiment 31, 96K params, 85.1% real-speech test accuracy, 98–99% on
-the class schema phrasings). The course asks for a wake word instead of
+(Experiment 34: Experiment 31's encoder frozen + slot heads, 107K params,
+426 KB fp32, 85.5% real-speech test accuracy, slot values 68–90%) with the
+"Hey Kiwi" wake word v2 (25K params, 107 KB). The course asks for a wake word instead of
 a button, and the target device is a Raspberry Pi 5 with a model under
 1 MB.
 
 ## In progress
 
-- [ ] **Experiment 34** (next DGX run): slot heads on a frozen Experiment 31
-  (intent stays at 85.5%), wake word retrained on all plausible "hey kiwi"
-  clips + real recordings (`scripts/record_wakeword.py`, record first).
+- [x] **Experiment 34**: frozen slot heads keep intent at 85.48% (slot
+  acc 77.6%); wake word v2 catches all 10 real takes at 0.95 (1.34 false
+  wake-ups/h). Models in `models/`, report in `reports/exp34_report.md`.
 - [x] **Experiment 32** (intent + slots in one model): slot values work
   (ALARM 98%, COLOR 87%), but intent fell 3.5pp and int8 cost 6.8pp more,
   so fp32 ships. Superseded by Experiment 34.
 - [x] **Experiment 33** ("Hey Kiwi"): 6.7% / 16.4% false rejects (clean /
   noisy) at 0.67 false wake-ups per hour, threshold 0.95.
-- [ ] **Deployment**: after Experiment 34, copy `models/*.onnx` (fp32) to
-  the Pi and follow DEPLOYMENT.md (benchmark, field-test the wake word).
+- [ ] **Deployment**: copy `models/*.onnx` (fp32) to the Pi and follow
+  DEPLOYMENT.md (benchmark, field-test the wake word at 0.95 vs 0.98).
+- [ ] **Joint slots at weight 0.3, 2 more seeds** (DGX): one seed matched
+  Experiment 32's slot accuracy (83.4%) at 84.8% intent. If the seeds
+  hold at ~85%, ship it instead of the frozen model (+6 points slots).
 
 ## Next
 
-- [ ] Make the Experiment 34 model the default in `scripts/demo_infer.py`
-  (still defaults to the old DS-CNN) and refresh README / MODEL.md §10.
 - [ ] Integrate into `vcm/main.py`: `dispatch.py` still uses the older
   10-category taxonomy, so the 20 intents and slot values need mapping to
   actions (timer length, alarm time, color, brightness).
@@ -47,6 +49,11 @@ a button, and the target device is a Raspberry Pi 5 with a model under
 - [ ] Watch the BRIGHTNESS real-speech dip from Experiment 31 (−2.6pp).
 
 ## Done recently
+
+- [x] `scripts/demo_infer.py` defaults to `models/vcm_intent.onnx` (prints
+  slot values); README / MODEL.md §10 refreshed for the CRNN.
+- [x] Wake-word evaluation's noise column is reproducible (seeded
+  `add_noise`).
 
 - [x] Pi runtime slimmed to numpy + onnxruntime + sounddevice: numpy
   log-mel (`vcm/audio/dsp.py`, matches librosa) cut peak memory from

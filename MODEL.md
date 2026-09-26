@@ -328,34 +328,47 @@ never fully resolved is largely a non-issue in text.
   directly comparable study). Now being run via
   `scripts/qa_filter_option_b.py`.
 
-## 10. Consolidated recommendation — three real options, by accuracy and footprint
+## 10. Consolidated recommendation — what ships, and the alternatives
 
-After 27 experiments (EXPERIMENTS.md), here's where things actually
+After 34 experiments (EXPERIMENTS.md), here's where things actually
 stand. Sizes below are measured (`ls -la` / `du`), not estimated.
+Accuracies from Experiment 28 on are **real-speech test** accuracy (the
+number comparable to the cascade's); earlier ones are val accuracy on a
+different split, so the rows aren't strictly comparable.
 
 | # | Option | Accuracy | Model size | Deployable per assignment rules? |
 |---|---|---|---:|---|
-| 1 | **DS-CNN + confusable-pair loss** (Experiment 15) | 75.45% val | **137.5 KB** | Yes — clean baseline |
-| 2 | **DS-CNN + distillation from the ASR-cascade** (Experiment 27) | 75.78% val (mixed per-class, see below) | **137.5 KB** | Yes — current best fully-compliant option |
+| **0** | **CRNN + slot heads on a frozen Experiment 31 encoder** (Experiment 34) + "Hey Kiwi" wake word | **85.48% real-speech test**; slot values 68–90% | **426 KB** intent + 107 KB wake word (fp32 ONNX) | **Yes — what ships** (`models/`) |
+| 1 | DS-CNN + confusable-pair loss (Experiment 15) | 75.45% val | 137.5 KB | Yes — historical baseline |
+| 2 | DS-CNN + distillation from the ASR-cascade (Experiment 27) | 75.78% val (mixed per-class, see below) | 137.5 KB | Yes — historical |
 | 3 | **ASR-cascade** (Experiment 26) | **90.62% test, real audio** | ~144 MB (whisper-base 142MB + classifier 1.9MB) | **No — backup/reference only** |
+
+**Option 0** replaced the DS-CNN because DS-CNN's ~240 ms receptive field
+couldn't see whole words (Experiment 28: 69.3% → 80.4% real speech with
+the CRNN), then gained from waveform augmentation (Experiment 29b) and
+targeted synthetic phrasings (Experiment 31). Experiment 34 adds slot
+values (timer length, alarm time, brightness, color) without touching
+intent accuracy by training only the slot heads on the frozen model.
 
 **Option 3, the ASR-cascade, is the accuracy ceiling but not a
 candidate for the actual submitted VCM.** The assignment states "ASR
 models are not desirable for on-device computing because of footprint"
-and requires the VCM to be tiny — whisper-base alone is **~1,070x this
-project's DS-CNN by disk size, ~2,810x by parameter count**. It's kept
+and requires the VCM to be tiny — whisper-base alone is **~340x this
+project's CRNN by disk size (~690x by parameter count)**, and ~1,070x the
+earlier DS-CNN. It's kept
 in the repo and documented as a **backup option for systems that can
 accommodate the footprint** (e.g. a benchmark reference, or a future
 deployment target with more compute than an RPi4/5), not as something
 that competes with Options 1/2 for the actual deliverable.
 
 **Measured runtime footprint** (see [FOOTPRINT_COMPARISON.md](FOOTPRINT_COMPARISON.md)):
-the deployed pipeline (CRNN intent model + "Hey Kiwi" wake word, int8 ONNX)
-is 363 KB of models, peaks at ~90 MB of memory and takes ~3 ms per command.
+the deployed pipeline (CRNN intent + slot model and "Hey Kiwi" wake word,
+fp32 ONNX) is 533 KB of models, peaks at 88–96 MB of memory and takes
+~3 ms per command on a laptop CPU.
 The ASR-cascade needs ~149 MB of models, peaks at 478–696 MB and takes
 440–950 ms per command, and it would still need a separate wake-word model.
 
-**Option 1 vs. Option 2** — the real tradeoff, not a clean upgrade:
+**Option 1 vs. Option 2** (historical, before the CRNN) — the real tradeoff, not a clean upgrade:
 distillation (Option 2) uses the ASR-cascade purely as an offline
 training-time teacher (see Experiment 27) — the deployed model is
 identical in size and architecture to Option 1, just trained with

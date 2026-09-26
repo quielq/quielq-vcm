@@ -67,7 +67,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--intent-model", type=Path, default=REPO_ROOT / "models/vcm_intent.onnx")
     parser.add_argument("--wake-model", type=Path, default=REPO_ROOT / "models/kiwi_wakeword.onnx")
-    parser.add_argument("--wake-threshold", type=float, default=0.95, help="Exp 33: 6.7%% clean / 16%% noisy false rejects, 0.67 false wake-ups per hour of test speech")
+    parser.add_argument("--wake-threshold", type=float, default=0.95, help="Exp 34: 14%% clean / 22%% noisy / 0 of 10 real-voice false rejects, 1.34 false wake-ups per hour of test speech")
     parser.add_argument("--trigger", choices=["wakeword", "button"], default="wakeword")
     parser.add_argument("--device", default=None, help="sounddevice input device (name or index); default: system default")
     parser.add_argument("--show-scores", action="store_true", help="print the wake-word score continuously (tuning)")

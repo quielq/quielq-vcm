@@ -2243,3 +2243,71 @@ at 0.98 (41.5% noisy false rejects), so the wake word also ships fp32.
   Whisper (~3,000 positives instead of 1,347), and retrain;
 - add the author's own recordings (`scripts/record_wakeword.py`), as
   training data and as a real-voice false-reject measurement.
+
+## Experiment 34 — slot heads on a frozen encoder, wake word v2
+
+Full numbers and logs: `reports/exp34_report.md`.
+
+**Slots, setup**: Experiment 31 seed 2 frozen (`train.py --freeze-from`,
+BatchNorm statistics frozen too); only the slot heads train (10,578
+params, 30 epochs, 3 seeds). For comparison, one joint run with the slot
+loss down-weighted (`--slot-weight 0.3`, 80 epochs, 1 seed).
+
+**Slots, result** (test, Snips excluded; slot accuracy = mean over the 4
+slotted intents' ground-truth-labelled clips):
+
+| | Real speech | Slot-head acc | TIMER | ALARM | BRIGHTNESS | COLOR |
+|---|---:|---:|---:|---:|---:|---:|
+| Experiment 31 (no slots) | 85.48% | — | | | | |
+| **Frozen, seeds 0/1/2** | **85.48%** (all three) | 77.05 / 77.43 / **77.64%** | 68.4% | 89.7% | 68.2% | 84.3% |
+| Joint, slot weight 0.3 | 84.80% | 83.41% | 74.2% | 99.4% | 73.7% | 86.4% |
+| Experiment 32 (joint, weight 1.0) | 82.07% | 83.42% | 74.2% | 98.4% | 74.1% | 86.9% |
+
+(per-slot columns: frozen seed 2, joint w0.3 seed 0, Experiment 32 seed 1)
+
+- Freezing works as intended: intent is exactly Experiment 31's, and
+  val_acc stayed constant across all 30 epochs.
+- The price is ~6 points of slot accuracy, mostly ALARM (−9.7) and
+  TIMER (−5.8): features trained only for intent carry less of the value.
+- Joint training at weight 0.3 gets Experiment 32's slot accuracy for
+  −0.68 intent points (vs −3.4 at weight 1.0). Only one seed, and
+  Experiment 31's seeds spanned 85.08–85.48%, so the intent cost isn't
+  clearly outside seed noise yet. This separates Experiment 32's two
+  candidate causes: most of its intent loss was the slot loss's weight
+  (task competition), not the slots2 class balance, since both runs
+  used the same data.
+- Reject threshold 0.6 on val (frozen seed 2): rejects 11.1%, accepted
+  accuracy 86.2% → 91.8%, 4.6% of correct answers re-asked.
+
+**Shipped**: frozen seed 2 (`models/vcm_intent.onnx`, 426 KB fp32; ONNX
+85.46% vs 85.48%, one clip, slot lines identical). Intent accuracy is
+the project's headline number, so it isn't traded for slot accuracy on
+one seed. If more w0.3 seeds hold at ~85%, joint w0.3 is the better model.
+
+**Wake word, setup**: positives kept by the plausible-audio rule instead
+of Whisper (train 2,942/3,000 passed vs 1,347; test 391/400 vs 195),
+plus the author's 30 recorded takes (20 train, 10 held-out test) and 12
+near-misses. 2 seeds, 30 epochs.
+
+**Wake word, result** (same 391-clip test set and 7.48 h negative
+stream for all; real voice = 10 takes, so each is 10 points):
+
+| Model, threshold | False reject clean | 10 dB noise | Real voice | False wake-ups/h |
+|---|---:|---:|---:|---:|
+| Experiment 33 s1, 0.95 | 27.4% | 34.5% | 20% | 0.67 |
+| **v2 s0, 0.95 (shipped)** | **14.1%** | 21.5% | **0%** | 1.34 |
+| v2 s0, 0.98 | 27.9% | 43.2% | 30% | 0.40 |
+| v2 s1, 0.95 | 14.3% | 23.8% | 10% | 2.27 |
+
+- Experiment 33 looks worse here than in its own report (6.7% clean
+  false rejects) because 200 of the new 391 test positives are clips its
+  Whisper QA had rejected, which it never trained on.
+- v2 halves clean false rejects at 0.95 and catches every real take, at
+  twice the false wake-ups. At 0.98 the false wake-ups (3 in 7.48 h) are
+  all synthetic near-miss phrases, but 3 of 10 real takes are missed.
+- **Threshold stays 0.95**: a missed "hey kiwi" is repeated at once,
+  while the false wake-ups are dominated by near-miss phrases that are
+  rarer in a real room than in this stream. The Pi field test decides.
+- The 10 dB noise column moved a few points between runs: the noise
+  segment used the unseeded global `random`. Fixed after this run
+  (`add_noise(..., rng)`), so later evaluations are reproducible.

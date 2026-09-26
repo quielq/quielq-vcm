@@ -98,29 +98,30 @@ tiny — so the ASR-cascade below is kept as a **backup/reference
 option only**, not a candidate for the actual deployed VCM. See
 MODEL.md Section 10 for the full comparison. Three things exist now:
 
-- **Direct audio → intent** (the original, deployable pipeline): a
-  single tiny CNN (DS-CNN, 26,300 params, **137.5 KB**) classifies a
-  log-mel spectrogram directly. `scripts/demo_infer.py`. Two trained
-  variants: plain (75.45% val, Experiment 15) and one additionally
-  trained with **knowledge distillation** from the ASR-cascade
-  (75.78% val, real per-class tradeoffs, Experiment 27) — the
-  cascade is used only offline as a training-time teacher here, never
-  deployed; the distilled model is identical in size/architecture to
-  the plain one.
+- **Direct audio → intent** (the deployable pipeline): a CRNN
+  (107K params, **426 KB** fp32 ONNX) classifies a log-mel spectrogram
+  directly into one of 20 intents, plus a slot value for TIMER, ALARM,
+  BRIGHTNESS and COLOR. **85.48% real-speech test accuracy** (Experiment
+  34; slot heads trained on a frozen Experiment 31 encoder). A 25K-param
+  "Hey Kiwi" wake word (107 KB) listens in front of it.
+  `scripts/vcm_listen.py` (wake word → command) or `scripts/demo_infer.py`
+  (push-to-talk). Earlier DS-CNN models (137.5 KB, ~75% val, Experiments
+  15 and 27) are kept for reference.
 - **ASR-cascade** (backup/reference only, not for deployment):
   `faster-whisper` transcribes audio to text, then a TF-IDF + logistic
   regression classifier maps the transcript to an intent. **~144 MB —
-  ~1,070x the direct pipeline's size by disk, ~2,810x by parameter
+  ~340x the direct intent model's size by disk, ~690x by parameter
   count** — but **90.62% test accuracy on real audio** vs. the direct
-  pipeline's ~75%, the accuracy ceiling for systems that can
+  pipeline's 85.5%, the accuracy ceiling for systems that can
   accommodate the footprint. See EXPERIMENTS.md Experiment 26.
   `scripts/demo_infer_cascade.py`.
 
-Quantization/export and the benchmark harness (Sections 5, 7) are
-still separate later workstreams — `vcm/inference/model.py` has a
-`TFLiteIntentModel` interface ready for when an exported model exists.
+Export and deployment are done: ONNX export (`scripts/export_onnx.py`),
+a numpy + onnxruntime runtime (`vcm/deploy/`), a Pi benchmark
+(`scripts/benchmark_pi.py`) and a headless Pi guide (DEPLOYMENT.md).
+fp32 ships; int8 cost 6.8 points of accuracy to save 134 KB.
 **See [EXPERIMENTS.md](EXPERIMENTS.md)** for every real training-run
-result (26 experiments so far: architectures, capacity, augmentation,
+result (34 experiments so far: architectures, capacity, augmentation,
 data volume, dataset quality, LR schedules, loss functions, and the
 cascade pivot) and **[MODEL.md](MODEL.md)** for the technology choices
 and research behind both pipelines.
