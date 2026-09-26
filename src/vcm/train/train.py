@@ -195,6 +195,14 @@ def main() -> None:
         "scripts/build_slot_labels.py output. CRNN only. Default: intent only.",
     )
     parser.add_argument(
+        "--freeze-from",
+        type=Path,
+        default=None,
+        help="Load this intent-only checkpoint (same architecture), freeze all of it, and train only "
+        "the slot heads (needs --slot-labels). Intent predictions stay exactly those of the checkpoint "
+        "(EXPERIMENTS.md Experiment 34). Epochs are selected on val slot accuracy.",
+    )
+    parser.add_argument(
         "--slot-weight",
         type=float,
         default=1.0,
@@ -385,7 +393,22 @@ def main() -> None:
             f"(was epoch {resume_ckpt['epoch']}, val_acc {resume_ckpt['val_acc']:.4f})",
             flush=True,
         )
-    params = list(model.parameters())
+    frozen = args.freeze_from is not None
+    if frozen:
+        if not use_slots:
+            raise SystemExit("--freeze-from trains only the slot heads: it needs --slot-labels")
+        base = torch.load(args.freeze_from, map_location=device, weights_only=False)
+        missing, unexpected = model.load_state_dict(base["model_state_dict"], strict=False)
+        if unexpected or any(not k.startswith("slot_") for k in missing):
+            raise SystemExit(f"{args.freeze_from} doesn't match this model: missing={missing} unexpected={unexpected}")
+        for name, p in model.named_parameters():
+            p.requires_grad = name.startswith("slot_")
+        print(
+            f"Frozen from {args.freeze_from} (val_acc {base['val_acc']:.4f}): training only the slot heads "
+            f"({sum(p.numel() for p in model.parameters() if p.requires_grad):,} params)",
+            flush=True,
+        )
+    params = [p for p in model.parameters() if p.requires_grad]
     if use_ctc:
         if not hasattr(model, "forward_with_sequence"):
             raise SystemExit("--ctc-weight needs a model with per-frame features (--model crnn)")
@@ -413,7 +436,10 @@ def main() -> None:
     best_val_acc = 0.0
 
     for epoch in range(1, args.epochs + 1):
-        model.train()
+        # Frozen: eval mode for the whole model, or BatchNorm would keep
+        # updating the frozen encoder's running statistics and silently
+        # change the intent predictions.
+        model.train(not frozen)
         t0 = time.time()
         running_loss = 0.0
         n_seen = 0
@@ -468,8 +494,10 @@ def main() -> None:
         if scheduler is not None:
             scheduler.step()
 
-        if val_acc > best_val_acc:
-            best_val_acc = val_acc
+        # Frozen: intent accuracy can't change, so pick the epoch on slot accuracy.
+        selection = val_slot_acc if frozen else val_acc
+        if selection > best_val_acc:
+            best_val_acc = selection
             torch.save(
                 {
                     "model_state_dict": model.state_dict(),
@@ -480,6 +508,7 @@ def main() -> None:
                     "train_fraction": args.train_fraction,
                     "max_per_class": args.max_per_class,
                     "resumed_from": str(args.resume_from) if args.resume_from else None,
+                    "frozen_from": str(args.freeze_from) if frozen else None,
                     "confusable_alpha": args.confusable_alpha,
                     "class_balance_beta": args.class_balance_beta,
                     "focal_gamma": args.focal_gamma,
@@ -503,7 +532,8 @@ def main() -> None:
             )
             print(f"  -> saved new best checkpoint (val_acc={val_acc:.4f}) to {args.out}", flush=True)
 
-    print(f"\nDone. Best val_acc={best_val_acc:.4f}, checkpoint at {args.out}", flush=True)
+    metric = "val_slot_acc" if frozen else "val_acc"
+    print(f"\nDone. Best {metric}={best_val_acc:.4f}, checkpoint at {args.out}", flush=True)
 
 
 if __name__ == "__main__":

@@ -7,30 +7,36 @@ what the extra accuracy of the ASR cascade (Experiment 26) would cost.
 
 | | Pipeline | What runs per command |
 |---|---|---|
-| **Ours** | "Hey Kiwi" wake word + CRNN intent model (EXPERIMENTS.md Experiments 31–33), int8 ONNX | log-mel features → 96K-param CRNN → intent |
+| **Ours** | "Hey Kiwi" wake word + CRNN intent/slot model (EXPERIMENTS.md Experiments 31–33), fp32 ONNX | log-mel features → 107K-param CRNN → intent + slot value |
 | **ASR cascade** | Experiment 26: faster-whisper `base` + TF-IDF/logistic-regression text classifier | audio → Whisper transcript → text classifier → intent |
 
 ## Summary
 
 | | **Ours** | **ASR cascade** | Ratio |
 |---|---:|---:|---:|
-| Model files | **363 KB** (intent 270 + wake word 93) | **~149 MB** (Whisper 145 MB + tokenizer 2 MB + classifier 2 MB) | ~410× |
-| Peak memory | **86–96 MB** | **478–696 MB** | 5–7× |
+| Model files | **533 KB** (intent 426 + wake word 107, fp32) | **~149 MB** (Whisper 145 MB + tokenizer 2 MB + classifier 2 MB) | ~280× |
+| Peak memory | **88–96 MB** | **478–696 MB** | 5–7× |
 | Minimum board RAM (with OS, ~60–100 MB) | **512 MB** (~150–200 MB actually used) | **1 GB+** (~550–800 MB used) | |
 | Memory for the models once loaded | ~8.5 MB | ~290–370 MB | ~40× |
-| Latency per command | **3.2–3.4 ms** (1 thread) | **440–950 ms** (see below) | ~150–300× |
+| Latency per command | **3.1–3.4 ms** (1 thread) | **440–950 ms** (see below) | ~150–300× |
 | Python packages to install | ~149 MB: numpy, onnxruntime, sounddevice | ~330 MB: adds faster-whisper, CTranslate2, PyAV, tokenizers, scikit-learn, scipy | ~2× |
 | Real-speech test accuracy | 85.1% (Experiment 31) | **90.6%** (Experiment 26) | ASR +5.5 points |
 | Works as the always-on wake word? | Yes, ~1% of one core | **No.** Scoring a 1.5 s window every 0.1 s would need ~4.6 s of compute per second of audio | |
 
 **In short:** the ASR cascade buys about 5.5 accuracy points for roughly
-**400× the disk, 5–7× the memory and 150–300× the latency**, and it would
+**280× the disk, 5–7× the memory and 150–300× the latency**, and it would
 *still* need a separate wake-word model in front of it, because Whisper is
 far too slow to listen continuously.
 
 ## Detail
 
-### Our pipeline (int8 ONNX, 1 thread)
+### Our pipeline (1 thread)
+
+Measured first with int8 files (below). The deployed fp32 files (Experiments
+32–33, 426 + 107 KB) measure the same: 88–89 MB peak, 3.1 ms per command.
+int8 isn't used: it cost the intent model 6.8 points of real-speech accuracy
+(EXPERIMENTS.md Experiment 32) to save 134 KB, and on this CPU it isn't
+faster (dynamic quantization converts activations at run time).
 
 | Stage | Memory in use | Added |
 |---|---:|---:|
@@ -92,10 +98,9 @@ core about 8–15× slower. `scripts/benchmark_pi.py` and
   repeated runs vary by roughly ±10%.
 - **Latency:** wall time per command from audio to intent, median over the
   12 clips, excluding the first (warm-up) call.
-- **Our models:** the intent model is Experiment 31 (the Experiment 32
-  slot heads add ~10.6K parameters, about +40 KB). The wake-word model has
-  its final architecture and size, but its weights come from a toy
-  smoke-test run, which doesn't affect memory or speed.
+- **Our models:** the stage-by-stage table used Experiment 31's intent model
+  (int8) and a same-size toy wake-word model; the fp32 re-measurement used
+  the exported Experiment 32 intent + slot model and Experiment 33 wake word.
 - **Package sizes:** installed size in site-packages. Ours comes from a
   clean environment built from `requirements-pi.txt`; the ASR stack's is
   the sum of faster-whisper and its dependencies plus scikit-learn and
@@ -103,7 +108,7 @@ core about 8–15× slower. `scripts/benchmark_pi.py` and
 
 To reproduce (use a separate process for each):
 ```bash
-python scripts/measure_footprint.py ours --intent-model models/vcm_intent.int8.onnx --wake-model models/kiwi_wakeword.int8.onnx --clips <dir of 16 kHz wavs>
+python scripts/measure_footprint.py ours --intent-model models/vcm_intent.onnx --wake-model models/kiwi_wakeword.onnx --clips <dir of 16 kHz wavs>
 python scripts/measure_footprint.py asr --compute-type int8 --threads 4 --clips <dir of 16 kHz wavs>
 ```
 The ASR run needs `pip install faster-whisper scikit-learn joblib`, plus

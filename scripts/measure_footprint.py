@@ -4,7 +4,7 @@ process, stage by stage (FOOTPRINT_COMPARISON.md). Run each pipeline in its
 own process so memory numbers don't mix:
 
     # our pipeline: int8 ONNX intent model + wake-word model
-    python scripts/measure_footprint.py ours --intent-model models/vcm_intent.int8.onnx --wake-model models/kiwi_wakeword.int8.onnx --clips <dir of 16 kHz wavs>
+    python scripts/measure_footprint.py ours --intent-model models/vcm_intent.onnx --wake-model models/kiwi_wakeword.onnx --clips <dir of 16 kHz wavs>
 
     # the ASR cascade (Experiment 26): faster-whisper + TF-IDF classifier
     python scripts/measure_footprint.py asr --compute-type int8 --threads 4 --clips <dir of 16 kHz wavs>
@@ -47,8 +47,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("pipeline", choices=["ours", "asr"])
     parser.add_argument("--clips", required=True, help="directory of 16 kHz mono 16-bit wav commands")
-    parser.add_argument("--intent-model", type=Path, default=REPO_ROOT / "models/vcm_intent.int8.onnx")
-    parser.add_argument("--wake-model", type=Path, default=REPO_ROOT / "models/kiwi_wakeword.int8.onnx")
+    parser.add_argument("--intent-model", type=Path, default=REPO_ROOT / "models/vcm_intent.onnx")
+    parser.add_argument("--wake-model", type=Path, default=REPO_ROOT / "models/kiwi_wakeword.onnx")
     parser.add_argument("--whisper-size", default="base")
     parser.add_argument("--compute-type", default="default", help="faster-whisper compute_type (default, int8, ...)")
     parser.add_argument("--threads", type=int, default=4, help="faster-whisper cpu_threads")

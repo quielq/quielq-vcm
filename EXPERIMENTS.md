@@ -51,6 +51,8 @@ init, batch shuffling), not purely the effect being tested. Experiment
 | 29b | Same as #29a + **waveform augmentation** (noise, speed, reverb, start shift), 3 seeds | waveform | 80 | 88.29 / 88.51 / 88.46% val; **85.1–85.7% real-speech test** — best deployable model | `logs/exp29b_*.log` |
 | 30 | Same as #29b + auxiliary word-level CTC head on the Whisper transcripts (training only); weight 0.5 × 3 seeds, 0.2 and 1.0 × seed 0 | waveform | 80 | 88.31 / 88.44 / 88.40% val; 84.6–84.8% real-speech test (weight 0.5) — **slightly worse than #29b, not adopted** | `logs/exp30_*.log` |
 | 31 | Same recipe as #29b on the base manifest **+ 4,357 targeted synthetic clips** (Chatterbox, cloned FSC/Timers speakers; schema phrasings + extra phrasings for PAUSE/STOP/PLAY_MUSIC/TIMER/COLOR/BRIGHTNESS), 3 seeds | waveform | 80 | 88.22 / 88.70 / 88.75% val; 84.9–85.3% real-speech test (≈ #29b); **98–99% on held-out targeted clips** (29b: 70–73%) | `logs/exp31_*.log`, `logs/exp31_report.md` |
+| 32 | #31 recipe + **slot heads** (timer/alarm/brightness/color values) + slots2 clips + Snips speaker re-split, 3 seeds | waveform | 80 | 84.36 / 84.43 / 84.88% val; **81.4–82.1% real-speech test (no Snips), −3.5pp vs #31**; slot values ALARM 98%, COLOR 87%, TIMER 74%, BRIGHTNESS 74%; int8 −6.8pp | `logs/exp32_*.log` (DGX), `reports/exp32_33_report.md` |
+| 33 | **"Hey Kiwi" wake word**, 25K-param CRNN, 2 seeds | waveform | 30 | seed 1 at threshold 0.95: 6.7% clean / 16.4% noisy false rejects, 0.67 false wake-ups/h | `logs/exp33_*.log` (DGX) |
 
 ## Parked / to-do
 
@@ -2159,3 +2161,85 @@ triggered on roughly 1 in 12 commands through "increase", "decrease" and
 **Limits**: CMUdict is American English, and this is a text proxy for
 false-trigger risk, not a trained detector. The detector's measured false
 wake-ups per hour are in Experiment 33.
+
+## Experiment 32 — slot-value heads (intent + slots in one model)
+
+**Setup**: Experiment 31's recipe on a new manifest (`dataset_manifest_exp32.csv`,
+69,324 rows) with three changes at once. Full numbers, logs and QA tables
+are in `reports/exp32_33_report.md`.
+- **Slot heads:** one head per slotted intent (vcm/slots.py; 106,855
+  params), `--slot-weight 1.0`.
+- **slots2:** 2,283 train + 366 test Chatterbox clips voicing every slot
+  value, QA-passed only when Whisper heard the intended value.
+- **Snips speaker re-split:** 40 of Snips' 49 speakers were in more than one
+  split before, 0 after.
+
+Slot labels come from ground-truth text (synthetic) or Whisper transcripts
+(real): 13,139 labels.
+
+**Result: slot values work, intent accuracy dropped.** Real-speech test,
+Snips excluded (the fair comparison: Experiment 31 had seen some of the
+re-split test speakers):
+
+| | Real speech | SLURP | Slot values (ground-truth labels) |
+|---|---:|---:|---|
+| Experiment 31 | 85.16 / 85.08 / 85.48% | 72.1–72.7% | — |
+| **Experiment 32** | **81.63 / 82.07 / 81.42%** | 65.6–66.5% | ALARM 98.4%, COLOR 86.9%, TIMER 74.2%, BRIGHTNESS 74.1% (seed 1) |
+
+−3.5pp, against a ~0.6pp seed spread. Almost all of it is SLURP's free-form
+classes (real speech, best seeds): PLAY_MUSIC 77.2 → 69.0%, WEATHER
+79.8 → 69.9%, COLOR 49.3 → 39.0%, CREATE_REMINDER 67.1 → 55.7%. Two
+candidate causes, not separated by this run:
+- **Task competition:** the slot loss competes with the intent loss for a
+  107K-param model's capacity. (Training loss 0.61 vs 0.17 isn't evidence
+  either way: Experiment 32's includes the slot loss.)
+- **Class balance:** the slots2 clips shift it toward ALARM/TIMER/
+  BRIGHTNESS/COLOR.
+
+**int8 quantization cost another 6.8pp** (82.07% → 75.32% real speech;
+fp32 ONNX 82.09%, so the export itself is exact). int8 saves only 134 KB,
+so the deployed files are fp32 (426 KB intent; 533 KB with the wake word).
+The earlier "int8 agrees on 12/12 phrases" check (Experiment 31) used 12
+clear TTS clips and missed this.
+
+**Decision**: sidestep both causes by freezing Experiment 31 and training
+only the slot heads on top (Experiment 34, `train.py --freeze-from`).
+Intent predictions are then Experiment 31's exactly (verified: identical
+logits), and the question becomes only how good frozen-feature slot heads
+are.
+
+## Experiment 33 — "Hey Kiwi" wake word
+
+**Setup**: 25,475-param CRNN (vcm/wakeword/) on 1.5 s windows. It's
+trained on the wakeword batch (Chatterbox "hey kiwi" in 145 cloned train
+voices plus near-miss phrases), cut-off positives, command speech and
+noise. Evaluated streaming, like the device: false rejects on 195 held-out
+clips from 20 unseen voices (clean, and at 10 dB noise), and false wake-ups
+over 7.48 h of test-split speech.
+
+**Data problem**: Whisper-base heard only ~45% of the "hey kiwi" clips as
+"hey kiwi", mostly "Thank you…" (599 clips), "Kiwi" or "Okay, Kiwi".
+Listening confirmed the clips say "hey kiwi", so this was Whisper, and the
+strict check threw away more than half the positives (1,347 train kept).
+Near-miss negatives were also over-rejected by a WER check (fixed in
+`a701268`: a negative only has to *not* sound like the wake word).
+
+**Result** (seed 1, fp32):
+
+| Threshold | False reject, clean | False reject, 10 dB noise | False wake-ups per hour |
+|---:|---:|---:|---:|
+| 0.90 | 4.1% | 9.7% | 1.34 |
+| **0.95 (default)** | **6.7%** | **16.4%** | **0.67** |
+| 0.98 | 19.0% | 29.2% | 0.13 |
+
+The automatic suggestion (≤ 0.5 false wake-ups/h) was 0.98, where the
+curve is steep. 0.95 is the default instead: much fewer misses for ~1
+false wake-up every 1.5 h of dataset speech. Real-room rates need the
+field test (DEPLOYMENT.md step 8). int8 is similar up to 0.85 and worse
+at 0.98 (41.5% noisy false rejects), so the wake word also ships fp32.
+
+**Next (Experiment 34)**:
+- keep every "hey kiwi" clip that's plausible audio instead of trusting
+  Whisper (~3,000 positives instead of 1,347), and retrain;
+- add the author's own recordings (`scripts/record_wakeword.py`), as
+  training data and as a real-voice false-reject measurement.

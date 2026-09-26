@@ -8,21 +8,20 @@ a button, and the target device is a Raspberry Pi 5 with a model under
 
 ## In progress
 
-- [ ] **Experiment 32: intent + slot values.** Slot heads for TIMER
-  duration, ALARM time, BRIGHTNESS percent and COLOR (`vcm/slots.py`),
-  the schema values plus common extras. Needs the `slots2` synthetic
-  batch and the Snips re-split. Code done; DGX run pending.
-- [ ] **Experiment 33: "Hey Kiwi" wake word.** Separate ~25K-param
-  detector (`vcm/wakeword/`), measured by false rejects and false
-  wake-ups per hour. Code done; data generation and training on the DGX
-  pending.
-- [ ] **Deployment**: export both models to int8 ONNX, commit them to
-  `models/`, then follow DEPLOYMENT.md on the Pi (benchmark, field-test
-  the wake word).
+- [ ] **Experiment 34** (next DGX run): slot heads on a frozen Experiment 31
+  (intent stays at 85.5%), wake word retrained on all plausible "hey kiwi"
+  clips + real recordings (`scripts/record_wakeword.py`, record first).
+- [x] **Experiment 32** (intent + slots in one model): slot values work
+  (ALARM 98%, COLOR 87%), but intent fell 3.5pp and int8 cost 6.8pp more,
+  so fp32 ships. Superseded by Experiment 34.
+- [x] **Experiment 33** ("Hey Kiwi"): 6.7% / 16.4% false rejects (clean /
+  noisy) at 0.67 false wake-ups per hour, threshold 0.95.
+- [ ] **Deployment**: after Experiment 34, copy `models/*.onnx` (fp32) to
+  the Pi and follow DEPLOYMENT.md (benchmark, field-test the wake word).
 
 ## Next
 
-- [ ] Make the Experiment 32 model the default in `scripts/demo_infer.py`
+- [ ] Make the Experiment 34 model the default in `scripts/demo_infer.py`
   (still defaults to the old DS-CNN) and refresh README / MODEL.md §10.
 - [ ] Integrate into `vcm/main.py`: `dispatch.py` still uses the older
   10-category taxonomy, so the 20 intents and slot values need mapping to

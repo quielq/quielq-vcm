@@ -43,8 +43,24 @@ def _is_val_speaker(speaker: str) -> bool:
     return int(hashlib.md5(speaker.encode()).hexdigest(), 16) % 10 == 0
 
 
-def load_items(wake_manifest: Path, intent_manifest: Path, speech_val_cap: int = 3000, seed: int = 0):
+# Real recordings (scripts/record_wakeword.py) are few next to ~3,000 synthetic
+# positives, so each real training take is listed this many times.
+REAL_REPEAT = 10
+
+
+def load_items(
+    wake_manifest: Path, intent_manifest: Path, speech_val_cap: int = 3000, seed: int = 0, extra: list[Path] | None = None
+):
     train, val = [], []
+    for manifest in extra or []:
+        with manifest.open(newline="") as f:
+            for r in csv.DictReader(f):
+                if r["qa_pass"] != "True" or r["split"] != "train":
+                    continue  # real test takes stay held out for evaluate_wakeword.py
+                if r["label"] == "WAKE":
+                    train += [(r["audio_path"], "wake"), (r["audio_path"], "partial")] * REAL_REPEAT
+                else:
+                    train += [(r["audio_path"], "hard")] * 3
     with wake_manifest.open(newline="") as f:
         for r in csv.DictReader(f):
             if r["qa_pass"] != "True" or r["split"] != "train":
@@ -92,6 +108,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--wake-manifest", type=Path, default=REPO_ROOT / "data/external/wakeword_synth/manifest.csv")
     parser.add_argument("--intent-manifest", type=Path, default=REPO_ROOT / "data/dataset_manifest.csv")
+    parser.add_argument(
+        "--extra-wake-manifest",
+        type=Path,
+        action="append",
+        default=[],
+        help="real recordings from scripts/record_wakeword.py (data/wakeword_real/manifest.csv); train split only",
+    )
     parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--samples-per-epoch", type=int, default=24000)
     parser.add_argument("--batch-size", type=int, default=256)
@@ -110,7 +133,9 @@ def main() -> None:
     torch.manual_seed(args.seed)
     device = torch.device(args.device)
 
-    train_items, val_items, intent_train_rows = load_items(args.wake_manifest, args.intent_manifest, seed=args.seed)
+    train_items, val_items, intent_train_rows = load_items(
+        args.wake_manifest, args.intent_manifest, seed=args.seed, extra=args.extra_wake_manifest
+    )
     noise_bank = load_noise_bank(intent_train_rows)
     counts = {k: sum(kind == k for _, kind in train_items) for k in KIND_WEIGHTS}
     print(f"train items by kind: {counts}; val items: {len(val_items)}; noise bank: {len(noise_bank)}", flush=True)

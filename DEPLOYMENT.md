@@ -6,12 +6,17 @@ everything happens over SSH from your laptop. For the rest of the device
 (pushbutton wiring, Sense HAT, lights, TTS, music), see
 [TESTING.md Part 3](TESTING.md#part-3--raspberry-pi-5-hardware-setup-and-testing).
 
-What runs on the Pi is two small ONNX files, int8-quantized, with no torch:
+What runs on the Pi is two small ONNX files (fp32), with no torch:
 
 | Model | File | Size | Job |
 |---|---|---:|---|
-| Wake word | `models/kiwi_wakeword.int8.onnx` | ~95 KB | Always on: scores a 1.5 s window every 0.1 s |
-| Intent + slots | `models/vcm_intent.int8.onnx` | ~300 KB | Runs once per command: 20 intents + TIMER/ALARM/BRIGHTNESS/COLOR values |
+| Wake word | `models/kiwi_wakeword.onnx` | 107 KB | Always on: scores a 1.5 s window every 0.1 s |
+| Intent + slots | `models/vcm_intent.onnx` | 426 KB | Runs once per command: 20 intents + TIMER/ALARM/BRIGHTNESS/COLOR values |
+
+**Why fp32, not the `.int8.onnx` files:** int8 quantization cost the intent
+model 6.8 points of real-speech accuracy (82.1% → 75.3%, EXPERIMENTS.md
+Experiment 32) and saved only 134 KB. fp32 is 533 KB for both models,
+within the 1 MB budget, uses the same memory, and is no slower.
 
 Together they're well under the 1 MB budget. The runtime needs only
 **numpy, onnxruntime and sounddevice**: features are computed with a numpy
@@ -110,7 +115,7 @@ rsync -a --exclude .venv --exclude data --exclude checkpoints --exclude debug_re
 The two model files live in `models/`. If they aren't there yet, copy them
 from wherever they were exported (for example the DGX), *from the laptop*:
 ```bash
-scp models/vcm_intent.int8.onnx models/kiwi_wakeword.int8.onnx <username>@kiwi.local:~/quielq-vcm/models/
+scp models/vcm_intent.onnx models/kiwi_wakeword.onnx <username>@kiwi.local:~/quielq-vcm/models/
 ```
 
 Then create the Python environment *on the Pi*. Only the three runtime
@@ -176,8 +181,10 @@ the intent, the slot value, the confidence, and timing:
 ```
 - `--show-scores` prints the live wake-word score, which is useful for
   seeing how close near-misses get.
-- `--wake-threshold` sets the trigger level. Use the one suggested by
-  `scripts/evaluate_wakeword.py`, recorded in EXPERIMENTS.md.
+- `--wake-threshold` sets the trigger level (default 0.95: in Experiment 33
+  it missed 6.7% of clean and 16% of noisy "hey kiwi" with 0.67 false
+  wake-ups per hour of test speech). Raise it if it wakes too often, lower it
+  if it misses you.
 - `--trigger button` skips the wake word and uses the GPIO 17 pushbutton
   instead (push-to-talk).
 
@@ -189,6 +196,17 @@ Mac's built-in microphone:
 The Mac needs `onnxruntime` in its environment (`pip install -e ".[deploy]"`).
 
 ## 8. Field-test the wake word
+
+**Record your own "hey kiwi" first** (on the laptop, ~5 minutes):
+```bash
+python scripts/record_wakeword.py --speaker-id <your-name>
+```
+It prompts 30 "hey kiwi" takes said different ways (quiet, fast, across the
+room...) plus 12 near-misses, and holds out a third of the "hey kiwi" takes
+for testing. `scripts/evaluate_wakeword.py --extra-wake-manifest
+data/wakeword_real/manifest.csv` then reports the false-reject rate on your
+real voice, and `scripts/train_wakeword.py --extra-wake-manifest ...` adds
+the rest to training. Other people's recordings help even more.
 
 Two numbers matter, and both can be measured over SSH:
 - **False rejects:** say "Hey Kiwi" 20 times, at about 1 m and 3 m, and
