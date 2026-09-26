@@ -24,6 +24,7 @@ import numpy as np
 
 from vcm.audio.capture import SAMPLE_RATE
 from vcm.audio.features import speech_level
+from vcm.audio.resample import StreamResampler, input_rate
 from vcm.deploy.runtime import OnnxIntentModel
 from vcm.wakeword.detector import WakeWordDetector, onnx_scorer
 
@@ -113,13 +114,18 @@ def main() -> None:
 
     detector = WakeWordDetector(onnx_scorer(args.wake_model), threshold=args.wake_threshold)
     chunks: queue.Queue[np.ndarray] = queue.Queue()
+    device = int(args.device) if args.device and args.device.isdigit() else args.device
+    rate = input_rate(sd, device, SAMPLE_RATE)
+    convert = StreamResampler(rate, SAMPLE_RATE) if rate != SAMPLE_RATE else (lambda x: x)
+    if rate != SAMPLE_RATE:
+        print(f"mic records at {rate} Hz (no 16 kHz mode): resampling to {SAMPLE_RATE} Hz")
     stream = sd.InputStream(
-        samplerate=SAMPLE_RATE,
+        samplerate=rate,
         channels=1,
         dtype="float32",
-        blocksize=int(CHUNK_S * SAMPLE_RATE),
-        device=args.device,
-        callback=lambda indata, frames, t, status: chunks.put(indata[:, 0].copy()),
+        blocksize=int(CHUNK_S * rate),
+        device=device,
+        callback=lambda indata, frames, t, status: chunks.put(convert(indata[:, 0].copy())),
     )
     print(f'Say "Hey Kiwi", then your command. (wake threshold {args.wake_threshold}; Ctrl+C to quit)')
     with stream:
