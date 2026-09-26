@@ -542,7 +542,7 @@ peak process memory: 61 MB
    - On the real voice, all three models reject 0/10 takes at ≤ 0.85.
 5. **The wake word's 10 dB noise column isn't reproducible between runs.**
    - `evaluate_wakeword.py` seeds its own `rng` (`random.Random(0)`), but `vcm.train.wave_augment.add_noise` picks the noise segment with the unseeded global `random`.
-   - So the fp32 ONNX rerun of v2 seed 0 matches the checkpoint exactly on the clean, real-voice and false-wake columns (deterministic), while the noise column moves by a few points (e.g. 21.5% → 23.8% at 0.95).
+   - The fp32 ONNX rerun of v2 seed 0 matches the checkpoint exactly on the clean and real-voice columns. False wake-ups match at every threshold except 0.50 (124 vs. 123), which I put down to fp32 numeric differences. The noise column moves by a few points (e.g. 21.5% → 23.8% at 0.95).
    - I didn't change the code because no step failed.
 6. **fp32 ONNX vs. checkpoint, intent.** Slot lines are identical. Real speech is 85.46% vs. 85.48%, about 1 of 6,577 clips. I didn't investigate which clip.
 7. **The benchmark now runs the fp32 files**, since `benchmark_pi.py` defaults changed on this branch. It measured 1.5 ms per intent model call vs. 14.8 ms for the int8 file in Experiment 32's DGX benchmark. On this x86 CPU, fp32 is faster than int8. The Pi's ARM CPU may differ.
