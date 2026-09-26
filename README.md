@@ -62,7 +62,7 @@ step from a fresh clone, including expected output.
 
 ## Deployment
 
-**[DEPLOYMENT.md](DEPLOYMENT.md)** covers running the voice pipeline
+**[STARTUP.md](STARTUP.md)** is the day-to-day runbook (what to start on the Pi and the Mac). **[DEPLOYMENT.md](DEPLOYMENT.md)** covers running the voice pipeline
 ("Hey Kiwi" wake word → command → intent + slot value) on a Raspberry Pi 5
 over SSH, with no monitor: flashing, microphone checks, benchmarking,
 field-testing the wake word, and starting on boot. The same
