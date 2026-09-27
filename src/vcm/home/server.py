@@ -14,6 +14,8 @@ Endpoints:
 - GET /api/state: the whole state. GET /api/events: the same, pushed live
   (server-sent events) whenever anything changes.
 - GET /api/meta: intents and slot vocabularies, for the dashboard.
+- GET /api/noisy: {noisy}: music playing or an alarm ringing; the listener
+  then uses its (more sensitive) --noisy-wake-threshold.
 
 Standard library only (ThreadingHTTPServer), so it fits beside the voice
 pipeline on a 512 MB Pi. It has no authentication: run it on a trusted home
@@ -54,14 +56,19 @@ class Speaker:
             self.queue.put(text)
 
     def _run(self) -> None:
+        while True:
+            self.say_now(self.queue.get())
+
+    def say_now(self, text: str) -> None:
+        """Speak and wait until done (the ringer's announcement, between beeps)."""
+        if not (self.enabled and text):
+            return
         from vcm.tts.speak import speak
 
-        while True:
-            text = self.queue.get()
-            try:
-                speak(text)
-            except Exception as exc:  # no TTS backend must not kill the server
-                print(f"(speech failed: {exc}) {text}")
+        try:
+            speak(text)
+        except Exception as exc:  # no TTS backend must not kill the server
+            print(f"(speech failed: {exc}) {text}")
 
 
 def apply_action(state: HomeState, action: dict) -> None:
@@ -123,6 +130,9 @@ def make_handler(state: HomeState, dispatcher: Dispatcher, speaker: Speaker):
                 self._json(200, state.snapshot())
             elif path == "/api/meta":
                 self._json(200, meta)
+            elif path == "/api/noisy":
+                ringing = bool(dispatcher.x.ringer and dispatcher.x.ringer.ringing)
+                self._json(200, {"noisy": ringing or state.snapshot()["music"]["playing"]})
             elif path == "/api/events":
                 self._events()
             else:
@@ -169,6 +179,8 @@ def make_handler(state: HomeState, dispatcher: Dispatcher, speaker: Speaker):
                     return self._json(200, {"ok": False, "error": str(exc)})
                 return self._json(200, {"ok": True})
             if self.path == "/api/action":
+                if body.get("action") == "alert_dismiss" and dispatcher.x.ringer:
+                    dispatcher.x.ringer.stop()
                 try:
                     apply_action(state, body)
                 except (ValueError, KeyError, TypeError) as exc:
@@ -186,7 +198,20 @@ def build(state_path: Path, speak: bool, integrations: Integrations | None = Non
     state = HomeState(state_path)
     speaker = Speaker(speak)
     dispatcher = Dispatcher(state, integrations or integrations_from_settings(load_settings()))
-    scheduler = Scheduler(state, on_alert=speaker.say)
+    if speak:
+        from vcm.home.ringer import Ringer
+        from vcm.tts.speak import play_wav
+
+        dispatcher.x.ringer = Ringer(play=play_wav, say=speaker.say_now)
+    dispatcher.read_sensor()  # seed the dashboard's room temperature
+
+    def on_alert(text: str, kind: str) -> None:
+        if dispatcher.x.ringer:
+            dispatcher.x.ringer.ring(text, kind)
+        else:
+            speaker.say(text)
+
+    scheduler = Scheduler(state, on_alert=on_alert)
     return state, dispatcher, scheduler, speaker
 
 

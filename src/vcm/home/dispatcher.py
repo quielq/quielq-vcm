@@ -11,8 +11,8 @@ clear spoken reply and a dashboard entry instead of an error:
 | VOLUME_UP / VOLUME_DOWN | System output volume (USB or Bluetooth speaker), else Spotify's |
 | WEATHER, TIME | Weather API / system clock, spoken |
 | LIGHT_ON/OFF, BRIGHTNESS, COLOR | Virtual lamp on the dashboard (+ real Xiaomi bulb if configured) |
-| TEMPERATURE | Reports temperature (Sense HAT, if attached) + thermostat target (no direction yet: TODO.md) |
-| TIMER, ALARM | Scheduled from the slot value; spoken alert when due |
+| TEMPERATURE | Reports the simulated room temperature (seeded from the Sense HAT) + thermostat target (no direction yet: TODO.md) |
+| TIMER, ALARM | Scheduled from the slot value; rings when due until STOP / PAUSE |
 | CREATE_REMINDER, LIST_REMINDERS | Reminder list (text is edited on the dashboard: TODO.md) |
 | CALL, MESSAGE | Your phone via the Mac bridge, else logged as simulated |
 """
@@ -46,6 +46,7 @@ class Integrations:
     local_music: object | None = None  # module with play(), and media_control-style pause/stop/next_track
     local_media: object | None = None
     bulb: object | None = None  # module with turn_on/turn_off/set_brightness
+    ringer: object | None = None  # vcm.home.ringer.Ringer: alarm/timer sound
     get_volume: Callable[[], int | None] = system_volume.get_volume
     change_volume: Callable[[int], int | None] = system_volume.change_volume
 
@@ -118,10 +119,17 @@ class Dispatcher:
             return f"Playing {name}."
         return "Music isn't set up. Add Spotify or local music in settings."
 
+    def _stop_ringing(self) -> bool:
+        return bool(self.x.ringer and self.x.ringer.stop())
+
     def pause(self, slot):
+        if self._stop_ringing():
+            return "Okay."
         return self._music("pause", "pause", playing=False, verb="Paused")
 
     def stop(self, slot):
+        if self._stop_ringing():  # "Hey Kiwi, stop" while an alarm rings
+            return "Okay."
         # Spotify has no "stop": pausing is the closest.
         return self._music("pause", "stop", playing=False, verb="Stopped")
 
@@ -129,8 +137,10 @@ class Dispatcher:
         return self._music("next", "next_track", playing=True, verb="Next song")
 
     def duck(self, on: bool) -> None:
-        """Lower Spotify while Kiwi listens after the wake word, so the mic
-        hears the command over the music; restore it afterwards."""
+        """Lower Spotify (and pause a ringing alarm) while Kiwi listens after
+        the wake word, so the mic hears the command; restore it afterwards."""
+        if self.x.ringer:
+            self.x.ringer.mute(on)
         if not self.x.spotify:
             return
         with self._duck_lock:
@@ -197,15 +207,31 @@ class Dispatcher:
         self.state.update(lambda d: d["lights"].update(on=True, color=slot))
         return f"Lights set to {slot}."
 
-    def temperature(self, slot):
+    def read_sensor(self) -> float | None:
+        """Read the sensor into current_c; seeds the simulated room_c the first time."""
         try:
             current = self.x.temperature() if self.x.temperature else None
-        except Exception:  # no sensor attached: still report the thermostat
+        except Exception:  # no sensor attached
             current = None
-        self.state.update(lambda d: d["thermostat"].update(current_c=current))
-        target = self.state.snapshot()["thermostat"]["target_c"]
-        now_part = f"It's {current:.0f} degrees. " if current is not None else ""
-        return f"{now_part}The thermostat is set to {target} degrees."
+
+        def change(d):
+            d["thermostat"]["current_c"] = current
+            if d["thermostat"].get("room_c") is None and current is not None:
+                d["thermostat"]["room_c"] = round(current, 1)
+
+        self.state.update(change)
+        return current
+
+    def temperature(self, slot):
+        self.read_sensor()
+        thermo = self.state.snapshot()["thermostat"]
+        room, target = thermo.get("room_c"), thermo["target_c"]
+        if room is None:
+            return f"The thermostat is set to {target} degrees."
+        if abs(room - target) < 0.5:
+            return f"It's {target} degrees, right at the thermostat setting."
+        action = "Cooling" if room > target else "Heating"
+        return f"It's {room:.0f} degrees in the room. {action} to {target}."
 
     # --- timers, alarms, reminders ---------------------------------------
     def timer(self, slot):

@@ -22,7 +22,9 @@ LOG_LIMIT = 50
 def default_state() -> dict:
     return {
         "lights": {"on": False, "brightness": 100, "color": "warm white"},
-        "thermostat": {"target_c": 24, "current_c": None},
+        # current_c: last sensor reading; room_c: simulated room temperature,
+        # drifting toward target_c (vcm.home.scheduler), shown on the dashboard
+        "thermostat": {"target_c": 24, "current_c": None, "room_c": None},
         "reminders": [],  # {id, text, created}
         "timers": [],  # {id, label, duration_s, ends_at}
         "alarms": [],  # {id, time, next_at}
@@ -44,7 +46,8 @@ class HomeState:
             saved = json.loads(self.path.read_text())
             for key, value in saved.items():
                 if key in self._data:
-                    self._data[key] = value
+                    # merge dict sections, so fields added later get their defaults
+                    self._data[key] = {**self._data[key], **value} if isinstance(value, dict) and isinstance(self._data[key], dict) else value
         self.version = 0
 
     def snapshot(self) -> dict:

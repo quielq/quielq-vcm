@@ -49,6 +49,29 @@
   th { color: var(--muted); font-weight: 500; border-top: 0; }
   .tag { background: var(--chip); border-radius: 6px; padding: 1px 6px; font-size: 12px; white-space: nowrap; }
   .scroll { overflow-x: auto; }
+  .thermo { --mode: var(--accent); position: relative; width: 190px; height: 190px; margin: 0 auto; }
+  .thermo.cooling { --mode: #3d8bfd; } .thermo.heating { --mode: #f07d2e; }
+  .thermo svg { width: 100%; height: 100%; overflow: visible; }
+  .thermo .track { fill: none; stroke: var(--line); stroke-width: 12; stroke-linecap: round; }
+  .thermo .flow { fill: none; stroke: var(--mode); stroke-width: 12; stroke-linecap: round; opacity: .85; }
+  .thermo:not(.holding) .flow { stroke-dasharray: 3 9; animation: flow 1s linear infinite; }
+  .thermo.cooling .flow { animation-direction: reverse; }
+  .thermo .knob { fill: var(--mode); stroke: var(--card); stroke-width: 3; transition: fill .4s; }
+  .thermo .roomdot { fill: var(--ink); stroke: var(--card); stroke-width: 2; }
+  .thermo .glow { position: absolute; inset: 26px; border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--mode) 22%, transparent) 0%, transparent 70%); transition: background .4s; }
+  .thermo:not(.holding) .glow { animation: pulse 2.4s ease-in-out infinite; }
+  .thermo .center { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; pointer-events: none; }
+  .thermo .room { font-size: 40px; font-weight: 650; line-height: 1; font-variant-numeric: tabular-nums; }
+  .thermo .mode { font-size: 13px; color: var(--mode); font-weight: 600; margin-top: 4px; text-transform: uppercase; letter-spacing: .06em; }
+  .thermo .particles { position: absolute; inset: 40px 50px; overflow: hidden; border-radius: 50%; pointer-events: none; }
+  .thermo .particles i { position: absolute; font-style: normal; opacity: 0; color: var(--mode); font-size: 12px; }
+  .thermo.cooling .particles i { top: -10%; animation: fall 3s linear infinite; }
+  .thermo.heating .particles i { bottom: -10%; animation: rise 2.6s ease-in infinite; }
+  @keyframes flow { to { stroke-dashoffset: -12; } }
+  @keyframes pulse { 50% { transform: scale(1.08); opacity: .7; } }
+  @keyframes fall { 10% { opacity: .8; } 90% { opacity: .5; } to { transform: translateY(130px) rotate(90deg); opacity: 0; } }
+  @keyframes rise { 10% { opacity: .8; } to { transform: translateY(-130px) scale(.4); opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .thermo * { animation: none !important; } }
   @media (max-width: 480px) { main { padding: 0 10px 20px; } .big { font-size: 24px; } }
 </style>
 </head>
@@ -87,9 +110,23 @@
 
   <section class="card">
     <h2>Thermostat</h2>
-    <div class="big" id="thermoTarget">24°C</div>
-    <div class="muted" id="thermoNow">Room temperature: —</div>
-    <div class="row" style="margin-top:10px"><button id="thermoDown">− 1°</button><button id="thermoUp">+ 1°</button></div>
+    <div class="thermo holding" id="thermo">
+      <div class="glow"></div>
+      <div class="particles" id="thermoParticles"></div>
+      <svg viewBox="0 0 200 200" role="img" aria-labelledby="thermoRoom thermoMode">
+        <path class="track" id="thermoTrack"/>
+        <path class="flow" id="thermoFlow"/>
+        <circle class="roomdot" id="thermoRoomDot" r="5"/>
+        <circle class="knob" id="thermoKnob" r="10"/>
+      </svg>
+      <div class="center"><div class="room" id="thermoRoom">—</div><div class="mode" id="thermoMode">Idle</div></div>
+    </div>
+    <div class="row" style="justify-content:center;margin-top:6px">
+      <button id="thermoDown" aria-label="lower target">− 1°</button>
+      <span>Set to <b id="thermoTarget">24°C</b></span>
+      <button id="thermoUp" aria-label="raise target">+ 1°</button>
+    </div>
+    <div class="muted" id="thermoNow" style="text-align:center;margin-top:6px"></div>
   </section>
 
   <section class="card">
@@ -156,6 +193,45 @@ function fmtLeft(s) { s = Math.max(0, Math.round(s)); const h = Math.floor(s / 3
 function list(ul, items, render, empty) { ul.replaceChildren(...(items.length ? items.map(render) : [el("li", empty, "muted")])); }
 function xButton(onClick, label) { const b = el("button", "✕", "x"); b.title = label; b.setAttribute("aria-label", label); b.onclick = onClick; return b; }
 
+// Thermostat dial: 16-30 C over a 270-degree arc, gap at the bottom.
+const T_MIN = 16, T_MAX = 30;
+const dialAngle = t => (135 + (Math.min(T_MAX, Math.max(T_MIN, t)) - T_MIN) / (T_MAX - T_MIN) * 270) * Math.PI / 180;
+const dialPoint = t => [100 + 80 * Math.cos(dialAngle(t)), 100 + 80 * Math.sin(dialAngle(t))];
+function dialArc(t0, t1) {
+  const [a, b] = t0 <= t1 ? [t0, t1] : [t1, t0], [x0, y0] = dialPoint(a), [x1, y1] = dialPoint(b);
+  const large = dialAngle(b) - dialAngle(a) > Math.PI ? 1 : 0;
+  return `M ${x0.toFixed(2)} ${y0.toFixed(2)} A 80 80 0 ${large} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`;
+}
+let shownRoom = null, roomTween = null, thermoMode = null;
+function drawThermo(room, target) {
+  const mode = room == null || Math.abs(room - target) < 0.05 ? "holding" : room > target ? "cooling" : "heating";
+  $("thermo").className = "thermo " + mode;
+  $("thermoRoom").textContent = room == null ? "—" : room.toFixed(1) + "°";
+  $("thermoMode").textContent = room == null ? "No reading" : {holding: "Holding", cooling: "Cooling", heating: "Heating"}[mode];
+  $("thermoFlow").setAttribute("d", room == null || mode === "holding" ? "" : dialArc(room, target));
+  const [kx, ky] = dialPoint(target), [rx, ry] = dialPoint(room ?? target);
+  $("thermoKnob").setAttribute("cx", kx); $("thermoKnob").setAttribute("cy", ky);
+  $("thermoRoomDot").setAttribute("cx", rx); $("thermoRoomDot").setAttribute("cy", ry);
+  $("thermoRoomDot").style.display = room == null || mode === "holding" ? "none" : "";
+  if (mode !== thermoMode) {  // new particle set only when the mode changes, so animations don't restart
+    thermoMode = mode;
+    $("thermoParticles").replaceChildren(...(mode === "holding" ? [] : Array.from({length: 7}, (_, i) => {
+      const p = el("i", mode === "cooling" ? "❄" : "●");
+      p.style.left = (8 + i * 13) + "%"; p.style.animationDelay = (i * 0.43).toFixed(2) + "s";
+      if (mode === "heating") p.style.fontSize = "7px";
+      return p;
+    })));
+  }
+}
+function tweenRoom(to, target) {  // glide the number between the server's 0.1-degree steps
+  cancelAnimationFrame(roomTween);
+  if (to == null || shownRoom == null) { shownRoom = to; return drawThermo(to, target); }
+  const from = shownRoom, t0 = performance.now(), dur = 1800;
+  const step = t => { const k = Math.min(1, (t - t0) / dur); shownRoom = from + (to - from) * (1 - (1 - k) ** 3);
+    drawThermo(shownRoom, target); if (k < 1) roomTween = requestAnimationFrame(step); };
+  roomTween = requestAnimationFrame(step);
+}
+
 function render() {
   if (!state) return;
   const L = state.lights, c = COLORS[L.color] || "#ffd9a0";
@@ -173,7 +249,8 @@ function render() {
 
   const T = state.thermostat;
   $("thermoTarget").textContent = `${T.target_c}°C`;
-  $("thermoNow").textContent = `Room temperature: ${T.current_c == null ? "—" : T.current_c.toFixed(1) + "°C"}`;
+  $("thermoNow").textContent = T.current_c == null ? "Simulated room · no sensor" : `Simulated room · Sense HAT read ${T.current_c.toFixed(1)}°C`;
+  tweenRoom(T.room_c ?? null, T.target_c);
 
   const M = state.music;
   $("musicState").textContent = M.playing ? "Playing" : (M.source ? "Paused" : "Stopped");
@@ -214,6 +291,7 @@ function setupSlots() {
 }
 
 async function init() {
+  $("thermoTrack").setAttribute("d", dialArc(T_MIN, T_MAX));
   meta = await (await fetch("/api/meta")).json();
   $("intent").replaceChildren(...meta.intents.map(i => el("option", i)));
   $("intent").onchange = setupSlots; setupSlots();

@@ -97,6 +97,26 @@ def duck(server: str | None, on: bool) -> None:
         threading.Thread(target=run, daemon=True).start()
 
 
+def follow_noise(server: str, detector: WakeWordDetector, quiet: float, noisy: float) -> None:
+    """Every 2 s, ask the home server whether music is playing (or an alarm
+    ringing) and switch the wake threshold: over music, "Hey Kiwi" scores
+    lower, so a stricter threshold would miss it."""
+    import json
+    import threading
+    import urllib.request
+
+    def run():
+        while True:
+            try:
+                with urllib.request.urlopen(f"{server.rstrip('/')}/api/noisy", timeout=2) as response:
+                    detector.threshold = noisy if json.loads(response.read()).get("noisy") else quiet
+            except (OSError, ValueError):
+                detector.threshold = quiet
+            time.sleep(2)
+
+    threading.Thread(target=run, daemon=True, name="noise-follower").start()
+
+
 def send_to_server(server: str, intent: str, slot: str | None, confidence: float) -> None:
     """POST the command to vcm.home.server, which acts on it, speaks the
     reply and updates the dashboard."""
@@ -127,6 +147,12 @@ def main() -> None:
     parser.add_argument("--intent-model", type=Path, default=REPO_ROOT / "models/vcm_intent.onnx")
     parser.add_argument("--wake-model", type=Path, default=REPO_ROOT / "models/kiwi_wakeword.onnx")
     parser.add_argument("--wake-threshold", type=float, default=0.95, help="Exp 34: 14%% clean / 22%% noisy / 0 of 10 real-voice false rejects, 1.34 false wake-ups per hour of test speech")
+    parser.add_argument(
+        "--noisy-wake-threshold",
+        type=float,
+        default=0.8,
+        help="wake threshold while music plays or an alarm rings (needs --server); lower = hears you better over music, more false wake-ups",
+    )
     parser.add_argument("--trigger", choices=["wakeword", "button"], default="wakeword")
     parser.add_argument("--device", default=None, help="sounddevice input device (name or index); default: system default")
     parser.add_argument("--show-scores", action="store_true", help="print the wake-word score continuously (tuning)")
@@ -154,6 +180,8 @@ def main() -> None:
             report(model, audio, time.perf_counter(), args.server)
 
     detector = WakeWordDetector(onnx_scorer(args.wake_model), threshold=args.wake_threshold)
+    if args.server:
+        follow_noise(args.server, detector, args.wake_threshold, args.noisy_wake_threshold)
     chunks: queue.Queue[np.ndarray] = queue.Queue()
     device = int(args.device) if args.device and args.device.isdigit() else args.device
     rate = input_rate(sd, device, SAMPLE_RATE)
@@ -192,7 +220,7 @@ def main() -> None:
                     while not chunks.empty():  # drop audio queued while classifying
                         chunks.get_nowait()
                 elif args.show_scores:
-                    print(f"\rwake score {detector.last_score:.2f}", end="", flush=True)
+                    print(f"\rwake score {detector.last_score:.2f} (threshold {detector.threshold})", end="", flush=True)
         except KeyboardInterrupt:
             print("\nExiting.")
 
