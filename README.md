@@ -104,8 +104,9 @@ MODEL.md Section 10 for the full comparison. Three things exist now:
 - **Direct audio → intent** (the deployable pipeline): a CRNN
   (107K params, **426 KB** fp32 ONNX) classifies a log-mel spectrogram
   directly into one of 20 intents, plus a slot value for TIMER, ALARM,
-  BRIGHTNESS and COLOR. **85.48% real-speech test accuracy** (Experiment
-  34; slot heads trained on a frozen Experiment 31 encoder). A 25K-param
+  BRIGHTNESS and COLOR. **84.80% real-speech test accuracy**, slot values
+  74–99% (Experiment 34, intent and slots trained jointly at slot weight
+  0.3). A 25K-param
   "Hey Kiwi" wake word (107 KB) listens in front of it.
   `scripts/vcm_listen.py` (wake word → command) or `scripts/demo_infer.py`
   (push-to-talk). Earlier DS-CNN models (137.5 KB, ~75% val, Experiments
@@ -115,7 +116,7 @@ MODEL.md Section 10 for the full comparison. Three things exist now:
   regression classifier maps the transcript to an intent. **~144 MB —
   ~340x the direct intent model's size by disk, ~690x by parameter
   count** — but **90.62% test accuracy on real audio** vs. the direct
-  pipeline's 85.5%, the accuracy ceiling for systems that can
+  pipeline's 84.8%, the accuracy ceiling for systems that can
   accommodate the footprint. See EXPERIMENTS.md Experiment 26.
   `scripts/demo_infer_cascade.py`.
 

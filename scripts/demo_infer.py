@@ -57,7 +57,7 @@ SILENCE_THRESHOLD = 0.008
 # Below this top-class probability, ask the user to repeat instead of
 # acting. Chosen on the real-speech *val* split (not test;
 # `scripts/evaluate_checkpoint.py --split val` prints the full table).
-# For the Experiment 34 model at 0.6 it rejects 11.1% of utterances,
+# For the Experiment 34 frozen model (the joint default is unmeasured) at 0.6 it rejects 11.1% of utterances,
 # catches 47% of its errors, and is 91.8% accurate on the ones it accepts
 # (vs 86.2% with no threshold), at the cost of re-asking for 4.6% of
 # utterances it would have gotten right. 0.7 trades more re-asks (15.5%)

@@ -20,10 +20,10 @@ what the extra accuracy of the ASR cascade (Experiment 26) would cost.
 | Memory for the models once loaded | ~8.5 MB | ~290–370 MB | ~40× |
 | Latency per command | **3.1–3.4 ms** (1 thread) | **440–950 ms** (see below) | ~150–300× |
 | Python packages to install | ~149 MB: numpy, onnxruntime, sounddevice | ~330 MB: adds faster-whisper, CTranslate2, PyAV, tokenizers, scikit-learn, scipy | ~2× |
-| Real-speech test accuracy | 85.5% (Experiment 34) | **90.6%** (Experiment 26) | ASR +5.1 points |
+| Real-speech test accuracy | 84.8% (Experiment 34) | **90.6%** (Experiment 26) | ASR +5.8 points |
 | Works as the always-on wake word? | Yes, ~1% of one core | **No.** Scoring a 1.5 s window every 0.1 s would need ~4.6 s of compute per second of audio | |
 
-**In short:** the ASR cascade buys about 5 accuracy points for roughly
+**In short:** the ASR cascade buys about 6 accuracy points for roughly
 **280× the disk, 5–7× the memory and 150–300× the latency**, and it would
 *still* need a separate wake-word model in front of it, because Whisper is
 far too slow to listen continuously.
