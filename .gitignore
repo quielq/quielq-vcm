@@ -13,6 +13,8 @@ configs/settings.toml
 # local media library, reminders storage
 media/
 data/reminders.json
+# home server state (python -m vcm.home.server): lamp, timers, log
+data/home_state.json
 
 # downloaded dataset caches (SLURP/FSC/etc. raw metadata+audio) — re-fetch, don't commit
 data/external/
