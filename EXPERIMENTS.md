@@ -2283,6 +2283,9 @@ slotted intents' ground-truth-labelled clips):
 85.46% vs 85.48%, one clip, slot lines identical). Intent accuracy is
 the project's headline number, so it isn't traded for slot accuracy on
 one seed. If more w0.3 seeds hold at ~85%, joint w0.3 is the better model.
+The joint w0.3 model is also exported, as `models/vcm_intent_joint.onnx`
+(426 KB fp32; ONNX matches the checkpoint to 1e-6), for field-testing slot
+values on the Pi with `vcm_listen.py --intent-model`.
 
 **Wake word, setup**: positives kept by the plausible-audio rule instead
 of Whisper (train 2,942/3,000 passed vs 1,347; test 391/400 vs 195),

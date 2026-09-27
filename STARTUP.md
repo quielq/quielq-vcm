@@ -85,6 +85,19 @@ cd ~/quielq-vcm && .venv/bin/python scripts/vcm_listen.py --server http://127.0.
   already at 16 kHz. `--device "USB PnP"` also works: it records the raw
   mic at 48 kHz and resamples.
 
+**Intent model choice.** Two intent models ship, and `--intent-model`
+picks one (Experiment 34, EXPERIMENTS.md):
+
+| File | Intent | Slot values (timer / alarm / brightness / color) |
+|---|---:|---|
+| `models/vcm_intent.onnx` (default) | 85.5% | 68 / 90 / 68 / 84% |
+| `models/vcm_intent_joint.onnx` | 84.8% | 74 / 99 / 74 / 86% |
+
+For better slot values:
+```bash
+cd ~/quielq-vcm && .venv/bin/python scripts/vcm_listen.py --intent-model models/vcm_intent_joint.onnx --server http://127.0.0.1:8000 --show-scores
+```
+
 **3. Mac: open the dashboard** at http://raspberrypi.local:8000.
 
 **4. Say "Hey Kiwi"**, pause briefly, then a command. With
