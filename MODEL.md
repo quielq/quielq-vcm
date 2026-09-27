@@ -338,7 +338,7 @@ different split, so the rows aren't strictly comparable.
 
 | # | Option | Accuracy | Model size | Deployable per assignment rules? |
 |---|---|---|---:|---|
-| **0** | **CRNN + slot heads on a frozen Experiment 31 encoder** (Experiment 34) + "Hey Kiwi" wake word | **85.48% real-speech test**; slot values 68–90% | **426 KB** intent + 107 KB wake word (fp32 ONNX) | **Yes — what ships** (`models/`) |
+| **0** | **CRNN with intent + slot heads trained jointly, slot weight 0.3** (Experiment 34) + "Hey Kiwi" wake word | **84.80% real-speech test**; slot values 74–99% | **426 KB** intent + 107 KB wake word (fp32 ONNX) | **Yes — what ships** (`models/`) |
 | 1 | DS-CNN + confusable-pair loss (Experiment 15) | 75.45% val | 137.5 KB | Yes — historical baseline |
 | 2 | DS-CNN + distillation from the ASR-cascade (Experiment 27) | 75.78% val (mixed per-class, see below) | 137.5 KB | Yes — historical |
 | 3 | **ASR-cascade** (Experiment 26) | **90.62% test, real audio** | ~144 MB (whisper-base 142MB + classifier 1.9MB) | **No — backup/reference only** |
@@ -347,8 +347,11 @@ different split, so the rows aren't strictly comparable.
 couldn't see whole words (Experiment 28: 69.3% → 80.4% real speech with
 the CRNN), then gained from waveform augmentation (Experiment 29b) and
 targeted synthetic phrasings (Experiment 31). Experiment 34 adds slot
-values (timer length, alarm time, brightness, color) without touching
-intent accuracy by training only the slot heads on the frozen model.
+values (timer length, alarm time, brightness, color). Training only the
+slot heads on the frozen Experiment 31 model keeps intent at 85.48% but
+gave weak slot values in live tests, so the shipped model trains both
+jointly with the slot loss at weight 0.3: 84.80% intent, and slot values
+74–99% instead of 68–90%.
 
 **Option 3, the ASR-cascade, is the accuracy ceiling but not a
 candidate for the actual submitted VCM.** The assignment states "ASR

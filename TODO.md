@@ -1,8 +1,8 @@
 # To-do
 
 Current state (see EXPERIMENTS.md): the deployable model is the CRNN
-(Experiment 34: Experiment 31's encoder frozen + slot heads, 107K params,
-426 KB fp32, 85.5% real-speech test accuracy, slot values 68–90%) with the
+(Experiment 34: intent + slots trained jointly at slot weight 0.3, 107K
+params, 426 KB fp32, 84.8% real-speech test accuracy, slot values 74–99%) with the
 "Hey Kiwi" wake word v2 (25K params, 107 KB). The course asks for a wake word instead of
 a button, and the target device is a Raspberry Pi 5 with a model under
 1 MB.
@@ -19,9 +19,12 @@ a button, and the target device is a Raspberry Pi 5 with a model under
   noisy) at 0.67 false wake-ups per hour, threshold 0.95.
 - [ ] **Deployment**: copy `models/*.onnx` (fp32) to the Pi and follow
   DEPLOYMENT.md (benchmark, field-test the wake word at 0.95 vs 0.98).
-- [ ] **Joint slots at weight 0.3, 2 more seeds** (DGX): one seed matched
-  Experiment 32's slot accuracy (83.4%) at 84.8% intent. If the seeds
-  hold at ~85%, ship it instead of the frozen model (+6 points slots).
+- [x] **Joint w0.3 is the default** (`models/vcm_intent.onnx`): the frozen
+  model's slot values were too weak live; it stays as
+  `models/vcm_intent_frozen.onnx`.
+- [ ] **Joint w0.3, 2 more seeds** (DGX) to confirm its −0.7 intent points
+  are seed noise, and its val reject-threshold table (the 0.6 default was
+  measured on the frozen model).
 
 ## Actions and dashboard (built: `vcm/home/`, DEPLOYMENT.md step 8b)
 
