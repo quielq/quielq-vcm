@@ -121,6 +121,15 @@ def test_thermostat_simulation_drifts_room_to_target(tmp_path):
     assert d.handle("TEMPERATURE") == "It's 24 degrees, right at the thermostat setting."
 
 
+def test_temperature_slot_sets_the_thermostat(tmp_path):
+    state, d = make(tmp_path, temperature=lambda: 27.0)
+    assert d.handle("TEMPERATURE", "22 degrees") == "Thermostat set to 22 degrees. Cooling from 27."
+    d.handle("TEMPERATURE", "up")
+    assert state.snapshot()["thermostat"]["target_c"] == 23
+    d.handle("TEMPERATURE", "45")
+    assert state.snapshot()["thermostat"]["target_c"] == 30
+
+
 def test_stop_silences_a_ringing_alarm_before_touching_music(tmp_path):
     ringer, spotify = mock.Mock(), FakeSpotify()
     ringer.stop.return_value = True

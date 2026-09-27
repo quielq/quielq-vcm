@@ -41,19 +41,41 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 CHUNK_S = 0.1
 END_SILENCE_S = 0.7
 MAX_COMMAND_S = 5.0
-SILENCE_THRESHOLD = 0.008  # same gate as scripts/demo_infer.py (loudest 300ms)
+SILENCE_THRESHOLD = 0.005  # "was anything said?" gate (loudest 300 ms). 0.008 (scripts/demo_infer.py,
+# Mac mic) dropped every command from a quieter mic; silent clips peak at 0.0023-0.0048.
+SPEECH_OVER_FLOOR = 3.0  # a chunk is speech if 3x louder than the background (room, or music)
 REJECT_THRESHOLD = 0.6  # same as scripts/demo_infer.py
 
 
-def record_command(chunks: "queue.Queue[np.ndarray]", lead_in: np.ndarray) -> np.ndarray:
-    """Collect mic chunks until END_SILENCE_S of quiet after some speech, or MAX_COMMAND_S."""
+def background_floor(levels: "list[float]") -> float:
+    """Background level before the wake word: the 20th percentile of the
+    chunks 3.0-1.2 s before it fired (so "Hey Kiwi" itself isn't counted)."""
+    earlier = levels[-30:-12]
+    return float(np.percentile(earlier, 20)) if earlier else 0.0
+
+
+def record_command(chunks: "queue.Queue[np.ndarray]", lead_in: np.ndarray, floor: float = 0.0) -> np.ndarray:
+    """Collect mic chunks until END_SILENCE_S of quiet after some speech, or MAX_COMMAND_S.
+
+    Speech means SPEECH_OVER_FLOOR x the background, not a fixed level: with
+    a fixed level, music counted as speech and the ducking that follows the
+    wake word counted as silence, so recording ended ~1.3 s after "Hey Kiwi"
+    unless the command came at once. The floor follows the background down
+    as the music ducks (20th percentile of the last 1.5 s). Offline test
+    (real "Hey Kiwi" + real commands, music 10 dB under the voice, 0.5-2 s
+    pause before the command): 0-24% -> 62-84% of commands heard.
+    """
     audio = [lead_in]
-    heard_speech, quiet_s, total_s = False, 0.0, 0.0
+    heard_speech, quiet_s, total_s, levels = False, 0.0, 0.0, []
     while total_s < MAX_COMMAND_S:
         chunk = chunks.get()
         audio.append(chunk)
         total_s += len(chunk) / SAMPLE_RATE
-        loud = speech_level(chunk) >= SILENCE_THRESHOLD
+        level = speech_level(chunk)
+        levels.append(level)
+        if len(levels) >= 5:
+            floor = min(floor, float(np.percentile(levels[-15:], 20))) if floor else float(np.percentile(levels[-15:], 20))
+        loud = level >= max(SILENCE_THRESHOLD, SPEECH_OVER_FLOOR * floor)
         heard_speech |= loud
         quiet_s = 0.0 if loud else quiet_s + len(chunk) / SAMPLE_RATE
         if heard_speech and quiet_s >= END_SILENCE_S:
@@ -150,7 +172,7 @@ def main() -> None:
     parser.add_argument(
         "--noisy-wake-threshold",
         type=float,
-        default=0.8,
+        default=0.7,
         help="wake threshold while music plays or an alarm rings (needs --server); lower = hears you better over music, more false wake-ups",
     )
     parser.add_argument("--trigger", choices=["wakeword", "button"], default="wakeword")
@@ -199,10 +221,12 @@ def main() -> None:
     out_rate = int(sd.query_devices(kind="output")["default_samplerate"])
     chime = None if args.no_chime else make_chime(out_rate)
     print(f'Say "Hey Kiwi", then your command. (wake threshold {args.wake_threshold}; Ctrl+C to quit)')
+    levels: list[float] = []  # recent chunk levels, for the background floor
     with stream:
         try:
             while True:
                 chunk = chunks.get()
+                levels = [*levels[-29:], speech_level(chunk)]
                 if detector.feed(chunk):
                     print(f"\n[wake word, score {detector.last_score:.2f}] listening...")
                     t_wake = time.perf_counter()
@@ -212,7 +236,7 @@ def main() -> None:
                         sd.wait()
                         while not chunks.empty():  # the mic heard the chime: don't treat it as speech
                             chunks.get_nowait()
-                    audio = record_command(chunks, lead_in=np.zeros(0, dtype="float32"))
+                    audio = record_command(chunks, lead_in=np.zeros(0, dtype="float32"), floor=background_floor(levels))
                     report(model, audio, time.perf_counter(), args.server)
                     duck(args.server, on=False)
                     print(f"  ({time.perf_counter() - t_wake:.1f} s from wake word to result)")

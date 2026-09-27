@@ -32,6 +32,7 @@ from vcm.home.spotify import SpotifyClient, SpotifyError
 from vcm.home.state import HomeState, new_id
 
 VOLUME_STEP = 10
+THERMO_MIN_C, THERMO_MAX_C, THERMO_STEP_C = 16, 30, 1
 DUCK_PERCENT = 15  # Spotify volume while listening for a command
 
 
@@ -223,9 +224,26 @@ class Dispatcher:
         return current
 
     def temperature(self, slot):
+        """No slot: report. A slot sets the (simulated) thermostat: "22 degrees"
+        / "22" sets the target, "up" / "down" move it THERMO_STEP_C."""
         self.read_sensor()
+        target = self.state.snapshot()["thermostat"]["target_c"]
+        if slot:
+            word = str(slot).lower().split()[0]
+            if word in ("up", "warmer", "increase"):
+                target += THERMO_STEP_C
+            elif word in ("down", "cooler", "decrease"):
+                target -= THERMO_STEP_C
+            else:
+                target = round(float(word.rstrip("°c")))
+            target = max(THERMO_MIN_C, min(THERMO_MAX_C, target))
+            self.state.update(lambda d: d["thermostat"].update(target_c=target))
+            room = self.state.snapshot()["thermostat"].get("room_c")
+            if room is None or abs(room - target) < 0.5:
+                return f"Thermostat set to {target} degrees."
+            return f"Thermostat set to {target} degrees. {'Cooling' if room > target else 'Heating'} from {room:.0f}."
         thermo = self.state.snapshot()["thermostat"]
-        room, target = thermo.get("room_c"), thermo["target_c"]
+        room = thermo.get("room_c")
         if room is None:
             return f"The thermostat is set to {target} degrees."
         if abs(room - target) < 0.5:
