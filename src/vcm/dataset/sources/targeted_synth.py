@@ -290,6 +290,32 @@ def _slots2_phrases() -> dict[str, tuple[tuple[str, str], ...]]:
     return {"ALARM": alarm, "TIMER": timer, "BRIGHTNESS": brightness, "COLOR": color}
 
 
+# --- Batch "slots3" (Experiment 35): temperature and reminder values ---------
+# The class schema's 3 values each (vcm.slots TEMPERATURES, REMINDER_TASKS),
+# in the schema's phrasings plus common variants. The real schema recordings
+# are few, so these give the new heads enough examples per value.
+_TEMPERATURE_TEMPLATES = (
+    "temperature {d}", "change the temperature to {d}", "set the temperature to {d}",
+    "set the thermostat to {d}", "change the thermostat to {d}", "make it {d}",
+    "turn the temperature to {d}", "can you set the temperature to {d}", "set the heat to {d}",
+    "adjust the temperature to {d}",
+)  # fmt: skip
+_TEMPERATURE_SPOKEN = {"18 degrees": "eighteen degrees", "22 degrees": "twenty two degrees", "26 degrees": "twenty six degrees"}
+_REMINDER_TEMPLATES = (
+    "reminder {t}", "remind me to {t}", "create a reminder to {t}", "set a reminder to {t}",
+    "add a reminder to {t}", "can you remind me to {t}", "make a reminder to {t}", "please remind me to {t}",
+    "new reminder {t}", "don't let me forget to {t}",
+)  # fmt: skip
+
+
+def _slots3_phrases() -> dict[str, tuple[tuple[str, str], ...]]:
+    from vcm.slots import REMINDER_TASKS, TEMPERATURES
+
+    temperature = tuple((t.format(d=_TEMPERATURE_SPOKEN[v]), v) for v in TEMPERATURES for t in _TEMPERATURE_TEMPLATES)
+    reminder = tuple((t.format(t=v), v) for v in REMINDER_TASKS for t in _REMINDER_TEMPLATES)
+    return {"TEMPERATURE": temperature, "CREATE_REMINDER": reminder}
+
+
 # --- Batch "wakeword" (Hey Kiwi) ----------------------------------------------
 # Positives, plus hard negatives taken from the wake-word confusability
 # analysis (TODO.md): the transcript near-matches ("queen", "every week"),
@@ -319,6 +345,15 @@ BATCHES = {
             "test": {"ALARM": 200, "TIMER": 100, "BRIGHTNESS": 80, "COLOR": 50},
         },
     },
+    "slots3": {
+        "out_dir": "data/external/targeted_synth_slots3",
+        "source": "targeted_synth_slots3",
+        "phrases": "slots3",  # built lazily by batch_phrases (needs vcm.slots)
+        "clips": {
+            "train": {"TEMPERATURE": 600, "CREATE_REMINDER": 600},
+            "test": {"TEMPERATURE": 90, "CREATE_REMINDER": 90},
+        },
+    },
     "wakeword": {
         "out_dir": "data/external/wakeword_synth",
         "source": "wakeword_synth",
@@ -336,4 +371,6 @@ def batch_phrases(batch: str) -> dict[str, tuple[tuple[str, str], ...]]:
     exactly its original phrase order, so its job plan (and resumable
     generation) is unchanged."""
     phrases = BATCHES[batch]["phrases"]
+    if phrases == "slots3":
+        return _slots3_phrases()
     return _slots2_phrases() if phrases is None else phrases

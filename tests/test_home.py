@@ -130,6 +130,12 @@ def test_temperature_slot_sets_the_thermostat(tmp_path):
     assert state.snapshot()["thermostat"]["target_c"] == 30
 
 
+def test_reminder_slot_fills_the_dashboard_text(tmp_path):
+    state, d = make(tmp_path)
+    assert d.handle("CREATE_REMINDER", "drink water") == "Okay, I'll remind you to drink water."
+    assert state.snapshot()["reminders"][0]["text"] == "Drink water"
+
+
 def test_stop_silences_a_ringing_alarm_before_touching_music(tmp_path):
     ringer, spotify = mock.Mock(), FakeSpotify()
     ringer.stop.return_value = True

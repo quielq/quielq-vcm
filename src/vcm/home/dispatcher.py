@@ -270,9 +270,10 @@ class Dispatcher:
         return f"Alarm set for {slot} {day}."
 
     def create_reminder(self, slot):
-        entry = {"id": new_id(), "text": slot or "New reminder (add details on the dashboard)", "created": time.time()}
+        text = slot[:1].upper() + slot[1:] if slot else "New reminder (add details on the dashboard)"
+        entry = {"id": new_id(), "text": text, "created": time.time()}
         self.state.update(lambda d: d["reminders"].append(entry))
-        return "Reminder created." if slot else "Reminder created. You can add the details on the dashboard."
+        return f"Okay, I'll remind you to {slot}." if slot else "Reminder created. You can add the details on the dashboard."
 
     def list_reminders(self, slot):
         items = self.state.snapshot()["reminders"]
