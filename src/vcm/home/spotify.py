@@ -94,16 +94,36 @@ class SpotifyClient:
     def pause(self) -> None:
         self._player("PUT", "/me/player/pause")
 
-    def next(self) -> None:
+    def next(self, settle_s: float = 3.0) -> None:
+        """Skip, then wait (up to settle_s) until Spotify reports the new
+        track: the skip is asynchronous, so reading now_playing() right
+        away still returns the previous song."""
+        before = self._current_item().get("id")
         self._player("POST", "/me/player/next")
+        deadline = time.time() + settle_s
+        while time.time() < deadline:
+            time.sleep(0.25)
+            if self._current_item().get("id") != before:
+                return
 
     def set_volume(self, percent: int) -> None:
         self._player("PUT", "/me/player/volume", params={"volume_percent": max(0, min(100, int(percent)))})
 
-    def now_playing(self) -> str | None:
+    def playback(self) -> dict:
+        """{"playing": bool, "volume": int | None} for the active device."""
+        r = self._call("GET", "/me/player")
+        if r.status_code != 200 or not r.content:
+            return {"playing": False, "volume": None}
+        body = r.json()
+        return {"playing": bool(body.get("is_playing")), "volume": (body.get("device") or {}).get("volume_percent")}
+
+    def _current_item(self) -> dict:
         r = self._call("GET", "/me/player/currently-playing")
         if r.status_code != 200 or not r.content:
-            return None
-        item = r.json().get("item") or {}
+            return {}
+        return r.json().get("item") or {}
+
+    def now_playing(self) -> str | None:
+        item = self._current_item()
         artists = ", ".join(a["name"] for a in item.get("artists", []))
         return f"{item.get('name')} by {artists}" if item.get("name") else None

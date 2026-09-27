@@ -30,6 +30,7 @@ class FakeSpotify:
     def next(self): self._do("next")
     def set_volume(self, p): self._do("volume", p)
     def now_playing(self): return "Song A by Artist"
+    def playback(self): return {"playing": True, "volume": 70}
 
 
 class FakePhone:
@@ -44,7 +45,7 @@ class FakePhone:
 
 def make(tmp_path, **kw):
     state = HomeState(tmp_path / "state.json")
-    x = Integrations(get_volume=lambda: 50, change_volume=lambda step: 50 + step, **kw)
+    x = Integrations(**{"get_volume": lambda: 50, "change_volume": lambda step: 50 + step, **kw})
     return state, Dispatcher(state, x)
 
 
@@ -77,6 +78,35 @@ def test_music_uses_spotify_and_tracks_state(tmp_path):
     assert [c[0] for c in spotify.calls] == ["play", "next", "pause"]
     assert state.snapshot()["music"]["playing"] is False
     assert d.handle("VOLUME_UP") == "Volume 60 percent."
+
+
+def test_duck_lowers_and_restores_spotify(tmp_path):
+    spotify = FakeSpotify()
+    state, d = make(tmp_path, spotify=spotify, change_volume=lambda step: None)
+    d.duck(True)
+    d.duck(True)  # a second wake word while ducked must not save the ducked level
+    d.duck(False)
+    assert spotify.calls == [("volume", 15), ("volume", 70)]
+    spotify.calls.clear()
+    d.duck(True)
+    d.handle("VOLUME_UP")  # while ducked: becomes the level restored afterwards
+    d.duck(False)
+    assert spotify.calls == [("volume", 15), ("volume", 60)]
+
+
+def test_next_waits_for_spotify_to_switch_tracks():
+    client = SpotifyClient("id", "secret", "refresh")
+    items = iter([{"id": "old"}, {"id": "old"}, {"id": "new"}])
+    with mock.patch.object(client, "_current_item", side_effect=lambda: next(items)), \
+            mock.patch.object(client, "_player") as player, mock.patch("vcm.home.spotify.time.sleep"):
+        client.next()
+    player.assert_called_once_with("POST", "/me/player/next")
+    assert next(items, None) is None  # polled until the new track showed up
+
+
+def test_temperature_without_sensor_still_reports_thermostat(tmp_path):
+    state, d = make(tmp_path, temperature=mock.Mock(side_effect=RuntimeError("no Sense HAT")))
+    assert d.handle("TEMPERATURE") == "The thermostat is set to 24 degrees."
 
 
 def test_music_falls_back_to_local_when_spotify_fails(tmp_path):

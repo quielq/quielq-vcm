@@ -53,3 +53,6 @@ debug_recordings/
 
 # per-machine Claude Code settings
 .claude/settings.local.json
+
+# Piper TTS voices (~60 MB each): downloaded on the device, see DEPLOYMENT.md
+models/tts/

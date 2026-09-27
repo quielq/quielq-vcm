@@ -11,7 +11,7 @@ clear spoken reply and a dashboard entry instead of an error:
 | VOLUME_UP / VOLUME_DOWN | System output volume (USB or Bluetooth speaker), else Spotify's |
 | WEATHER, TIME | Weather API / system clock, spoken |
 | LIGHT_ON/OFF, BRIGHTNESS, COLOR | Virtual lamp on the dashboard (+ real Xiaomi bulb if configured) |
-| TEMPERATURE | Reports temperature + thermostat target (no direction yet: TODO.md) |
+| TEMPERATURE | Reports temperature (Sense HAT, if attached) + thermostat target (no direction yet: TODO.md) |
 | TIMER, ALARM | Scheduled from the slot value; spoken alert when due |
 | CREATE_REMINDER, LIST_REMINDERS | Reminder list (text is edited on the dashboard: TODO.md) |
 | CALL, MESSAGE | Your phone via the Mac bridge, else logged as simulated |
@@ -19,6 +19,7 @@ clear spoken reply and a dashboard entry instead of an error:
 
 from __future__ import annotations
 
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -31,6 +32,7 @@ from vcm.home.spotify import SpotifyClient, SpotifyError
 from vcm.home.state import HomeState, new_id
 
 VOLUME_STEP = 10
+DUCK_PERCENT = 15  # Spotify volume while listening for a command
 
 
 @dataclass
@@ -51,6 +53,7 @@ class Integrations:
 class Dispatcher:
     def __init__(self, state: HomeState, integrations: Integrations):
         self.state, self.x = state, integrations
+        self._duck_lock, self._duck_restore = threading.Lock(), None
         self.handlers = {
             "PLAY_MUSIC": self.play_music, "PAUSE": self.pause, "STOP": self.stop, "NEXT": self.next,
             "VOLUME_UP": lambda s: self.volume(+VOLUME_STEP), "VOLUME_DOWN": lambda s: self.volume(-VOLUME_STEP),
@@ -125,12 +128,31 @@ class Dispatcher:
     def next(self, slot):
         return self._music("next", "next_track", playing=True, verb="Next song")
 
+    def duck(self, on: bool) -> None:
+        """Lower Spotify while Kiwi listens after the wake word, so the mic
+        hears the command over the music; restore it afterwards."""
+        if not self.x.spotify:
+            return
+        with self._duck_lock:
+            if on and self._duck_restore is None:
+                playback = self.x.spotify.playback()
+                if playback["playing"] and (playback["volume"] or 0) > DUCK_PERCENT:
+                    self.x.spotify.set_volume(DUCK_PERCENT)
+                    self._duck_restore = playback["volume"]
+            elif not on and self._duck_restore is not None:
+                restore, self._duck_restore = self._duck_restore, None
+                self.x.spotify.set_volume(restore)
+
     def volume(self, step: int) -> str:
         new = self.x.change_volume(step)
         if new is None and self.x.spotify:
             current = self.state.snapshot()["music"]["volume"]
             new = max(0, min(100, current + step))
-            self.x.spotify.set_volume(new)
+            with self._duck_lock:
+                if self._duck_restore is not None:  # ducked: apply when listening ends
+                    self._duck_restore = new
+                else:
+                    self.x.spotify.set_volume(new)
         if new is None:
             return "I can't change the volume on this device."
         self.state.update(lambda d: d["music"].update(volume=new))
@@ -176,7 +198,10 @@ class Dispatcher:
         return f"Lights set to {slot}."
 
     def temperature(self, slot):
-        current = self.x.temperature() if self.x.temperature else None
+        try:
+            current = self.x.temperature() if self.x.temperature else None
+        except Exception:  # no sensor attached: still report the thermostat
+            current = None
         self.state.update(lambda d: d["thermostat"].update(current_c=current))
         target = self.state.snapshot()["thermostat"]["target_c"]
         now_part = f"It's {current:.0f} degrees. " if current is not None else ""
