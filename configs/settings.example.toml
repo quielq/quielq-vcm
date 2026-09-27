@@ -30,8 +30,12 @@ media_dir = "media"
 storage_path = "data/reminders.json"
 
 [tts]
-# "mac_say" (default, zero-install on macOS), "espeak_ng", or "piper"
+# "mac_say" (default, zero-install on macOS), "espeak_ng" (robotic), or
+# "piper" (natural neural voice; DEPLOYMENT.md has the install steps)
 backend = "mac_say"
+mac_voice = ""                                      # mac_say only, e.g. "Samantha"
+piper_voice = "models/tts/en_US-lessac-medium.onnx" # its .onnx.json must sit beside it
+piper_speed = 1.0                                   # >1 speaks faster
 
 [spotify]
 # Needs Spotify Premium. Create an app at developer.spotify.com (redirect URI

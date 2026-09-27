@@ -7,6 +7,8 @@ Endpoints:
 - POST /api/command {intent, slot?, confidence?, source?} -> {reply}. What
   scripts/vcm_listen.py --server calls after each recognized command; the
   dashboard's "simulate a command" box uses it too.
+- POST /api/duck {on}: lower Spotify while the listener records a command
+  (on=true after the wake word), restore it after (on=false).
 - POST /api/action {action, ...}: the dashboard's manual controls (lamp,
   thermostat, reminder text, cancelling timers/alarms).
 - GET /api/state: the whole state. GET /api/events: the same, pushed live
@@ -160,6 +162,12 @@ def make_handler(state: HomeState, dispatcher: Dispatcher, speaker: Speaker):
                 reply = dispatcher.handle(intent, body.get("slot"), body.get("confidence"), body.get("source", "voice"))
                 speaker.say(reply)
                 return self._json(200, {"reply": reply})
+            if self.path == "/api/duck":
+                try:
+                    dispatcher.duck(bool(body.get("on")))
+                except Exception as exc:  # Spotify hiccups must not break listening
+                    return self._json(200, {"ok": False, "error": str(exc)})
+                return self._json(200, {"ok": True})
             if self.path == "/api/action":
                 try:
                     apply_action(state, body)

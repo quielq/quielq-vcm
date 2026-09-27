@@ -128,8 +128,28 @@ connection: `tmux new -s kiwi` starts a session, `Ctrl-b d` detaches, and
 sudo apt update && sudo apt full-upgrade -y
 sudo apt install -y git python3-venv libportaudio2 alsa-utils tmux espeak-ng
 ```
-`espeak-ng` is the device's voice: set `backend = "espeak_ng"` under
+`espeak-ng` is the zero-setup voice: set `backend = "espeak_ng"` under
 `[tts]` in the Pi's `configs/settings.toml` (`mac_say` only exists on macOS).
+It sounds robotic; for a natural voice use Piper (after step 4, in the venv):
+```bash
+pip install piper-tts
+python -m piper.download_voices --data-dir models/tts en_US-lessac-medium
+```
+then set `backend = "piper"` under `[tts]` (other voices:
+https://rhasspy.github.io/piper-samples/; set `piper_voice` to the `.onnx`).
+
+**Sense HAT** (room temperature for TEMPERATURE): with the Pi powered off,
+seat the HAT on the 40-pin header, then
+```bash
+sudo raspi-config nonint do_i2c 0          # enable I2C
+sudo reboot
+```
+`scripts/deploy_pi.sh` installs the library (the `sense-hat` apt package)
+and links it into the venv (the pip package needs a hand-built RTIMULib).
+Check it with
+`~/quielq-vcm/.venv/bin/python -c "from sense_hat import SenseHat; print(SenseHat().get_temperature())"`.
+Sitting on the CPU, the HAT reads a few degrees warm. Without the HAT,
+TEMPERATURE just reports the thermostat setting.
 
 ## 4. Get the code and models
 

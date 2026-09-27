@@ -38,12 +38,12 @@ ARCH=$(ssh "$TARGET" uname -m)
 [[ "$ARCH" == "aarch64" ]] || { echo "Pi reports $ARCH: needs 64-bit Raspberry Pi OS (aarch64) for onnxruntime" >&2; exit 1; }
 
 echo "== system packages (sudo)"
-ssh -t "$TARGET" "sudo apt-get update -qq && sudo apt-get install -y -qq git python3-venv libportaudio2 alsa-utils tmux espeak-ng"
+ssh -t "$TARGET" "sudo apt-get update -qq && sudo apt-get install -y -qq git python3-venv libportaudio2 alsa-utils tmux espeak-ng sense-hat"
 
 echo "== copying code and models"
 rsync -az --delete \
   --exclude /.git --exclude /.venv --exclude /data --exclude /checkpoints --exclude /logs \
-  --exclude /debug_recordings --exclude /media --exclude /reports --exclude '__pycache__' \
+  --exclude /debug_recordings --exclude /media --exclude /reports --exclude /models/tts --exclude '__pycache__' \
   --exclude .pytest_cache --exclude '*.egg-info' --exclude .DS_Store --exclude /configs/settings.toml \
   ./ "$TARGET:quielq-vcm/"
 
@@ -60,6 +60,17 @@ echo "== Python environment"
 ssh "$TARGET" "cd quielq-vcm && mkdir -p data && { [[ -d .venv ]] || python3 -m venv .venv; } \
   && .venv/bin/pip install -q --upgrade pip && .venv/bin/pip install -q -r requirements-pi.txt \
   && .venv/bin/pip install -q --no-deps -e ."
+
+# The Sense HAT library only ships as a Debian package (the pip one needs a
+# hand-built RTIMULib), so link just its modules into the venv instead of
+# exposing every system package (whose broken metadata makes pip warn, and
+# whose scipy clashes with the venv's numpy).
+echo "== Sense HAT library in the venv"
+ssh "$TARGET" 'cd quielq-vcm && sed -i "s/include-system-site-packages = true/include-system-site-packages = false/" .venv/pyvenv.cfg \
+  && site=$(.venv/bin/python -c "import sysconfig; print(sysconfig.get_path(\"purelib\"))") \
+  && for m in /usr/lib/python3/dist-packages/{sense_hat,RTIMU.*.so,smbus.*.so}; do \
+       if [[ -e $m ]]; then ln -sfn "$m" "$site/"; fi; done \
+  && .venv/bin/pip install -q pillow'
 
 echo "== benchmark (DEPLOYMENT.md step 6)"
 ssh "$TARGET" "cd quielq-vcm && .venv/bin/python scripts/benchmark_pi.py && free -m"
