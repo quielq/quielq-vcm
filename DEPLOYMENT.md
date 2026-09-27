@@ -142,12 +142,11 @@ https://rhasspy.github.io/piper-samples/; set `piper_voice` to the `.onnx`).
 seat the HAT on the 40-pin header, then
 ```bash
 sudo raspi-config nonint do_i2c 0          # enable I2C
-sudo apt install -y sense-hat              # the library, for the system Python
-sed -i 's/include-system-site-packages = false/include-system-site-packages = true/' ~/quielq-vcm/.venv/pyvenv.cfg
 sudo reboot
 ```
-The venv line lets the venv see the apt-installed `sense_hat` (the pip
-package needs a hand-built RTIMULib). Check it with
+`scripts/deploy_pi.sh` installs the library (the `sense-hat` apt package)
+and links it into the venv (the pip package needs a hand-built RTIMULib).
+Check it with
 `~/quielq-vcm/.venv/bin/python -c "from sense_hat import SenseHat; print(SenseHat().get_temperature())"`.
 Sitting on the CPU, the HAT reads a few degrees warm. Without the HAT,
 TEMPERATURE just reports the thermostat setting.
