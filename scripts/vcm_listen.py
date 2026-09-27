@@ -18,9 +18,16 @@ its timing, so latency can be read straight off an SSH session.
 from __future__ import annotations
 
 import argparse
+import os
 import queue
 import time
 from pathlib import Path
+
+# One math thread, set before numpy loads: OpenBLAS otherwise starts a
+# busy-waiting worker per core, which on the Pi took all four cores (~190%
+# CPU), made Kiwi lag and starved raspotify. The models are tiny; one is enough.
+for _var in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS"):
+    os.environ.setdefault(_var, "1")
 
 import numpy as np
 

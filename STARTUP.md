@@ -149,6 +149,7 @@ and merge them.
 | `Invalid sample rate [PaErrorCode -9997]` | The mic's raw device can't do 16 kHz. Fixed in `vcm_listen.py` (it resamples); `git pull` / redeploy. Or drop `--device`. |
 | `arecord`: no such device | The card number changed (it's 2 now). Check `arecord -l`; `vcm_listen.py` selects the mic by name, so it isn't affected. |
 | Wake score stays low even up close | Mic level too low: `alsamixer -c 2`, `F4` for capture, raise it. |
+| Kiwi lags, the Pi's CPU is at 100%, Spotify stalls (`Throughput ... lower than minimum`) | numpy's OpenBLAS was spinning a thread per core. `vcm_listen.py` now limits it to one; redeploy. `top -H` should show the listener at a few %. |
 | Static or knocking in recordings | Level too high (clipping), the mic in a blue USB 3 port (use black USB 2), or undervoltage (`vcgencmd get_throttled` should print `0x0`). |
 | No spoken replies | No speaker set up: `pactl list short sinks` shows only `auto_null`. Plug in a USB speaker or pair a Bluetooth one (DEPLOYMENT.md 8b). |
 | "home server unreachable" | Start `vcm.home.server` in the other tmux window first. |
