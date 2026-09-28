@@ -27,6 +27,7 @@ class FakeSpotify:
 
     def play(self, uri=None): self._do("play")
     def pause(self): self._do("pause")
+    def stop(self): self._do("stop")
     def next(self): self._do("next")
     def set_volume(self, p): self._do("volume", p)
     def now_playing(self): return "Song A by Artist"
@@ -79,6 +80,43 @@ def test_music_uses_spotify_and_tracks_state(tmp_path):
     assert [c[0] for c in spotify.calls] == ["play", "next", "pause"]
     assert state.snapshot()["music"]["playing"] is False
     assert d.handle("VOLUME_UP") == "Volume 60 percent."
+
+
+def test_stop_rewinds_and_pause_keeps_the_place(tmp_path):
+    spotify = FakeSpotify()
+    state, d = make(tmp_path, spotify=spotify)
+    d.handle("PLAY_MUSIC")
+    d.handle("STOP")
+    d.handle("PAUSE")
+    assert [c[0] for c in spotify.calls] == ["play", "stop", "pause"]
+
+    client = SpotifyClient("id", "secret", "refresh")
+    with mock.patch.object(client, "_player") as player:
+        client.stop()
+    assert [c.args for c in player.call_args_list] == [("PUT", "/me/player/pause"), ("PUT", "/me/player/seek")]
+    assert player.call_args_list[1].kwargs == {"params": {"position_ms": 0}}
+
+
+def test_local_music_play_resumes_after_pause_but_restarts_after_stop(tmp_path):
+    calls = []
+
+    class Media:
+        def pause(self): calls.append("pause")
+        def resume(self): calls.append("resume")
+        def stop(self): calls.append("stop")
+
+    class Library:
+        def play(self):
+            calls.append("play")
+            return Path("song.mp3")
+
+    state, d = make(tmp_path, local_media=Media(), local_music=Library())
+    d.handle("PLAY_MUSIC")
+    d.handle("PAUSE")
+    d.handle("PLAY_MUSIC")  # continue where it paused
+    d.handle("STOP")
+    d.handle("PLAY_MUSIC")  # from the start
+    assert calls == ["play", "pause", "resume", "stop", "play"]
 
 
 def test_duck_lowers_and_restores_spotify(tmp_path):
@@ -182,7 +220,7 @@ def test_stop_silences_a_ringing_alarm_before_touching_music(tmp_path):
     assert spotify.calls == []
     ringer.stop.return_value = False
     d.handle("STOP")
-    assert spotify.calls == [("pause",)]
+    assert spotify.calls == [("stop",)]  # pause + rewind (SpotifyClient.stop)
 
 
 def test_ringer_rings_until_stopped():

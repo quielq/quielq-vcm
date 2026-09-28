@@ -104,8 +104,11 @@ cd ~/quielq-vcm && .venv/bin/python scripts/vcm_listen.py --intent-model models/
 
 **3. Mac: open the dashboard** at http://raspberrypi.local:8000.
 
-**4. Say "Hey Kiwi"**, pause briefly, then a command. With
-`--show-scores`, the wake score jumps toward 1.00 when you say it.
+**4. Say "Hey Kiwi"**, then a command. You can go straight into it
+("Hey Kiwi, stop"); speech during the chime is kept. With `--show-scores`,
+the wake score jumps toward 1.00 when you say it. The wake threshold is
+0.7 (`--wake-threshold 0.85` if it wakes by itself too often), and any
+music playing on the Pi drops to 25% while Kiwi listens.
 
 To run everything at boot instead, without steps 2–3, use
 `scripts/deploy_pi.sh raspberrypi.local --services` (DEPLOYMENT.md step 9).
@@ -121,7 +124,16 @@ To run everything at boot instead, without steps 2–3, use
 | "turn the volume up" | VOLUME_UP (needs a speaker on the Pi) |
 | "remind me to buy milk" | CREATE_REMINDER; appears on the dashboard |
 | "call Mom" / "message Mom" | The Mac bridge terminal prints it; the Mac shows the call prompt (click **Call**) |
-| "play some music" | Replies that music isn't set up (Spotify not configured yet) |
+| "play some music" | Spotify plays on the Pi's speaker |
+| "pause" → "play music" | Pauses, then continues from the same spot |
+| "stop the music" → "play music" | Stops, then starts the song from the beginning |
+
+**Phrasings that work best on the author's voice** (from saved live
+commands, current model): say "Lights on" / "Lights off" rather than "Power
+on the lights" / "Kill the lights" (heard as BRIGHTNESS), and "Brightness
+to 60 percent" rather than "Brightness level 60 percent" (heard as
+WEATHER). The schema phrasings stay in training; the class benchmark uses
+them.
 
 The dashboard's **Simulate a command** box runs the same actions without
 speaking. If a command works there but not by voice, the problem is
