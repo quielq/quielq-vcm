@@ -128,6 +128,13 @@ To run everything at boot instead, without steps 2–3, use
 | "pause" → "play music" | Pauses, then continues from the same spot |
 | "stop the music" → "play music" | Stops, then starts the song from the beginning |
 
+**Phrasings that work best on the author's voice** (from saved live
+commands, current model): say "Lights on" / "Lights off" rather than "Power
+on the lights" / "Kill the lights" (heard as BRIGHTNESS), and "Brightness
+to 60 percent" rather than "Brightness level 60 percent" (heard as
+WEATHER). The schema phrasings stay in training; the class benchmark uses
+them.
+
 The dashboard's **Simulate a command** box runs the same actions without
 speaking. If a command works there but not by voice, the problem is
 recognition, not the action.
