@@ -9,9 +9,12 @@ Runs the same way on the Raspberry Pi (USB mic, over SSH) and on a laptop
     python scripts/vcm_listen.py --server http://127.0.0.1:8000   # act on commands (vcm.home.server)
 
 After the wake word fires, it plays a short chime (--no-chime to turn off),
-asks the home server to turn Spotify down while you speak, and records
+asks the home server to turn the music down while you speak, and records
 until you stop talking (0.7 s below the speech level, or 5 s max), then
-classifies. Every result prints with
+classifies. If you start the command during the chime ("Hey Kiwi, stop"
+without a pause), the audio heard during the chime is kept, so short
+commands aren't cut off. --save-commands DIR saves every recorded command
+as a WAV, to hear exactly what the model got. Every result prints with
 its timing, so latency can be read straight off an SSH session.
 """
 
@@ -81,6 +84,35 @@ def record_command(chunks: "queue.Queue[np.ndarray]", lead_in: np.ndarray, floor
         if heard_speech and quiet_s >= END_SILENCE_S:
             break
     return np.concatenate(audio)
+
+
+def chime_lead_in(during: "list[np.ndarray]", next_chunk: np.ndarray, floor: float) -> np.ndarray:
+    """What to keep of the audio heard while the chime played.
+
+    The mic hears the chime, so that audio never counts as speech. But if
+    you're still talking when it ends, the command started during it: keep
+    that audio, or "Hey Kiwi, stop" loses "stop" (and "stop the music"
+    becomes "the music" -> PLAY_MUSIC). Otherwise drop it, since chime +
+    silence before a command confuses the model. Offline (real "Hey Kiwi"
+    takes + one-word and short commands): with no pause, 55 -> 71 of 105
+    right at wake threshold 0.95 (88 at 0.85); with a pause, unchanged.
+    """
+    if during and speech_level(next_chunk) >= max(SILENCE_THRESHOLD, SPEECH_OVER_FLOOR * floor):
+        return np.concatenate(during)
+    return np.zeros(0, dtype="float32")
+
+
+def save_wav(folder: Path, audio: np.ndarray) -> None:
+    import wave
+
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f"{time.strftime('%Y%m%d_%H%M%S')}_{len(audio) / SAMPLE_RATE:.1f}s.wav"
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(SAMPLE_RATE)
+        w.writeframes((np.clip(audio, -1, 1) * 32767).astype("<i2").tobytes())
+    print(f"  (saved {path}, {len(audio) / SAMPLE_RATE:.1f} s)")
 
 
 def make_chime(rate: int) -> np.ndarray:
@@ -168,7 +200,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--intent-model", type=Path, default=REPO_ROOT / "models/vcm_intent.onnx")
     parser.add_argument("--wake-model", type=Path, default=REPO_ROOT / "models/kiwi_wakeword.onnx")
-    parser.add_argument("--wake-threshold", type=float, default=0.95, help="Exp 34: 14%% clean / 22%% noisy / 0 of 10 real-voice false rejects, 1.34 false wake-ups per hour of test speech")
+    parser.add_argument(
+        "--wake-threshold",
+        type=float,
+        default=0.85,
+        help="lower = hears \"Hey Kiwi\" from further away, more false wake-ups. Exp 34 test: 0.85 misses 7%% clean / "
+        "12%% noisy synthetic clips, 0 of 10 real takes, 4.3 false wake-ups per hour of near-miss-heavy test speech "
+        "(0.95: 14%% / 22%%, 1.3 per hour)",
+    )
     parser.add_argument(
         "--noisy-wake-threshold",
         type=float,
@@ -184,6 +223,7 @@ def main() -> None:
         help="home server URL (python -m vcm.home.server) to act on commands, e.g. http://127.0.0.1:8000",
     )
     parser.add_argument("--no-chime", action="store_true", help="don't play the chime after the wake word")
+    parser.add_argument("--save-commands", type=Path, default=None, help="save each recorded command as a WAV here (debugging)")
     args = parser.parse_args()
 
     import sounddevice as sd
@@ -231,12 +271,20 @@ def main() -> None:
                     print(f"\n[wake word, score {detector.last_score:.2f}] listening...")
                     t_wake = time.perf_counter()
                     duck(args.server, on=True)
+                    floor = background_floor(levels)
+                    lead_in = np.zeros(0, dtype="float32")
                     if chime is not None:
                         sd.play(chime, out_rate)
                         sd.wait()
-                        while not chunks.empty():  # the mic heard the chime: don't treat it as speech
-                            chunks.get_nowait()
-                    audio = record_command(chunks, lead_in=np.zeros(0, dtype="float32"), floor=background_floor(levels))
+                        during = [chunks.get_nowait() for _ in range(chunks.qsize())]
+                        if during:
+                            nxt = chunks.get()
+                            lead_in = chime_lead_in(during, nxt, floor)
+                            with chunks.mutex:  # put it back first in line for record_command
+                                chunks.queue.appendleft(nxt)
+                    audio = record_command(chunks, lead_in=lead_in, floor=floor)
+                    if args.save_commands:
+                        save_wav(args.save_commands, audio)
                     report(model, audio, time.perf_counter(), args.server)
                     duck(args.server, on=False)
                     print(f"  ({time.perf_counter() - t_wake:.1f} s from wake word to result)")

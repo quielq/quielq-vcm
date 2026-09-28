@@ -45,7 +45,8 @@ class FakePhone:
 
 def make(tmp_path, **kw):
     state = HomeState(tmp_path / "state.json")
-    x = Integrations(**{"get_volume": lambda: 50, "change_volume": lambda step: 50 + step, **kw})
+    x = Integrations(**{"get_volume": lambda: 50, "change_volume": lambda step: 50 + step,
+                        "duck_streams": lambda: [], "restore_streams": lambda saved: None, **kw})
     return state, Dispatcher(state, x)
 
 
@@ -92,6 +93,43 @@ def test_duck_lowers_and_restores_spotify(tmp_path):
     d.handle("VOLUME_UP")  # while ducked: becomes the level restored afterwards
     d.duck(False)
     assert spotify.calls == [("volume", 15), ("volume", 60)]
+
+
+def test_duck_lowers_and_restores_other_audio_streams(tmp_path):
+    calls = []
+    state, d = make(tmp_path, duck_streams=lambda: calls.append("duck") or [(7, [65536, 65536])],
+                    restore_streams=lambda saved: calls.append(("restore", saved)))
+    d.duck(True)
+    d.duck(True)  # already ducked: don't duck the ducked level again
+    d.duck(False)
+    d.duck(False)
+    assert calls == ["duck", ("restore", [(7, [65536, 65536])])]
+
+
+def test_duck_streams_skips_kiwis_own_sounds():
+    from vcm.home import volume
+
+    streams = [
+        {"index": 1, "properties": {"application.process.binary": "librespot"}, "volume": {"front-left": {"value": 65536}, "front-right": {"value": 32768}}},
+        {"index": 2, "properties": {"application.process.binary": "python3.11"}, "volume": {"mono": {"value": 65536}}},
+        {"index": 3, "properties": {"application.process.binary": "paplay"}, "volume": {"mono": {"value": 65536}}},
+        {"index": 4, "properties": {"application.process.binary": "mpv"}, "volume": {"mono": {"value": 40000}}},
+    ]
+    ran = []
+
+    def fake_run(cmd):
+        ran.append(cmd)
+        return json.dumps(streams) if cmd[:3] == ["pactl", "-f", "json"] else ""
+
+    with mock.patch.object(volume, "_run", side_effect=fake_run), mock.patch.object(volume.platform, "system", return_value="Linux"), \
+            mock.patch.object(volume.shutil, "which", return_value="/usr/bin/pactl"):
+        saved = volume.duck_streams(0.25)
+        volume.restore_streams(saved)
+    assert saved == [(1, [65536, 32768]), (4, [40000])]
+    assert ["pactl", "set-sink-input-volume", "1", "16384", "8192"] in ran
+    assert ["pactl", "set-sink-input-volume", "4", "10000"] in ran
+    assert ["pactl", "set-sink-input-volume", "1", "65536", "32768"] in ran
+    assert not any(c[2:3] in (["2"], ["3"]) for c in ran if c[1] == "set-sink-input-volume")
 
 
 def test_next_waits_for_spotify_to_switch_tracks():

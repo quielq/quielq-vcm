@@ -8,6 +8,7 @@ also how Bluetooth speakers appear), else ALSA via `amixer`. macOS:
 
 from __future__ import annotations
 
+import json
 import platform
 import re
 import shutil
@@ -53,3 +54,46 @@ def set_volume(percent: int) -> int | None:
 def change_volume(step: int) -> int | None:
     current = get_volume()
     return set_volume((current if current is not None else 50) + step)
+
+
+# Kiwi's own sounds (chime, spoken replies, alarm beeps): never ducked.
+OWN_PLAYERS = ("python", "paplay", "pw-play", "pw-cat", "aplay", "espeak-ng", "espeak", "say")
+
+
+def duck_streams(factor: float = 0.25) -> list[tuple[int, list[int]]]:
+    """Turn every other app's audio (Spotify speaker, mpv, a browser...) down
+    to `factor` of its volume while Kiwi listens; returns what to restore.
+
+    Works per stream through PipeWire/PulseAudio (`pactl`), so it covers any
+    music source, not just the Spotify API, and leaves the speaker's own
+    volume and Kiwi's sounds alone. No pactl (e.g. macOS): nothing to do.
+    """
+    if platform.system() == "Darwin" or not shutil.which("pactl"):
+        return []
+    try:
+        streams = json.loads(_run(["pactl", "-f", "json", "list", "sink-inputs"]))
+    except (subprocess.SubprocessError, OSError, ValueError):
+        return []
+    saved = []
+    for stream in streams:
+        binary = str(stream.get("properties", {}).get("application.process.binary", "")).lower()
+        if binary.startswith(OWN_PLAYERS):
+            continue
+        levels = [int(channel["value"]) for channel in stream.get("volume", {}).values()]
+        if not levels:
+            continue
+        try:
+            _run(["pactl", "set-sink-input-volume", str(stream["index"]), *(str(int(v * factor)) for v in levels)])
+            saved.append((int(stream["index"]), levels))
+        except (subprocess.SubprocessError, OSError, KeyError):
+            pass
+    return saved
+
+
+def restore_streams(saved: list[tuple[int, list[int]]]) -> None:
+    """Undo duck_streams; streams that ended meanwhile are skipped."""
+    for index, levels in saved:
+        try:
+            _run(["pactl", "set-sink-input-volume", str(index), *(str(v) for v in levels)])
+        except (subprocess.SubprocessError, OSError):
+            pass

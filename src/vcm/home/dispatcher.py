@@ -50,12 +50,14 @@ class Integrations:
     ringer: object | None = None  # vcm.home.ringer.Ringer: alarm/timer sound
     get_volume: Callable[[], int | None] = system_volume.get_volume
     change_volume: Callable[[int], int | None] = system_volume.change_volume
+    duck_streams: Callable[[], list] = system_volume.duck_streams  # other apps' audio, while listening
+    restore_streams: Callable[[list], None] = system_volume.restore_streams
 
 
 class Dispatcher:
     def __init__(self, state: HomeState, integrations: Integrations):
         self.state, self.x = state, integrations
-        self._duck_lock, self._duck_restore = threading.Lock(), None
+        self._duck_lock, self._duck_restore, self._streams_ducked = threading.Lock(), None, None
         self.handlers = {
             "PLAY_MUSIC": self.play_music, "PAUSE": self.pause, "STOP": self.stop, "NEXT": self.next,
             "VOLUME_UP": lambda s: self.volume(+VOLUME_STEP), "VOLUME_DOWN": lambda s: self.volume(-VOLUME_STEP),
@@ -138,10 +140,20 @@ class Dispatcher:
         return self._music("next", "next_track", playing=True, verb="Next song")
 
     def duck(self, on: bool) -> None:
-        """Lower Spotify (and pause a ringing alarm) while Kiwi listens after
-        the wake word, so the mic hears the command; restore it afterwards."""
+        """Lower the music (and pause a ringing alarm) while Kiwi listens after
+        the wake word, so the mic hears the command; restore it afterwards.
+
+        Two layers: every other app's audio stream on this device (any music
+        source, via PipeWire), and Spotify's own volume through its API (which
+        also covers Spotify playing on another speaker in the room)."""
         if self.x.ringer:
             self.x.ringer.mute(on)
+        with self._duck_lock:
+            if on and self._streams_ducked is None:
+                self._streams_ducked = self.x.duck_streams()
+            elif not on and self._streams_ducked is not None:
+                saved, self._streams_ducked = self._streams_ducked, None
+                self.x.restore_streams(saved)
         if not self.x.spotify:
             return
         with self._duck_lock:
