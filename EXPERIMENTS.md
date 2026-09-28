@@ -2366,3 +2366,52 @@ baseline's 84.80%; slot accuracy on ground-truth-labelled clips):
 in the metadata). It is best on the gated measure and has the best old-4
 slot mean. The ONNX file matches the checkpoint on the same rows (85.24%,
 identical slot lines). The int8 file is still Experiment 34's.
+
+**Note (added in Experiment 36):** "call home" was a stale schema value.
+The class recordings use "exercise", and so does the author. It was fixed
+in `c59c0c0` (schema CSV, loader, `vcm.slots` vocabulary, slots3 phrases)
+and retrained in Experiment 36. This shipped model's third reminder value
+is still "call home", so it can't output "exercise".
+
+## Experiment 36 — corrected reminder values (exercise)
+
+Full numbers and logs: `reports/exp36_report.md`.
+
+**Setup**: CREATE_REMINDER's third value is now "exercise" instead of
+"call home" (`c59c0c0`). Only slots3's 230 "call home" clips were
+re-voiced as "exercise", with the same ids, speakers and phrase slots;
+synthesis resumed and generated exactly those 230. Exercise QA passed
+93.5% / 93.3% (train/test). option_b's 580 "exercise" clips now get slot
+labels. Everything else is Experiment 35's recipe, 3 seeds, on GPU 2
+(free).
+
+**Result** (test; real-speech intent without Snips; slot accuracy on
+ground-truth clips; "exercise" = option_b test clips, n=60, synthetic):
+
+| | Real speech | TIMER | ALARM | BRIGHTNESS | COLOR | TEMPERATURE | CREATE_REMINDER | exercise |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Experiment 34 joint w0.3 | 84.80% | 74.2% | 99.4% | 73.7% | 86.4% | — | — | — |
+| Experiment 35 s2 (shipped) | 85.24% | 74.4% | 97.8% | 76.1% | 86.7% | 100% | 66.3% | 0% |
+| Seed 0 | **84.86%** | 76.2% | **96.9%** | 73.3% | 86.9% | 100% | 99.6% | 100% |
+| Seed 1 | 84.84% | 73.9% | 98.1% | 74.9% | 86.7% | 100% | 100% | 100% |
+| Seed 2 | 84.46% | 76.7% | 98.1% | 75.7% | 86.7% | 99.3% | 100% | 100% |
+
+- The corrected vocabulary works. Every seed scores 100% on "exercise",
+  where Experiment 35 can't output it (0%, so 66.3% on CREATE_REMINDER).
+- Intent is back at Experiment 34's level (84.46–84.86%), 0.4–0.8 below
+  Experiment 35's seeds (85.15–85.24%). The only change is 230 re-voiced
+  synthetic clips plus 580 option_b slot labels, and Experiment 31's
+  seeds alone spanned 0.4 points. So this is a small drop that may be
+  noise, not a confirmed effect.
+- Real-speech COLOR spans 36.8–49.3% across seeds (no Snips), so it's
+  mostly seed noise. Seed 1 is the best COLOR seed of all the models. CALL
+  has no real-speech test clips, so the bare "call" regression on the
+  author's voice can't be measured here.
+
+**Not shipped.** The gated seed is seed 0, which has the best intent
+accuracy, and its ALARM head is 2.5 below Experiment 34 (96.88% vs
+99.38%, about 8 of 321 clips), past the 2-point limit. Seed 1 is 0.02
+behind on intent (one clip) and passes every gate. Shipping it is one
+export command (see the report), but that's a choice between two
+near-identical seeds and is left to the author. `models/` still holds
+Experiment 35 seed 2, with the "call home" vocabulary.
