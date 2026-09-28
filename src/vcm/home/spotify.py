@@ -94,6 +94,12 @@ class SpotifyClient:
     def pause(self) -> None:
         self._player("PUT", "/me/player/pause")
 
+    def stop(self) -> None:
+        """Pause and rewind to the start of the song, so "play" starts it over
+        (Spotify has no stop; pause alone keeps the position)."""
+        self._player("PUT", "/me/player/pause")
+        self._player("PUT", "/me/player/seek", params={"position_ms": 0})
+
     def next(self, settle_s: float = 3.0) -> None:
         """Skip, then wait (up to settle_s) until Spotify reports the new
         track: the skip is asynchronous, so reading now_playing() right

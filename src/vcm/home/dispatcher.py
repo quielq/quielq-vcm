@@ -102,7 +102,12 @@ class Dispatcher:
         return "Music isn't set up. Add Spotify or local music in settings."
 
     def play_music(self, slot):
-        source = self.state.snapshot()["music"]["source"]
+        music = self.state.snapshot()["music"]
+        source = music["source"]
+        if source == "local" and music.get("paused") and self.x.local_media:
+            self.x.local_media.resume()  # after PAUSE: continue where it stopped
+            self.state.update(lambda d: d["music"].update(playing=True, paused=False))
+            return f"Resuming {music['track']}." if music.get("track") else "Resuming."
         if self.x.spotify and source in (None, "spotify"):
             try:
                 self.x.spotify.play()
@@ -128,13 +133,18 @@ class Dispatcher:
     def pause(self, slot):
         if self._stop_ringing():
             return "Okay."
-        return self._music("pause", "pause", playing=False, verb="Paused")
+        reply = self._music("pause", "pause", playing=False, verb="Paused")
+        self.state.update(lambda d: d["music"].update(paused=True))
+        return reply
 
     def stop(self, slot):
         if self._stop_ringing():  # "Hey Kiwi, stop" while an alarm rings
             return "Okay."
-        # Spotify has no "stop": pausing is the closest.
-        return self._music("pause", "stop", playing=False, verb="Stopped")
+        # Stop = pause + back to the start of the song (Spotify: pause + seek
+        # to 0; mpv: stop), so "play" starts it over. PAUSE keeps the place.
+        reply = self._music("stop", "stop", playing=False, verb="Stopped")
+        self.state.update(lambda d: d["music"].update(paused=False))
+        return reply
 
     def next(self, slot):
         return self._music("next", "next_track", playing=True, verb="Next song")
