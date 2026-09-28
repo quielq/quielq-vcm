@@ -11,6 +11,7 @@ model: DEPLOYMENT.md), fast enough on a Pi 5 to reply in well under a second.
 from __future__ import annotations
 
 import platform
+import re
 import shutil
 import subprocess
 import tempfile
@@ -46,7 +47,27 @@ def _speak_espeak_ng(text: str) -> None:
     subprocess.run(["espeak-ng", text], check=True)
 
 
-def _play_wav(path: str) -> None:
+_CLOCK_RE = re.compile(r"\b(\d{1,2}):(\d{2})(?:\s*([AaPp])(?:\.[Mm]\.|[Mm]\b))?(?!\w)")
+
+
+def _spoken_clock(match: re.Match) -> str:
+    hour, minute, meridiem = int(match.group(1)), int(match.group(2)), match.group(3)
+    suffix = f" {meridiem.upper()}M" if meridiem else ""
+    if minute == 0 and hour == 12 and meridiem:
+        return "midnight" if meridiem.upper() == "A" else "noon"
+    if minute == 0:
+        return f"{hour}{suffix}" if meridiem else f"{hour} o'clock"
+    return f"{hour} {'oh ' if minute < 10 else ''}{minute}{suffix}"
+
+
+def speakable(text: str) -> str:
+    """Rewrite clock times the way people say them, since TTS engines read
+    "5:00 PM" digit by digit: "5:00 PM" -> "5 PM", "10:45 AM" -> "10 45 AM",
+    "6:05 PM" -> "6 oh 5 PM"."""
+    return _CLOCK_RE.sub(_spoken_clock, text)
+
+
+def play_wav(path: str) -> None:
     if platform.system() == "Darwin":
         player = ["afplay"]
     else:
@@ -72,7 +93,7 @@ def _speak_piper(text: str) -> None:
     with tempfile.NamedTemporaryFile(suffix=".wav") as f:
         with wave.open(f.name, "wb") as wav:
             _piper_voices[model].synthesize_wav(text, wav, syn_config=config)
-        _play_wav(f.name)
+        play_wav(f.name)
 
 
 _BACKENDS = {
@@ -87,4 +108,4 @@ def speak(text: str, backend: str | None = None) -> None:
     chosen = backend or load_settings().tts.get("backend", "mac_say")
     if chosen not in _BACKENDS:
         raise ValueError(f"Unknown TTS backend {chosen!r}; choose from {list(_BACKENDS)}")
-    _BACKENDS[chosen](text)
+    _BACKENDS[chosen](speakable(text))

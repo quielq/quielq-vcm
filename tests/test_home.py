@@ -109,6 +109,72 @@ def test_temperature_without_sensor_still_reports_thermostat(tmp_path):
     assert d.handle("TEMPERATURE") == "The thermostat is set to 24 degrees."
 
 
+def test_thermostat_simulation_drifts_room_to_target(tmp_path):
+    state, d = make(tmp_path, temperature=lambda: 27.0)
+    assert d.handle("TEMPERATURE") == "It's 27 degrees in the room. Cooling to 24."
+    clock = [0.0]
+    sched = Scheduler(state, on_alert=lambda text, kind: None, clock=lambda: clock[0])
+    for _ in range(200):
+        clock[0] += 2.0
+        sched.tick()
+    assert state.snapshot()["thermostat"]["room_c"] == 24
+    assert d.handle("TEMPERATURE") == "It's 24 degrees, right at the thermostat setting."
+
+
+def test_temperature_slot_sets_the_thermostat(tmp_path):
+    state, d = make(tmp_path, temperature=lambda: 27.0)
+    assert d.handle("TEMPERATURE", "22 degrees") == "Thermostat set to 22 degrees. Cooling from 27."
+    d.handle("TEMPERATURE", "up")
+    assert state.snapshot()["thermostat"]["target_c"] == 23
+    d.handle("TEMPERATURE", "45")
+    assert state.snapshot()["thermostat"]["target_c"] == 30
+
+
+def test_reminder_slot_fills_the_dashboard_text(tmp_path):
+    state, d = make(tmp_path)
+    assert d.handle("CREATE_REMINDER", "drink water") == "Okay, I'll remind you to drink water."
+    assert state.snapshot()["reminders"][0]["text"] == "Drink water"
+
+
+def test_stop_silences_a_ringing_alarm_before_touching_music(tmp_path):
+    ringer, spotify = mock.Mock(), FakeSpotify()
+    ringer.stop.return_value = True
+    state, d = make(tmp_path, ringer=ringer, spotify=spotify)
+    assert d.handle("STOP") == "Okay."
+    assert spotify.calls == []
+    ringer.stop.return_value = False
+    d.handle("STOP")
+    assert spotify.calls == [("pause",)]
+
+
+def test_ringer_rings_until_stopped():
+    from vcm.home.ringer import Ringer
+
+    plays, said = [], []
+    ringer = Ringer(play=lambda path: (plays.append(path), __import__("time").sleep(0.01)), say=said.append)
+    ringer.ring("Your timer is done.", "timer")
+    __import__("time").sleep(0.1)
+    assert ringer.ringing and ringer.stop() and not ringer.ringing
+    assert plays[0].endswith("timer.wav") and said == ["Your timer is done."]
+
+
+def test_spoken_clock_times():
+    from vcm.tts.speak import speakable
+
+    assert speakable("Alarm set for 5:00 PM today.") == "Alarm set for 5 PM today."
+    assert speakable("It's 10:45 AM.") == "It's 10 45 AM."
+    assert speakable("It's 6:05 PM, Monday") == "It's 6 oh 5 PM, Monday"
+    assert speakable("at 12:00 AM") == "at midnight"
+
+
+def test_sense_hat_cpu_heat_compensation():
+    from vcm.hal.temperature import compensate
+
+    assert round(compensate(50.8, 68.6, factor=0.85), 1) == 29.9
+    assert compensate(25.0, None, factor=0.85) == 25.0  # no CPU reading: raw
+    assert compensate(25.0, 60.0, factor=0) == 25.0  # correction off
+
+
 def test_music_falls_back_to_local_when_spotify_fails(tmp_path):
     local, media = mock.Mock(), mock.Mock()
     local.play.return_value = mock.Mock(stem="local song")
@@ -126,7 +192,7 @@ def test_timer_alarm_and_scheduler_fire(tmp_path):
     snap = state.snapshot()
     timer, alarm = snap["timers"][0], snap["alarms"][0]
     alerts = []
-    sched = Scheduler(state, on_alert=alerts.append, clock=lambda: max(timer["ends_at"], alarm["next_at"]) + 1)
+    sched = Scheduler(state, on_alert=lambda text, kind: alerts.append(text), clock=lambda: max(timer["ends_at"], alarm["next_at"]) + 1)
     fired = sched.tick()
     assert len(fired) == 2 and alerts == fired
     assert state.snapshot()["timers"] == [] and state.snapshot()["alarms"] == []

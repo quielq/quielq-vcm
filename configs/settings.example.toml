@@ -37,6 +37,13 @@ mac_voice = ""                                      # mac_say only, e.g. "Samant
 piper_voice = "models/tts/en_US-lessac-medium.onnx" # its .onnx.json must sit beside it
 piper_speed = 1.0                                   # >1 speaks faster
 
+[thermostat]
+# The Sense HAT on the Pi's header reads the CPU's heat; this removes it
+# (vcm.hal.temperature.compensate). Calibrate once against a thermometer:
+# sensor_factor = (cpu - raw) / (raw - thermometer). 0 = no correction
+# (use that if the HAT is on an extension cable, away from the CPU).
+sensor_factor = 0.85
+
 [spotify]
 # Needs Spotify Premium. Create an app at developer.spotify.com (redirect URI
 # http://127.0.0.1:8888/callback), then run scripts/spotify_auth.py to get

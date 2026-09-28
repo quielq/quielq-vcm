@@ -338,7 +338,7 @@ different split, so the rows aren't strictly comparable.
 
 | # | Option | Accuracy | Model size | Deployable per assignment rules? |
 |---|---|---|---:|---|
-| **0** | **CRNN with intent + slot heads trained jointly, slot weight 0.3** (Experiment 34) + "Hey Kiwi" wake word | **84.80% real-speech test**; slot values 74–99% | **426 KB** intent + 107 KB wake word (fp32 ONNX) | **Yes — what ships** (`models/`) |
+| **0** | **CRNN with intent + 6 slot heads trained jointly, slot weight 0.3** (Experiment 36) + "Hey Kiwi" wake word | **84.84% real-speech test**; slot values 74–100% | **432 KB** intent + 107 KB wake word (fp32 ONNX) | **Yes — what ships** (`models/`) |
 | 1 | DS-CNN + confusable-pair loss (Experiment 15) | 75.45% val | 137.5 KB | Yes — historical baseline |
 | 2 | DS-CNN + distillation from the ASR-cascade (Experiment 27) | 75.78% val (mixed per-class, see below) | 137.5 KB | Yes — historical |
 | 3 | **ASR-cascade** (Experiment 26) | **90.62% test, real audio** | ~144 MB (whisper-base 142MB + classifier 1.9MB) | **No — backup/reference only** |
@@ -351,7 +351,9 @@ values (timer length, alarm time, brightness, color). Training only the
 slot heads on the frozen Experiment 31 model keeps intent at 85.48% but
 gave weak slot values in live tests, so the shipped model trains both
 jointly with the slot loss at weight 0.3: 84.80% intent, and slot values
-74–99% instead of 68–90%.
+74–99% instead of 68–90%. Experiments 35–36 add TEMPERATURE and
+CREATE_REMINDER slot heads (the class schema's 3 values each) at the same
+intent accuracy (84.84%).
 
 **Option 3, the ASR-cascade, is the accuracy ceiling but not a
 candidate for the actual submitted VCM.** The assignment states "ASR
@@ -366,7 +368,7 @@ that competes with Options 1/2 for the actual deliverable.
 
 **Measured runtime footprint** (see [FOOTPRINT_COMPARISON.md](FOOTPRINT_COMPARISON.md)):
 the deployed pipeline (CRNN intent + slot model and "Hey Kiwi" wake word,
-fp32 ONNX) is 533 KB of models, peaks at 88–96 MB of memory and takes
+fp32 ONNX) is 539 KB of models, peaks at 88–96 MB of memory and takes
 ~3 ms per command on a laptop CPU.
 The ASR-cascade needs ~149 MB of models, peaks at 478–696 MB and takes
 440–950 ms per command, and it would still need a separate wake-word model.

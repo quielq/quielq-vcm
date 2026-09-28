@@ -230,7 +230,7 @@ def qa() -> None:
         verbs = _MEDIA_VERBS.get(r["label"])
         verb_ok = verbs is None or (_first_verb(hyp, verbs) is not None and _first_verb(hyp, verbs) == _first_verb(ref, verbs))
         passed = wer <= QA_MAX_WER and verb_ok
-        if BATCH == "slots2":
+        if BATCH in ("slots2", "slots3"):
             # The slot value is the point of this batch: Whisper must hear the
             # intended value. WER is looser because "A.M."/"AM"/"in the
             # morning" transcribe inconsistently.
@@ -273,7 +273,7 @@ def main() -> None:
         default="round1",
         help="Which phrase set to generate (vcm.dataset.sources.targeted_synth.BATCHES): round1 = "
         "Experiment 31's clips, slots2 = slot-value coverage, wakeword = Hey Kiwi. Each writes to "
-        "its own folder; reference voices are shared.",
+        "its own folder; reference voices are shared. slots3 = temperature and reminder values (Exp 35).",
     )
     parser.add_argument("--manifest", type=Path, default=REPO_ROOT / "data/dataset_manifest.csv")
     parser.add_argument("--shard", type=int, default=0)

@@ -86,12 +86,16 @@ cd ~/quielq-vcm && .venv/bin/python scripts/vcm_listen.py --server http://127.0.
   mic at 48 kHz and resamples.
 
 **Intent model choice.** Two intent models ship, and `--intent-model`
-picks one (Experiment 34, EXPERIMENTS.md):
+picks one (Experiments 34 and 36, EXPERIMENTS.md):
 
-| File | Intent | Slot values (timer / alarm / brightness / color) |
+| File | Intent | Slot values (timer / alarm / brightness / color / temperature / reminder) |
 |---|---:|---|
-| `models/vcm_intent.onnx` (default: joint training, slot weight 0.3) | 84.8% | 74 / 99 / 74 / 86% |
-| `models/vcm_intent_frozen.onnx` (Experiment 31 frozen + slot heads) | 85.5% | 68 / 90 / 68 / 84% |
+| `models/vcm_intent.onnx` (default: Experiment 36 seed 1) | 84.8% | 74 / 98 / 75 / 87 / 100 / 100% |
+| `models/vcm_intent_frozen.onnx` (Experiment 31 frozen + slot heads) | 85.5% | 68 / 90 / 68 / 84 / – / – |
+
+Temperature (18 / 22 / 26 degrees) and reminder (drink water / study /
+exercise) values are measured on synthetic clips only; try them on your
+own voice.
 
 To compare with the previous default:
 ```bash

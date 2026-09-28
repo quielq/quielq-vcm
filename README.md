@@ -102,11 +102,11 @@ option only**, not a candidate for the actual deployed VCM. See
 MODEL.md Section 10 for the full comparison. Three things exist now:
 
 - **Direct audio → intent** (the deployable pipeline): a CRNN
-  (107K params, **426 KB** fp32 ONNX) classifies a log-mel spectrogram
+  (108K params, **432 KB** fp32 ONNX) classifies a log-mel spectrogram
   directly into one of 20 intents, plus a slot value for TIMER, ALARM,
-  BRIGHTNESS and COLOR. **84.80% real-speech test accuracy**, slot values
-  74–99% (Experiment 34, intent and slots trained jointly at slot weight
-  0.3). A 25K-param
+  BRIGHTNESS, COLOR, TEMPERATURE and CREATE_REMINDER. **84.84% real-speech
+  test accuracy**, slot values 74–100% (Experiment 36, intent and slots
+  trained jointly at slot weight 0.3). A 25K-param
   "Hey Kiwi" wake word (107 KB) listens in front of it.
   `scripts/vcm_listen.py` (wake word → command) or `scripts/demo_infer.py`
   (push-to-talk). Earlier DS-CNN models (137.5 KB, ~75% val, Experiments

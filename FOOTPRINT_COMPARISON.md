@@ -14,13 +14,13 @@ what the extra accuracy of the ASR cascade (Experiment 26) would cost.
 
 | | **Ours** | **ASR cascade** | Ratio |
 |---|---:|---:|---:|
-| Model files | **533 KB** (intent 426 + wake word 107, fp32) | **~149 MB** (Whisper 145 MB + tokenizer 2 MB + classifier 2 MB) | ~280× |
+| Model files | **539 KB** (intent 432 + wake word 107, fp32) | **~149 MB** (Whisper 145 MB + tokenizer 2 MB + classifier 2 MB) | ~280× |
 | Peak memory | **88–96 MB** | **478–696 MB** | 5–7× |
 | Minimum board RAM (with OS, ~60–100 MB) | **512 MB** (~150–200 MB actually used) | **1 GB+** (~550–800 MB used) | |
 | Memory for the models once loaded | ~8.5 MB | ~290–370 MB | ~40× |
 | Latency per command | **3.1–3.4 ms** (1 thread) | **440–950 ms** (see below) | ~150–300× |
 | Python packages to install | ~149 MB: numpy, onnxruntime, sounddevice | ~330 MB: adds faster-whisper, CTranslate2, PyAV, tokenizers, scikit-learn, scipy | ~2× |
-| Real-speech test accuracy | 84.8% (Experiment 34) | **90.6%** (Experiment 26) | ASR +5.8 points |
+| Real-speech test accuracy | 84.8% (Experiment 36) | **90.6%** (Experiment 26) | ASR +5.8 points |
 | Works as the always-on wake word? | Yes, ~1% of one core | **No.** Scoring a 1.5 s window every 0.1 s would need ~4.6 s of compute per second of audio | |
 
 **In short:** the ASR cascade buys about 6 accuracy points for roughly
@@ -102,7 +102,8 @@ core about 8–15× slower. `scripts/benchmark_pi.py` and
   (int8) and a same-size toy wake-word model; the fp32 re-measurement used
   the exported Experiment 32 intent + slot model and Experiment 33 wake word.
   Experiment 34's models have the same architectures and file sizes (426 +
-  107 KB), so these numbers carry over; its DGX benchmark measured 4.8 ms
+  107 KB), and Experiment 36's intent model adds only two small slot heads
+  (432 KB), so these numbers carry over; its DGX benchmark measured 4.8 ms
   per command and 61 MB peak on x86 (reports/exp34_report.md).
 - **Package sizes:** installed size in site-packages. Ours comes from a
   clean environment built from `requirements-pi.txt`; the ASR stack's is

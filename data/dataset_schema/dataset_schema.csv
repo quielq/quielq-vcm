@@ -85,10 +85,10 @@ COLOR,slotted,Set the lights to Blue,Blue
 COLOR,slotted,Set the lights to Green,Green
 CREATE_REMINDER,slotted,Reminder Drink water,Drink water
 CREATE_REMINDER,slotted,Reminder Study,Study
-CREATE_REMINDER,slotted,Reminder Call home,Call home
+CREATE_REMINDER,slotted,Reminder Exercise,Exercise
 CREATE_REMINDER,slotted,Remind me to Drink water,Drink water
 CREATE_REMINDER,slotted,Remind me to Study,Study
-CREATE_REMINDER,slotted,Remind me to Call home,Call home
+CREATE_REMINDER,slotted,Remind me to Exercise,Exercise
 CREATE_REMINDER,slotted,Create a reminder to Drink water,Drink water
 CREATE_REMINDER,slotted,Create a reminder to Study,Study
-CREATE_REMINDER,slotted,Create a reminder to Call home,Call home
+CREATE_REMINDER,slotted,Create a reminder to Exercise,Exercise

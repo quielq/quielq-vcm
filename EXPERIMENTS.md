@@ -2318,3 +2318,121 @@ stream for all; real voice = 10 takes, so each is 10 points):
 - The 10 dB noise column moved a few points between runs: the noise
   segment used the unseeded global `random`. Fixed after this run
   (`add_noise(..., rng)`), so later evaluations are reproducible.
+
+## Experiment 35 — temperature and reminder slot heads
+
+Full numbers and logs: `reports/exp35_report.md`.
+
+**Setup**: two more slot heads, appended after Experiment 32's four. They
+use the class schema's 3 values each: TEMPERATURE (18 / 22 / 26 degrees)
+and CREATE_REMINDER (drink water / study / call home). A new synthetic
+batch, slots3, adds 1,380 Chatterbox clips; 1,319 passed QA, which
+requires Whisper to hear the value. TEMPERATURE passed 98.5–98.9%,
+CREATE_REMINDER 92.2–92.7%, and every value at least 89%. Training uses
+Experiment 34's joint recipe (slot weight 0.3, 80 epochs), 3 seeds. The
+model has 107,887 params (+1,032).
+
+**Result** (test; real-speech intent without Snips, the same rows as the
+baseline's 84.80%; slot accuracy on ground-truth-labelled clips):
+
+| | Real speech | Old-4 slot mean | TIMER | ALARM | BRIGHTNESS | COLOR | TEMPERATURE | CREATE_REMINDER |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Experiment 34 joint w0.3 (baseline) | 84.80% | 83.41% | 74.2% | 99.4% | 73.7% | 86.4% | — | — |
+| Seed 0 | 85.15% | 83.34% | 73.9% | 97.5% | 74.1% | 87.8% | 100% | 100% |
+| Seed 1 | 85.19% | 83.26% | 75.4% | 97.8% | 73.7% | 86.1% | 100% | 100% |
+| **Seed 2 (shipped)** | **85.24%** | **83.75%** | 74.4% | 97.8% | 76.1% | 86.7% | 100% | 100% |
+
+- Adding the two heads cost no intent accuracy. All three seeds are
+  0.35–0.44 points above the baseline (all sources: 84.15–84.17% vs
+  84.04%). The old heads hold: the largest drop is ALARM, −1.6.
+- The new heads' 100% is on **synthetic clips only** (267 TEMPERATURE,
+  201 CREATE_REMINDER test clips, all `option_b` or slots3). No
+  real-speech recording in the data carries these values: FSC's
+  temperature commands have no number, and SLURP's reminders use other
+  tasks. Live testing decides.
+- **The schema and the data disagree on one value.** `option_b`, the
+  class dataset, uses "exercise" as the third reminder task, while
+  `dataset_schema.py` and `vcm.slots` say "call home". So option_b's 580
+  "exercise" clips are unlabelled, and "call home" exists only in slots3
+  (189 train clips).
+- Per-class intent on real speech moved in both directions, and the
+  baseline is one seed:
+  - CREATE_REMINDER is noisy: 55.7 / 66.5 / 59.7% vs 65.3% (n=176).
+  - BRIGHTNESS is lower in all three seeds: 66.9–69.3% vs 74.6%.
+  - Snips lighting is lower: 71.6–72.6% vs 75.3%.
+  - COLOR is higher: 57.8–59.8% vs 57.0%.
+
+**Shipped**: seed 2 (`models/vcm_intent.onnx`, 432 KB fp32, 6 slot heads
+in the metadata). It is best on the gated measure and has the best old-4
+slot mean. The ONNX file matches the checkpoint on the same rows (85.24%,
+identical slot lines). The int8 file is still Experiment 34's.
+
+**Note (added in Experiment 36):** "call home" was a stale schema value.
+The class recordings use "exercise", and so does the author. It was fixed
+in `c59c0c0` (schema CSV, loader, `vcm.slots` vocabulary, slots3 phrases)
+and retrained in Experiment 36. This model's third reminder value is
+"call home", so it can't output "exercise". Experiment 36 seed 1
+replaced it as the shipped model.
+
+## Experiment 36 — corrected reminder values (exercise)
+
+Full numbers and logs: `reports/exp36_report.md`.
+
+**Setup**: CREATE_REMINDER's third value is now "exercise" instead of
+"call home" (`c59c0c0`). Only slots3's 230 "call home" clips were
+re-voiced as "exercise", with the same ids, speakers and phrase slots;
+synthesis resumed and generated exactly those 230. Exercise QA passed
+93.5% / 93.3% (train/test). option_b's 580 "exercise" clips now get slot
+labels. Everything else is Experiment 35's recipe, 3 seeds, on GPU 2
+(free).
+
+**Result** (test; real-speech intent without Snips; slot accuracy on
+ground-truth clips; "exercise" = option_b test clips, n=60, synthetic):
+
+| | Real speech | TIMER | ALARM | BRIGHTNESS | COLOR | TEMPERATURE | CREATE_REMINDER | exercise |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Experiment 34 joint w0.3 | 84.80% | 74.2% | 99.4% | 73.7% | 86.4% | — | — | — |
+| Experiment 35 s2 (shipped before Exp 36) | 85.24% | 74.4% | 97.8% | 76.1% | 86.7% | 100% | 66.3% | 0% |
+| Seed 0 | **84.86%** | 76.2% | **96.9%** | 73.3% | 86.9% | 100% | 99.6% | 100% |
+| Seed 1 | 84.84% | 73.9% | 98.1% | 74.9% | 86.7% | 100% | 100% | 100% |
+| Seed 2 | 84.46% | 76.7% | 98.1% | 75.7% | 86.7% | 99.3% | 100% | 100% |
+
+- The corrected vocabulary works. Every seed scores 100% on "exercise",
+  where Experiment 35 can't output it (0%, so 66.3% on CREATE_REMINDER).
+- Intent is back at Experiment 34's level (84.46–84.86%), 0.4–0.8 below
+  Experiment 35's seeds (85.15–85.24%). The only change is 230 re-voiced
+  synthetic clips plus 580 option_b slot labels, and Experiment 31's
+  seeds alone spanned 0.4 points. So this is a small drop that may be
+  noise, not a confirmed effect.
+- Real-speech COLOR spans 36.8–49.3% across seeds (no Snips), so it's
+  mostly seed noise. Seed 1 is the best COLOR seed of all the models. CALL
+  has no real-speech test clips, so the bare "call" regression on the
+  author's voice can't be measured here.
+
+**Shipped: seed 1**, not the best-intent seed 0.
+- Seed 0 (84.86%) failed the ALARM gate by 0.5 points: 96.88% vs
+  Experiment 34's 99.38%, a 2.50-point drop against a 2-point limit.
+- Seed 1 is one clip behind on intent (84.84%, 6,577 clips) and passes
+  every gate: TIMER −0.26, ALARM −1.25, BRIGHTNESS +1.17, COLOR +0.30;
+  TEMPERATURE 100%, CREATE_REMINDER 100%, "exercise" 100%.
+- The unattended run gated only seed 0 and shipped nothing; the author
+  chose seed 1 afterwards.
+
+`models/vcm_intent.onnx` is 432 KB fp32, with metadata
+`source_checkpoint: exp36_joint_w03_s1.pt` and CREATE_REMINDER
+`['drink water', 'study', 'exercise']`. It matches the checkpoint on the
+same rows: real speech 84.84%, macro 83.27%, and every slot line and
+real-speech per-class line identical. One synthetic clip differs. The
+int8 file is still Experiment 34's.
+
+Seed 1 per-class intent accuracy on real speech (no Snips), vs
+Experiment 34:
+
+| | CREATE_REMINDER | BRIGHTNESS | COLOR | TEMPERATURE |
+|---|---:|---:|---:|---:|
+| Seed 1 | 59.09% | 69.10% | 49.26% | 99.38% |
+| Experiment 34 | 65.34% | 71.67% | 42.65% | 98.85% |
+| n | 176 | 233 | 136 | 1133 |
+
+COLOR is up 6.6 and CREATE_REMINDER down 6.3, but seeds spanned
+59.1–65.9% on CREATE_REMINDER, so live-test the reminder commands.

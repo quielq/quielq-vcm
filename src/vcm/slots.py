@@ -11,9 +11,12 @@ Values the vocabulary doesn't cover (a 25-minute timer, 7:15 AM) aren't
 forced into a wrong class: they get no slot label for training and are
 reported as out-of-vocabulary in evaluation.
 
-TEMPERATURE and CREATE_REMINDER are schema-slotted too but out of scope
-for now: FSC's temperature commands carry no values ("increase the
-heat"), and a reminder's task is free text, not a closed set.
+TEMPERATURE and CREATE_REMINDER (Experiment 35) use just the class
+schema's 3 values each: 18/22/26 degrees, and the tasks drink water /
+study / exercise (the class recordings' tasks; the schema CSV said "call
+home" until Exp 36). FSC's temperature commands carry no value ("increase
+the heat") and stay unlabeled; any other reminder task is out of
+vocabulary (the dashboard edits its text).
 """
 
 from __future__ import annotations
@@ -37,6 +40,10 @@ COLORS = (
 )  # fmt: skip
 
 
+TEMPERATURES = ("18 degrees", "22 degrees", "26 degrees")
+REMINDER_TASKS = ("drink water", "study", "exercise")
+
+
 def duration_label(seconds: int) -> str:
     if seconds % 3600 == 0:
         return f"{seconds // 3600}h"
@@ -54,8 +61,12 @@ SLOT_VOCAB: dict[str, tuple[str, ...]] = {
     "ALARM": _ALARM_TIMES,
     "BRIGHTNESS": tuple(f"{p}%" for p in _PERCENTS),
     "COLOR": COLORS,
+    # Experiment 35, appended after the Exp 32 heads (head order = dict order)
+    "TEMPERATURE": TEMPERATURES,
+    "CREATE_REMINDER": REMINDER_TASKS,
 }
-SLOT_NAMES = {"TIMER": "duration", "ALARM": "time", "BRIGHTNESS": "percent", "COLOR": "color"}
+SLOT_NAMES = {"TIMER": "duration", "ALARM": "time", "BRIGHTNESS": "percent", "COLOR": "color",
+              "TEMPERATURE": "degrees", "CREATE_REMINDER": "task"}  # fmt: skip
 
 _UNITS = {"one": 1, "a": 1, "an": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
           "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
@@ -161,6 +172,29 @@ def parse_color(text: str) -> str | None:
     return None
 
 
+def parse_temperature(text: str) -> int | None:
+    """"set the temperature to twenty two degrees", "temperature 18"."""
+    tokens = _tokens(text)
+    nums = _numbers(tokens)
+    for value, _, end in nums:
+        if end < len(tokens) and tokens[end] in ("degree", "degrees", "celsius", "c"):
+            return value
+    if nums and ("temperature" in tokens or "thermostat" in tokens):
+        return nums[-1][0]
+    return None
+
+
+def parse_reminder_task(text: str) -> str | None:
+    tokens = set(_tokens(text))
+    if "drink" in tokens and "water" in tokens:
+        return "drink water"
+    if tokens & {"study", "studying"}:
+        return "study"
+    if tokens & {"exercise", "exercising", "workout"} or {"work", "out"} <= tokens:
+        return "exercise"
+    return None
+
+
 def parse_slot(label: str, text: str) -> str | None:
     """Canonical slot value for `text` under intent `label`, or None if the
     intent has no slot here or the value isn't in its vocabulary."""
@@ -174,6 +208,11 @@ def parse_slot(label: str, text: str) -> str | None:
         value = f"{percent}%" if percent else None
     elif label == "COLOR":
         value = parse_color(text)
+    elif label == "TEMPERATURE":
+        degrees = parse_temperature(text)
+        value = f"{degrees} degrees" if degrees else None
+    elif label == "CREATE_REMINDER":
+        value = parse_reminder_task(text)
     else:
         return None
     return value if value in SLOT_VOCAB[label] else None
