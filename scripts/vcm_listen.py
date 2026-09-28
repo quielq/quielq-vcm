@@ -42,11 +42,12 @@ from vcm.wakeword.detector import WakeWordDetector, onnx_scorer
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CHUNK_S = 0.1
-END_SILENCE_S = 0.7
+END_SILENCE_S = 0.9  # quiet this long after speech ends the command (0.7 cut "brightness to 60 percent")
 MAX_COMMAND_S = 5.0
 SILENCE_THRESHOLD = 0.005  # "was anything said?" gate (loudest 300 ms). 0.008 (scripts/demo_infer.py,
 # Mac mic) dropped every command from a quieter mic; silent clips peak at 0.0023-0.0048.
-SPEECH_OVER_FLOOR = 3.0  # a chunk is speech if 3x louder than the background (room, or music)
+SPEECH_OVER_FLOOR = 3.0  # speech starts when a chunk is 3x louder than the background (room, or music)
+KEEP_OVER_FLOOR = 1.5  # once started, it continues while chunks stay 1.5x over it (softer word endings)
 REJECT_THRESHOLD = 0.6  # same as scripts/demo_infer.py
 
 
@@ -78,7 +79,11 @@ def record_command(chunks: "queue.Queue[np.ndarray]", lead_in: np.ndarray, floor
         levels.append(level)
         if len(levels) >= 5:
             floor = min(floor, float(np.percentile(levels[-15:], 20))) if floor else float(np.percentile(levels[-15:], 20))
-        loud = level >= max(SILENCE_THRESHOLD, SPEECH_OVER_FLOOR * floor)
+        # Hysteresis: a high bar to start (music isn't speech), a lower one to
+        # keep going, so the soft end of a phrase ("...to sixty percent") over
+        # ducked music isn't taken for silence. With one 3x bar, live commands
+        # were cut mid-phrase ("brightness to 60" -> PLAY_MUSIC).
+        loud = level >= max(SILENCE_THRESHOLD, (KEEP_OVER_FLOOR if heard_speech else SPEECH_OVER_FLOOR) * floor)
         heard_speech |= loud
         quiet_s = 0.0 if loud else quiet_s + len(chunk) / SAMPLE_RATE
         if heard_speech and quiet_s >= END_SILENCE_S:
