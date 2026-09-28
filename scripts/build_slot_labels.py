@@ -39,6 +39,14 @@ def _ground_truth_texts() -> dict[str, str]:
         with option_b.open(newline="") as f:
             for r in csv.DictReader(f):
                 texts[os.path.basename(r["path"])] = r["transcript"]
+    # The author's prompted recordings (scripts/record_real_examples.py): the
+    # prompted phrase is what was said, like a synthetic clip's text.
+    real = REPO_ROOT / "data/real_recordings/manifest.csv"
+    if real.exists():
+        with real.open(newline="") as f:
+            for r in csv.DictReader(f):
+                if r.get("text"):
+                    texts[os.path.basename(r["audio_path"])] = r["text"]
     for batch in BATCHES.values():
         manifest = REPO_ROOT / batch["out_dir"] / "manifest.csv"
         if manifest.exists():
@@ -66,8 +74,8 @@ def main() -> None:
         if row.label not in SLOT_VOCAB:
             continue
         base = os.path.basename(row.audio_path)
-        if row.is_synthetic and base in ground_truth:
-            text, text_source = ground_truth[base], "ground_truth"
+        if (row.is_synthetic or row.source == "real_recordings") and base in ground_truth:
+            text, text_source = ground_truth[base], "ground_truth" if row.is_synthetic else "prompted"
         elif row.audio_path in whisper:
             text, text_source = whisper[row.audio_path], "whisper"
         else:

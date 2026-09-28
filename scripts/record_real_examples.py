@@ -40,6 +40,8 @@ held-out recordings, not your own.
 
 Usage:
     python scripts/record_real_examples.py --speaker-id quielq --reps 10
+    # the phrasings that failed in the Pi live tests (Experiment 37):
+    python scripts/record_real_examples.py --set live --speaker-id quielq --reps 8
     # a dedicated cross-speaker generalization check, contributing
     # zero training data (a good role for one volunteer classmate):
     python scripts/record_real_examples.py --speaker-id <name> --reps 10 --holdout-fraction 1.0
@@ -91,7 +93,32 @@ TARGET_PHRASES: list[tuple[str, str]] = [
     ("MESSAGE", "Message"),
 ]
 
-MANIFEST_FIELDS = ["audio_path", "label", "source", "is_synthetic", "speaker_id", "split"]
+# Phrasings that failed on the author's voice in live Pi tests (saved with
+# vcm_listen.py --save-commands and transcribed): "power on the lights" and
+# "kill the lights" -> BRIGHTNESS, "brightness level 100 percent" -> WEATHER,
+# "call mom" -> PLAY_MUSIC, "color red" -> WEATHER; plus the new "run"
+# reminder. Each is paired with a phrasing that worked, as a contrast.
+LIVE_PHRASES = [
+    ("LIGHT_ON", "Power on the lights"),
+    ("LIGHT_ON", "Turn on the lights"),
+    ("LIGHT_OFF", "Kill the lights"),
+    ("BRIGHTNESS", "Brightness level 100 percent"),
+    ("BRIGHTNESS", "Brightness level 40 percent"),
+    ("BRIGHTNESS", "Adjust brightness to 80 percent"),
+    ("CALL", "Call"),
+    ("CALL", "Call mom"),
+    ("CALL", "Make a phone call"),
+    ("COLOR", "Color red"),
+    ("STOP", "Stop"),
+    ("STOP", "Stop the music"),
+    ("CREATE_REMINDER", "Remind me to run"),
+    ("CREATE_REMINDER", "Create a reminder to run"),
+]
+PHRASE_SETS = {"gaps": TARGET_PHRASES, "live": LIVE_PHRASES}
+
+# `text` (the prompted phrase) gives slot labels for slotted intents
+# (scripts/build_slot_labels.py); read_manifest ignores the extra column.
+MANIFEST_FIELDS = ["audio_path", "label", "source", "is_synthetic", "speaker_id", "split", "text"]
 
 
 def _slug(text: str) -> str:
@@ -129,7 +156,9 @@ def main() -> None:
         "held out (a pure cross-speaker generalization check, no training contribution).",
     )
     parser.add_argument("--out-dir", type=Path, default=REPO_ROOT / "data/real_recordings")
+    parser.add_argument("--set", choices=sorted(PHRASE_SETS), default="gaps", help="which phrases to record")
     args = parser.parse_args()
+    phrases = PHRASE_SETS[args.set]
 
     button = get_button()
     manifest_path = args.out_dir / "manifest.csv"
@@ -140,7 +169,7 @@ def main() -> None:
             existing_rows = list(csv.DictReader(f))
 
     print(f"Recording as speaker_id={args.speaker_id!r}, {args.reps} reps per phrase")
-    print(f"{len(TARGET_PHRASES)} phrases, {len(TARGET_PHRASES) * args.reps} recordings total.")
+    print(f"{len(phrases)} phrases, {len(phrases) * args.reps} recordings total.")
     print(
         f"{args.holdout_fraction * 100:.0f}% of your own reps per phrase will be held out to "
         "val/test (never trained on) — see this script's docstring for why."
@@ -149,7 +178,7 @@ def main() -> None:
 
     new_rows = []
     try:
-        for label, phrase in TARGET_PHRASES:
+        for label, phrase in phrases:
             for rep in range(1, args.reps + 1):
                 split = _assign_split(rep, args.reps, args.holdout_fraction)
                 label_dir = args.out_dir / split / label
@@ -169,6 +198,7 @@ def main() -> None:
                         "is_synthetic": False,
                         "speaker_id": args.speaker_id,
                         "split": split,
+                        "text": phrase,
                     }
                 )
     except KeyboardInterrupt:
@@ -176,7 +206,7 @@ def main() -> None:
 
     all_rows = existing_rows + new_rows
     with manifest_path.open("w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=MANIFEST_FIELDS)
+        writer = csv.DictWriter(f, fieldnames=MANIFEST_FIELDS, restval="")
         writer.writeheader()
         writer.writerows(all_rows)
 

@@ -10,6 +10,12 @@ a button, and the target device is a Raspberry Pi 5 with a model under
 
 ## In progress
 
+- [ ] **Experiment 37** (DGX): retrain with the live1 synthetic batch
+  (power on / kill the lights, brightness level X, call mom, color X,
+  stop, "remind me to run") and the author's prompted recordings
+  (`record_real_examples.py --set live`). "run" is the 4th reminder value.
+  Record first; `data/real_recordings/` is gitignored.
+
 - [x] **Experiment 34**: frozen slot heads keep intent at 85.48% (slot
   acc 77.6%); wake word v2 catches all 10 real takes at 0.95 (1.34 false
   wake-ups/h). Models in `models/`, report in `reports/exp34_report.md`.

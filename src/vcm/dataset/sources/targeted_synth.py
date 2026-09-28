@@ -309,11 +309,48 @@ _REMINDER_TEMPLATES = (
 
 
 def _slots3_phrases() -> dict[str, tuple[tuple[str, str], ...]]:
-    from vcm.slots import REMINDER_TASKS, TEMPERATURES
+    # The schema's 3 tasks only (not "run", added later), so this batch's job
+    # plan, and resumable generation, stay exactly as generated.
+    from vcm.slots import SCHEMA_REMINDER_TASKS as REMINDER_TASKS
+    from vcm.slots import TEMPERATURES
 
     temperature = tuple((t.format(d=_TEMPERATURE_SPOKEN[v]), v) for v in TEMPERATURES for t in _TEMPERATURE_TEMPLATES)
     reminder = tuple((t.format(t=v), v) for v in REMINDER_TASKS for t in _REMINDER_TEMPLATES)
     return {"TEMPERATURE": temperature, "CREATE_REMINDER": reminder}
+
+
+# --- Batch "live1" (Experiment 37): phrasings that failed in live Pi tests ----
+# From the author's saved commands (scripts/vcm_listen.py --save-commands):
+# "power on the lights" and "kill the lights" -> BRIGHTNESS, "brightness level
+# 100 percent" -> WEATHER, "call mom" / bare "call" -> PLAY_MUSIC, "color red"
+# -> WEATHER, and "remind me to run" (a new reminder value). Schema phrasings
+# stay in, since they're the benchmark.
+_LIVE1_BRIGHTNESS_TEMPLATES = (
+    "brightness level {p} percent", "set the brightness level to {p} percent", "brightness level to {p} percent",
+    "adjust brightness to {p} percent", "adjust the brightness to {p} percent", "brightness to {p} percent",
+    "change the brightness level to {p} percent", "put the brightness at {p} percent",
+)  # fmt: skip
+_LIVE1_RUN = ("run", "go for a run", "go running")
+
+
+def _live1_phrases() -> dict[str, tuple[tuple[str, str], ...]]:
+    from vcm.slots import COLORS, SLOT_VOCAB
+
+    percents = [v.rstrip("%") for v in SLOT_VOCAB["BRIGHTNESS"]]
+    fixed = {
+        "LIGHT_ON": ("power on the lights", "power on the light", "power the lights on", "power on lights",
+                     "lights on", "turn on the lights", "switch on the lights", "turn the lights on"),
+        "LIGHT_OFF": ("kill the lights", "kill the light", "kill lights", "power off the lights",
+                      "lights off", "turn off the lights", "switch off the lights"),
+        "CALL": ("call", "call mom", "call my mom", "make a call", "make a phone call", "give mom a call",
+                 "phone mom", "call mom please"),
+        "STOP": ("stop", "stop music", "stop the music", "stop song", "stop playing music", "stop the song"),
+    }  # fmt: skip
+    out = {label: tuple((t, "") for t in phrases) for label, phrases in fixed.items()}
+    out["BRIGHTNESS"] = tuple((t.format(p=p), f"{p}%") for p in percents for t in _LIVE1_BRIGHTNESS_TEMPLATES)
+    out["COLOR"] = tuple((f"color {c}", c) for c in COLORS[:8]) + tuple((f"change color to {c}", c) for c in COLORS[:8])
+    out["CREATE_REMINDER"] = tuple((t.format(t=v), "run") for v in _LIVE1_RUN for t in _REMINDER_TEMPLATES)
+    return out
 
 
 # --- Batch "wakeword" (Hey Kiwi) ----------------------------------------------
@@ -354,6 +391,17 @@ BATCHES = {
             "test": {"TEMPERATURE": 90, "CREATE_REMINDER": 90},
         },
     },
+    "live1": {
+        "out_dir": "data/external/targeted_synth_live1",
+        "source": "targeted_synth_live1",
+        "phrases": "live1",  # built lazily by batch_phrases (needs vcm.slots)
+        "clips": {
+            "train": {"LIGHT_ON": 300, "LIGHT_OFF": 250, "CALL": 300, "STOP": 200, "BRIGHTNESS": 400, "COLOR": 200,
+                      "CREATE_REMINDER": 400},
+            "test": {"LIGHT_ON": 50, "LIGHT_OFF": 40, "CALL": 50, "STOP": 40, "BRIGHTNESS": 60, "COLOR": 30,
+                     "CREATE_REMINDER": 60},
+        },  # fmt: skip
+    },
     "wakeword": {
         "out_dir": "data/external/wakeword_synth",
         "source": "wakeword_synth",
@@ -373,4 +421,6 @@ def batch_phrases(batch: str) -> dict[str, tuple[tuple[str, str], ...]]:
     phrases = BATCHES[batch]["phrases"]
     if phrases == "slots3":
         return _slots3_phrases()
+    if phrases == "live1":
+        return _live1_phrases()
     return _slots2_phrases() if phrases is None else phrases
