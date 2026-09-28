@@ -1,8 +1,9 @@
 # To-do
 
 Current state (see EXPERIMENTS.md): the deployable model is the CRNN
-(Experiment 34: intent + slots trained jointly at slot weight 0.3, 107K
-params, 426 KB fp32, 84.8% real-speech test accuracy, slot values 74–99%) with the
+(Experiment 36 seed 1: intent + 6 slot heads trained jointly at slot weight
+0.3, 108K params, 432 KB fp32, 84.8% real-speech test accuracy, slot values
+74–100%; temperature and reminder values measured on synthetic clips only) with the
 "Hey Kiwi" wake word v2 (25K params, 107 KB). The course asks for a wake word instead of
 a button, and the target device is a Raspberry Pi 5 with a model under
 1 MB.
