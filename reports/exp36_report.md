@@ -1,8 +1,10 @@
 # Experiment 36 report: corrected reminder values (exercise)
 
-**Decision: not shipped.** `models/` is unchanged; `models/vcm_intent.onnx` is still Experiment 35 seed 2, which uses the old reminder vocabulary. Following the brief, I picked the seed with the best real-speech intent accuracy (Snips excluded): **seed 0, 84.86%**. It passes every gate except one: its **ALARM** slot head is **96.88% vs. Experiment 34's 99.38% (−2.50 pp)**, over the 2 pp limit.
-
-The alternative, not taken: seed 1 is 0.02 pp behind on intent (84.84%, about one clip of 6,577) and passes every gate. See "Decision" below.
+**Decision: shipped seed 1** (`models/vcm_intent.onnx` = `exp36_joint_w03_s1.pt`), not the best-intent seed 0.
+- **Seed 0 (84.86%) failed the ALARM gate:** 96.88% vs. Experiment 34's 99.38%, −2.50 pp against a 2 pp limit, so over by 0.5 pp.
+- **Seed 1 passes every gate** and is one clip behind on intent: 84.84% vs. 84.86% on 6,577 clips.
+- The first unattended run shipped nothing, because the brief's rule gates only the best-intent seed. The author then chose seed 1.
+- The ONNX export matches the checkpoint (see "Shipped model" below).
 
 Numbers are copied from the logs in `logs/` on the DGX.
 
@@ -82,7 +84,7 @@ seed 2: Done. Best val_acc=0.8680, checkpoint at checkpoints/exp36_joint_w03_s2.
 | exp36 seed 0 | **84.86%** | 83.96% |
 | exp36 seed 1 | 84.84% | 83.82% |
 | exp36 seed 2 | 84.46% | 83.80% |
-| exp35 seed 2 (shipped) | 85.24% | 84.15% |
+| exp35 seed 2 (shipped before Exp 36) | 85.24% | 84.15% |
 | exp34 joint w0.3 | 84.80% | 84.04% |
 
 The Exp 35 and Exp 34 numbers are identical to their Exp 35 evaluation. The real-speech rows didn't change; only the slots3 synthetic rows did.
@@ -148,15 +150,60 @@ All sources (adds Snips lighting to COLOR and BRIGHTNESS):
   - Intent 84.86% ≥ 83.8%: **pass** (Exp 34 84.80%, Exp 35 85.24%).
   - Old four slot heads vs. Exp 34, per head as in Experiment 35: TIMER +2.02, **ALARM −2.50**, BRIGHTNESS −0.40, COLOR +0.59. **Fail** on ALARM: 96.88% vs. 99.38%, n=321, about 8 clips. The old-4 mean (83.34% vs. 83.41%) would pass.
   - TEMPERATURE 100.00% and CREATE_REMINDER 99.62%: **pass**. "Exercise" on option_b test clips 100.00% (joint 98.33%): **pass**.
-- **Not shipped.** `models/` is unchanged, and no export was run.
-- **If you'd rather ship:** seed 1 passes every gate. Intent 84.84% (0.02 pp behind seed 0); TIMER −0.26, ALARM −1.25, BRIGHTNESS +1.17, COLOR +0.30; TEMPERATURE 100%, CREATE_REMINDER 100%, "exercise" 100% / 100%. It also has the best real-speech COLOR of any model here. To ship it:
-  1. `.venv/bin/python scripts/export_onnx.py checkpoints/exp36_joint_w03_s1.pt --out models/vcm_intent`
-  2. `git checkout -- models/vcm_intent.int8.onnx`
-- **Why not ship seed 1 myself:** the brief's rule picks the seed first and then gates it, and the two seeds differ by one clip. I didn't want to substitute my own selection rule in an unattended run.
+- **First run: not shipped.** The brief's rule gates only the best-intent seed, and the two seeds differ by one clip, so I didn't substitute my own selection rule while unattended.
+- **Gates for seed 1** (all pass):
+  - Intent 84.84% ≥ 83.8%.
+  - Old heads vs. Exp 34: TIMER −0.26, ALARM −1.25, BRIGHTNESS +1.17, COLOR +0.30.
+  - TEMPERATURE 100%, CREATE_REMINDER 100%, "exercise" on option_b test clips 100% / 100%.
+- **Shipped: seed 1**, at the author's direction, for the reason given at the top of this report. It also has the best real-speech COLOR of any model here.
+
+## Shipped model: seed 1
+
+**Export:** `scripts/export_onnx.py checkpoints/exp36_joint_w03_s1.pt --out models/vcm_intent` wrote `models/vcm_intent.onnx`, 432 KB fp32. I then restored `models/vcm_intent.int8.onnx` from git, since only fp32 ships; the int8 file is still Experiment 34's.
+
+ONNX metadata (`logs/exp36_onnx_metadata.txt`):
+
+```
+source_checkpoint: exp36_joint_w03_s1.pt | val_acc: 0.8728
+slot heads: ['TIMER', 'ALARM', 'BRIGHTNESS', 'COLOR', 'TEMPERATURE', 'CREATE_REMINDER']
+CREATE_REMINDER: ['drink water', 'study', 'exercise']
+TEMPERATURE: ['18 degrees', '22 degrees', '26 degrees']
+```
+
+**Re-scored on the same rows** (`logs/eval_exp36_fp32onnx_nosnips.log`: test, `--exclude-source snips_lights`). Both the ONNX file and the seed 1 checkpoint (`logs/eval_exp36_test_nosnips.log`) print these lines, character for character:
+
+```
+real speech:  84.84% (n=6577)   <- comparable to the cascade's 90.62%
+real speech, macro (mean of per-class): 83.27% over 16 classes
+
+slot values (slot-head accuracy / intent+slot joint accuracy):
+  TIMER       ground_truth   73.92% /  73.16%  (n=395)
+  TIMER       whisper        80.00% /  80.00%  (n=20)
+  ALARM       ground_truth   98.13% /  97.82%  (n=321)
+  ALARM       whisper        77.33% /  69.77%  (n=172)
+  BRIGHTNESS  ground_truth   74.90% /  74.90%  (n=255)
+  COLOR       ground_truth   86.65% /  85.46%  (n=337)
+  COLOR       whisper        67.92% /  58.49%  (n=53)
+  TEMPERATURE ground_truth  100.00% / 100.00%  (n=267)
+  CREATE_REMINDER ground_truth  100.00% /  99.23%  (n=261)
+```
+
+Seed 1 per-class intent accuracy, all rows / real speech (identical for the ONNX file and the checkpoint):
+
+```
+  TEMPERATURE          99.50% (n=1400)        99.38% (n=1133)
+  BRIGHTNESS           85.25% (n=488)         69.10% (n=233)
+  COLOR                83.30% (n=473)         49.26% (n=136)
+  CREATE_REMINDER      83.07% (n=437)         59.09% (n=176)
+```
+
+**The only differences** in the full evaluation blocks are on synthetic rows and one confidence-table row:
+- One synthetic `option_b` WEATHER clip that the ONNX file gets right: all 89.08% → 89.09%, synthetic 98.88% → 98.92%, `WEATHER -> MESSAGE` 38 → 37.
+- The 0.80 reject-threshold row moves by 0.1 pp. That's floating-point noise on a clip near a decision boundary.
 
 ## Caveats
 
 - The new slot heads are measured only on synthetic speech (`option_b` and slots3). No real-speech test clip has a temperature or reminder value.
-- The shipped Exp 35 model still uses the "call home" vocabulary. Until an Exp 36 model ships, the device can't output "exercise": Exp 35 gets 0% on those clips.
+- Seed 1's CREATE_REMINDER intent on real speech (59.09%, n=176, SLURP) is the lowest of the three seeds, and below Experiment 34's 65.34%. Seeds spanned 59.1–65.9%, so live testing of reminder commands is worth doing.
 - Not committed: the DGX data files (`data/dataset_manifest_exp36.csv`, `data/slot_labels_exp36.csv`, `data/external/targeted_synth_slots3/`, with Exp 35's CSVs backed up as `*.exp35`).
 - No PR and no Pi deploy, as instructed.

@@ -2370,8 +2370,9 @@ identical slot lines). The int8 file is still Experiment 34's.
 **Note (added in Experiment 36):** "call home" was a stale schema value.
 The class recordings use "exercise", and so does the author. It was fixed
 in `c59c0c0` (schema CSV, loader, `vcm.slots` vocabulary, slots3 phrases)
-and retrained in Experiment 36. This shipped model's third reminder value
-is still "call home", so it can't output "exercise".
+and retrained in Experiment 36. This model's third reminder value is
+"call home", so it can't output "exercise". Experiment 36 seed 1
+replaced it as the shipped model.
 
 ## Experiment 36 — corrected reminder values (exercise)
 
@@ -2391,7 +2392,7 @@ ground-truth clips; "exercise" = option_b test clips, n=60, synthetic):
 | | Real speech | TIMER | ALARM | BRIGHTNESS | COLOR | TEMPERATURE | CREATE_REMINDER | exercise |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
 | Experiment 34 joint w0.3 | 84.80% | 74.2% | 99.4% | 73.7% | 86.4% | — | — | — |
-| Experiment 35 s2 (shipped) | 85.24% | 74.4% | 97.8% | 76.1% | 86.7% | 100% | 66.3% | 0% |
+| Experiment 35 s2 (shipped before Exp 36) | 85.24% | 74.4% | 97.8% | 76.1% | 86.7% | 100% | 66.3% | 0% |
 | Seed 0 | **84.86%** | 76.2% | **96.9%** | 73.3% | 86.9% | 100% | 99.6% | 100% |
 | Seed 1 | 84.84% | 73.9% | 98.1% | 74.9% | 86.7% | 100% | 100% | 100% |
 | Seed 2 | 84.46% | 76.7% | 98.1% | 75.7% | 86.7% | 99.3% | 100% | 100% |
@@ -2408,10 +2409,30 @@ ground-truth clips; "exercise" = option_b test clips, n=60, synthetic):
   has no real-speech test clips, so the bare "call" regression on the
   author's voice can't be measured here.
 
-**Not shipped.** The gated seed is seed 0, which has the best intent
-accuracy, and its ALARM head is 2.5 below Experiment 34 (96.88% vs
-99.38%, about 8 of 321 clips), past the 2-point limit. Seed 1 is 0.02
-behind on intent (one clip) and passes every gate. Shipping it is one
-export command (see the report), but that's a choice between two
-near-identical seeds and is left to the author. `models/` still holds
-Experiment 35 seed 2, with the "call home" vocabulary.
+**Shipped: seed 1**, not the best-intent seed 0.
+- Seed 0 (84.86%) failed the ALARM gate by 0.5 points: 96.88% vs
+  Experiment 34's 99.38%, a 2.50-point drop against a 2-point limit.
+- Seed 1 is one clip behind on intent (84.84%, 6,577 clips) and passes
+  every gate: TIMER −0.26, ALARM −1.25, BRIGHTNESS +1.17, COLOR +0.30;
+  TEMPERATURE 100%, CREATE_REMINDER 100%, "exercise" 100%.
+- The unattended run gated only seed 0 and shipped nothing; the author
+  chose seed 1 afterwards.
+
+`models/vcm_intent.onnx` is 432 KB fp32, with metadata
+`source_checkpoint: exp36_joint_w03_s1.pt` and CREATE_REMINDER
+`['drink water', 'study', 'exercise']`. It matches the checkpoint on the
+same rows: real speech 84.84%, macro 83.27%, and every slot line and
+real-speech per-class line identical. One synthetic clip differs. The
+int8 file is still Experiment 34's.
+
+Seed 1 per-class intent accuracy on real speech (no Snips), vs
+Experiment 34:
+
+| | CREATE_REMINDER | BRIGHTNESS | COLOR | TEMPERATURE |
+|---|---:|---:|---:|---:|
+| Seed 1 | 59.09% | 69.10% | 49.26% | 99.38% |
+| Experiment 34 | 65.34% | 71.67% | 42.65% | 98.85% |
+| n | 176 | 233 | 136 | 1133 |
+
+COLOR is up 6.6 and CREATE_REMINDER down 6.3, but seeds spanned
+59.1–65.9% on CREATE_REMINDER, so live-test the reminder commands.
