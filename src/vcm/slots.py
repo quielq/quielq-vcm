@@ -41,7 +41,8 @@ COLORS = (
 
 
 TEMPERATURES = ("18 degrees", "22 degrees", "26 degrees")
-REMINDER_TASKS = ("drink water", "study", "exercise")
+SCHEMA_REMINDER_TASKS = ("drink water", "study", "exercise")  # the class schema's 3 (slots3 batch)
+REMINDER_TASKS = (*SCHEMA_REMINDER_TASKS, "run")  # + "run", requested after live tests (Experiment 37)
 
 
 def duration_label(seconds: int) -> str:
@@ -192,6 +193,8 @@ def parse_reminder_task(text: str) -> str | None:
         return "study"
     if tokens & {"exercise", "exercising", "workout"} or {"work", "out"} <= tokens:
         return "exercise"
+    if tokens & {"run", "running", "jog", "jogging"}:
+        return "run"
     return None
 
 
