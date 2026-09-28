@@ -290,7 +290,7 @@ def _slots2_phrases() -> dict[str, tuple[tuple[str, str], ...]]:
     return {"ALARM": alarm, "TIMER": timer, "BRIGHTNESS": brightness, "COLOR": color}
 
 
-# --- Batch "slots3" (Experiment 35): temperature and reminder values ---------
+# --- Batch "slots3" (Experiments 35-36): temperature and reminder values -----
 # The class schema's 3 values each (vcm.slots TEMPERATURES, REMINDER_TASKS),
 # in the schema's phrasings plus common variants. The real schema recordings
 # are few, so these give the new heads enough examples per value.

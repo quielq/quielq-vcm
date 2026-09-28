@@ -84,7 +84,7 @@ SLOTTED_INTENTS: dict[str, dict[str, tuple[str, ...]]] = {
             "Remind me to {task}",
             "Create a reminder to {task}",
         ),
-        "values": ("Drink water", "Study", "Call home"),
+        "values": ("Drink water", "Study", "Exercise"),
     },
 }
 

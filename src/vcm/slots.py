@@ -13,7 +13,8 @@ reported as out-of-vocabulary in evaluation.
 
 TEMPERATURE and CREATE_REMINDER (Experiment 35) use just the class
 schema's 3 values each: 18/22/26 degrees, and the tasks drink water /
-study / call home. FSC's temperature commands carry no value ("increase
+study / exercise (the class recordings' tasks; the schema CSV said "call
+home" until Exp 36). FSC's temperature commands carry no value ("increase
 the heat") and stay unlabeled; any other reminder task is out of
 vocabulary (the dashboard edits its text).
 """
@@ -40,7 +41,7 @@ COLORS = (
 
 
 TEMPERATURES = ("18 degrees", "22 degrees", "26 degrees")
-REMINDER_TASKS = ("drink water", "study", "call home")
+REMINDER_TASKS = ("drink water", "study", "exercise")
 
 
 def duration_label(seconds: int) -> str:
@@ -189,8 +190,8 @@ def parse_reminder_task(text: str) -> str | None:
         return "drink water"
     if tokens & {"study", "studying"}:
         return "study"
-    if "call" in tokens and "home" in tokens:
-        return "call home"
+    if tokens & {"exercise", "exercising", "workout"} or {"work", "out"} <= tokens:
+        return "exercise"
     return None
 
 
