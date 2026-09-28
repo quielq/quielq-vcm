@@ -203,16 +203,17 @@ def main() -> None:
     parser.add_argument(
         "--wake-threshold",
         type=float,
-        default=0.85,
-        help="lower = hears \"Hey Kiwi\" from further away, more false wake-ups. Exp 34 test: 0.85 misses 7%% clean / "
-        "12%% noisy synthetic clips, 0 of 10 real takes, 4.3 false wake-ups per hour of near-miss-heavy test speech "
-        "(0.95: 14%% / 22%%, 1.3 per hour)",
+        default=0.7,
+        help="lower = hears \"Hey Kiwi\" from further away and in noise, more false wake-ups. Exp 34 test: 0.7 misses "
+        "3.6%% clean / 8%% noisy synthetic clips, 0 of 10 real takes, 9.2 false wake-ups per hour of near-miss-heavy "
+        "test speech (0.85: 7%% / 12%%, 4.3 per hour; 0.95: 14%% / 22%%, 1.3 per hour)",
     )
     parser.add_argument(
         "--noisy-wake-threshold",
         type=float,
         default=0.7,
-        help="wake threshold while music plays or an alarm rings (needs --server); lower = hears you better over music, more false wake-ups",
+        help="wake threshold while music plays or an alarm rings (needs --server); lower = hears you better over "
+        "music, more false wake-ups. Same as --wake-threshold by default",
     )
     parser.add_argument("--trigger", choices=["wakeword", "button"], default="wakeword")
     parser.add_argument("--device", default=None, help="sounddevice input device (name or index); default: system default")

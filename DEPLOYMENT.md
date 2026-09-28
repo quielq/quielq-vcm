@@ -249,12 +249,21 @@ the intent, the slot value, the confidence, and timing:
 ```
 - `--show-scores` prints the live wake-word score, which is useful for
   seeing how close near-misses get.
-- `--wake-threshold` sets the trigger level (default 0.95: in Experiment 34
-  it missed 14% of clean and 22–24% of noisy synthetic "hey kiwi", none of
-  the author's 10 held-out real takes, with 1.34 false wake-ups per hour of
-  test speech, mostly deliberate near-misses). 0.98 cuts false wake-ups to
-  0.4/h but missed 3 of the 10 real takes. Raise it if it wakes too often,
-  lower it if it misses you.
+- `--wake-threshold` sets the trigger level (default 0.7, lowered after
+  live tests so "Hey Kiwi" works from further away and in noise). On
+  Experiment 34's test set:
+
+  | Threshold | Missed, clean | Missed, 10 dB noise | Missed, author's real takes | False wake-ups per hour |
+  |---:|---:|---:|---:|---:|
+  | **0.7** | 3.6% | 8.2% | 0/10 | 9.2 |
+  | 0.85 | 6.9% | 11.5% | 0/10 | 4.3 |
+  | 0.95 | 14.1% | 21.5% | 0/10 | 1.3 |
+
+  The false wake-ups are on a test stream heavy in deliberate near-misses
+  ("hey kitty", "every week"), so a real room should see fewer. Raise it
+  if it wakes by itself too often, lower it if it misses you.
+- `--save-commands DIR` saves every recorded command as a WAV (with its
+  length in the name), to hear exactly what the model got.
 - `--trigger button` skips the wake word and uses the GPIO 17 pushbutton
   instead (push-to-talk).
 
