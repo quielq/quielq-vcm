@@ -180,18 +180,35 @@ def post_json(server: str, path: str, payload: dict, timeout: float = 10) -> dic
         return json.loads(response.read())
 
 
+_duck_requests: "queue.Queue[tuple[str, bool]] | None" = None
+
+
 def duck(server: str | None, on: bool) -> None:
-    """Turn Spotify down (on) / back up (off) in the background, never blocking listening."""
-    import threading
+    """Turn the music down (on) / back up (off) without blocking listening.
 
-    def run():
-        try:
-            post_json(server, "/api/duck", {"on": on}, timeout=5)
-        except OSError:
-            pass
+    Requests go through one queue and one worker thread, so they reach the
+    server in order. With a thread per request, a quick command's "off"
+    could arrive before its "on": the duck then stuck, and later ducks
+    stacked on top (Spotify's stream on the Pi was found at 2% while
+    Spotify reported 100%)."""
+    global _duck_requests
+    if not server:
+        return
+    if _duck_requests is None:
+        import threading
 
-    if server:
-        threading.Thread(target=run, daemon=True).start()
+        _duck_requests = queue.Queue()
+
+        def worker():
+            while True:
+                url, state = _duck_requests.get()
+                try:
+                    post_json(url, "/api/duck", {"on": state}, timeout=5)
+                except OSError:
+                    pass
+
+        threading.Thread(target=worker, daemon=True, name="duck").start()
+    _duck_requests.put((server, on))
 
 
 def follow_noise(server: str, detector: WakeWordDetector, quiet: float, noisy: float) -> None:
