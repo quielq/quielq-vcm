@@ -34,6 +34,7 @@ from vcm.home.state import HomeState, new_id
 VOLUME_STEP = 10
 THERMO_MIN_C, THERMO_MAX_C, THERMO_STEP_C = 16, 30, 1
 DUCK_PERCENT = 15  # Spotify volume while listening for a command
+DUCK_TIMEOUT_S = 20  # undo a duck that's never ended (listener stopped mid-command)
 
 
 @dataclass
@@ -58,6 +59,7 @@ class Dispatcher:
     def __init__(self, state: HomeState, integrations: Integrations):
         self.state, self.x = state, integrations
         self._duck_lock, self._duck_restore, self._streams_ducked = threading.Lock(), None, None
+        self._duck_timer: threading.Timer | None = None
         self.handlers = {
             "PLAY_MUSIC": self.play_music, "PAUSE": self.pause, "STOP": self.stop, "NEXT": self.next,
             "VOLUME_UP": lambda s: self.volume(+VOLUME_STEP), "VOLUME_DOWN": lambda s: self.volume(-VOLUME_STEP),
@@ -158,6 +160,13 @@ class Dispatcher:
         also covers Spotify playing on another speaker in the room)."""
         if self.x.ringer:
             self.x.ringer.mute(on)
+        if self._duck_timer:
+            self._duck_timer.cancel()
+            self._duck_timer = None
+        if on:  # safety: a duck the listener never ends (it was stopped) doesn't stick
+            self._duck_timer = threading.Timer(DUCK_TIMEOUT_S, self.duck, args=(False,))
+            self._duck_timer.daemon = True
+            self._duck_timer.start()
         with self._duck_lock:
             if on and self._streams_ducked is None:
                 self._streams_ducked = self.x.duck_streams()

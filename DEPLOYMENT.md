@@ -249,13 +249,14 @@ the intent, the slot value, the confidence, and timing:
 ```
 - `--show-scores` prints the live wake-word score, which is useful for
   seeing how close near-misses get.
-- `--wake-threshold` sets the trigger level (default 0.7, lowered after
+- `--wake-threshold` sets the trigger level (default 0.6, lowered after
   live tests so "Hey Kiwi" works from further away and in noise). On
   Experiment 34's test set:
 
   | Threshold | Missed, clean | Missed, 10 dB noise | Missed, author's real takes | False wake-ups per hour |
   |---:|---:|---:|---:|---:|
-  | **0.7** | 3.6% | 8.2% | 0/10 | 9.2 |
+  | **0.6** | 3.1% | 5.6% | 0/10 | 12.7 |
+  | 0.7 | 3.6% | 8.2% | 0/10 | 9.2 |
   | 0.85 | 6.9% | 11.5% | 0/10 | 4.3 |
   | 0.95 | 14.1% | 21.5% | 0/10 | 1.3 |
 
