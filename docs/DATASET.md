@@ -2,13 +2,37 @@
 
 This walks through every dataset-side step in this repo, in order, so
 anyone (classmates included) can reproduce the exact same output from a
-fresh clone. See [VCM_Architecture_Review.md](VCM_Architecture_Review.md)
-Section 9 for the candidate-source research and strategic rationale —
-this doc only covers running the code and current status.
+fresh clone. The candidate-source research behind it is in the archived
+[original architecture review](archive/original_architecture_review.md), Section 9; this doc covers
+running the code and the data actually used.
 
 Dataset development is a **collective effort**. See "Acknowledgments"
 at the end of this document for how this pipeline builds on work shared
 across the class.
+
+## Final training data (what the shipped model was trained on)
+
+The shipped model (Experiment 36) trained on
+`data/dataset_manifest_exp36.csv`: **70,641 clips**, built in layers on top
+of the base manifest described in the rest of this document.
+
+| Layer | Clips | Real / synthetic | Added in |
+|---|---:|---|---|
+| Base manifest: SLURP, FSC, Snips, Timers and Such, GSC noise, Option B | 63,476 | 45,818 real + 17,658 synthetic | Steps 1–10 below |
+| Option B after the Whisper QA filter (`scripts/qa_filter_option_b.py`) | −1,158 | synthetic removed | Experiment 25 |
+| Targeted phrasings (pause/stop/play verb pairs, timer durations, colors, brightness levels) | +4,357 | synthetic, QA-passed | Experiment 31 |
+| Slot-value clips "slots2" (every timer, alarm, brightness and color value) | +2,649 | synthetic, QA-passed | Experiment 32 |
+| Slot-value clips "slots3" (temperature and reminder values) | +1,317 | synthetic, QA-passed | Experiments 35–36 |
+| **Total** | **70,641** | **45,218 real speech + 600 noise + 24,823 synthetic** (64% real speech) | |
+
+Snips was also re-split by speaker in Experiment 32
+(`scripts/resplit_snips_by_speaker.py`), because 40 of its 49 speakers had
+been in more than one split. Slot-value labels (`data/slot_labels_exp36.csv`,
+17,920 labels) come from the script for synthetic clips and from Whisper
+transcripts for real ones (`scripts/build_slot_labels.py`). The
+synthetic clips were generated with Chatterbox TTS, cloning real FSC and
+Timers and Such speakers (`scripts/generate_targeted_synthetic.py`), and
+kept only if Whisper heard the intended words.
 
 ## Summary — what this is and how it was built
 
@@ -233,7 +257,7 @@ are used to rule out ordinary run-to-run noise.
 
 ## 1. The taxonomy (class-shared fixed-vs-slotted schema)
 
-[`src/vcm/dataset/sources/dataset_schema.py`](src/vcm/dataset/sources/dataset_schema.py)
+[`src/vcm/dataset/sources/dataset_schema.py`](../src/vcm/dataset/sources/dataset_schema.py)
 holds the 19-label taxonomy (13 fixed-phrase intents, 6 slotted) as plain
 Python data, captured from the class's shared taxonomy sheet's richest
 table ("Option B" phrasing richness — not to be confused with the
@@ -255,7 +279,7 @@ export_csv(Path('data/dataset_schema/dataset_schema.csv'))
 "
 ```
 **Expect**: a 94-line CSV (93 phrases + header). See
-[`data/dataset_schema/README.md`](data/dataset_schema/README.md) for the
+[`data/dataset_schema/README.md`](../data/dataset_schema/README.md) for the
 column format.
 
 ## 2. SLURP coverage check (real data, real numbers)
@@ -269,7 +293,7 @@ annotation text, no audio) from `pswietojanski/slurp` on GitHub into
 script re-downloads if that folder isn't there), then prints a table of
 how many real SLURP sentences/recordings map to each of the 19 taxonomy
 labels, using the empirically-verified mapping in
-[`src/vcm/dataset/sources/slurp.py`](src/vcm/dataset/sources/slurp.py).
+[`src/vcm/dataset/sources/slurp.py`](../src/vcm/dataset/sources/slurp.py).
 
 **Expect** (verified output, reproduced exactly by running the command
 above from a clean checkout):
@@ -392,7 +416,7 @@ mv MEX2/OptionB/manifest.csv <repo-root>/data/external/option_b/
 mkdir -p <repo-root>/data/external/option_b/audio
 mv MEX2/OptionB/*/  <repo-root>/data/external/option_b/audio/
 ```
-[`src/vcm/dataset/sources/option_b.py`](src/vcm/dataset/sources/option_b.py)
+[`src/vcm/dataset/sources/option_b.py`](../src/vcm/dataset/sources/option_b.py)
 loads it — no label-mapping layer needed, its `intent` column already
 matches our 19 canonical labels 1:1 (verified against the real
 `manifest.csv`, not assumed).
@@ -410,7 +434,7 @@ official ~2.4GB archive **transiently**, extracts only the ~13MB
 noise, a running tap, an exercise bike, a dishwasher, someone's cat —
 not the 35 keyword classes), deletes the full archive immediately after,
 then chops the noise into 600 fixed-length clips
-([`sources/gsc_background.py`](src/vcm/dataset/sources/gsc_background.py))
+([`sources/gsc_background.py`](../src/vcm/dataset/sources/gsc_background.py))
 with an 80/10/10 train/val/test split. Increase coverage with
 `--clips-per-file` if 600 proves too few once training starts.
 
@@ -424,7 +448,7 @@ Section 9 describes this as a "smart-lights" dataset; that turned out to
 be only half true — streaming and inspecting all 5,886 real transcripts
 found the corpus is roughly half lighting commands and half unrelated
 music requests ("I'd like to listen to `<artist>`"), no other domains.
-[`sources/snips_lights.py`](src/vcm/dataset/sources/snips_lights.py)
+[`sources/snips_lights.py`](../src/vcm/dataset/sources/snips_lights.py)
 classifies each transcript by keyword/phrase pattern (there's no
 categorical label in the source data) into `LIGHT_ON`, `LIGHT_OFF`,
 `BRIGHTNESS`, or `COLOR` — see that module's docstring for a real false
@@ -482,7 +506,7 @@ PAUSE                              315
 TOTAL: 24223 manifest rows -> data/external/fsc/manifest.csv
 ```
 The `LABEL_MAPPING` in
-[`src/vcm/dataset/sources/fsc.py`](src/vcm/dataset/sources/fsc.py) is
+[`src/vcm/dataset/sources/fsc.py`](../src/vcm/dataset/sources/fsc.py) is
 built from all 31 real `(action, object, location)` combinations found
 in the archive, not guessed — see that module's docstring for how one
 ambiguous combination (`"deactivate"` + `"music"`, which mixes PAUSE
@@ -504,13 +528,13 @@ attempt to close part of that gap.
 ready, but recording new personal voice data for this project needs
 confirmation from the course adviser first (a permissions question
 separate from, and not yet resolved the way, the synthetic-data
-question in `VCM_Architecture_Review.md` Section 7 was). Do not run
+question in the [original architecture review](archive/original_architecture_review.md) Section 7 was). Do not run
 this until that's confirmed. Left in place (not removed) so it's ready
 to pick back up the moment it's cleared — see EXPERIMENTS.md's parked
 list for the same note.
 
 ```bash
-python scripts/record_real_examples.py --speaker-id <your-name> --reps 10
+python docs/archive/legacy_code/scripts/record_real_examples.py --speaker-id <your-name> --reps 10   # archived; restore to scripts/ first
 ```
 **Why**: live testing found CALL, NEXT, TIMER, and LIST_REMINDERS —
 100% Chatterbox TTS, zero real-human recordings — perform noticeably
@@ -518,12 +542,12 @@ worse on real speech than the validation numbers suggest, plus two
 specific phrasings ("Kill the lights" for LIGHT_OFF, "Message" for
 MESSAGE) that are technically covered but only by the same TTS voices.
 This is the same synthetic-to-real generalization gap already flagged
-in `VCM_Architecture_Review.md` Section 9 — and the same section
+in the original architecture review's Section 9 — and the same section
 documents a classmate's own prior finding that adding real recordings
 to a synthetic-only label (CALL) measurably helped. This script
 generalizes that fix: it walks through the ~20 affected `(label,
 phrase)` pairs (see the script's own `TARGET_PHRASES` list) via the
-same push-to-talk capture `scripts/demo_infer.py` and `vcm.main` use,
+push-to-talk capture (`vcm.audio.capture`),
 and writes a manifest.csv in the standard schema.
 
 **Runs on your own machine** (Mac or RPi) — this isn't something to run
@@ -587,7 +611,7 @@ across the train/dev/test splits (counts verified from the real
 per-split CSVs, not the paper's aggregate-only reporting). SimpleMath
 and UnitConversion (the dataset's other 2 intents) have no taxonomy
 equivalent and are dropped, not guessed — see
-[`src/vcm/dataset/sources/timers_and_such.py`](src/vcm/dataset/sources/timers_and_such.py).
+[`src/vcm/dataset/sources/timers_and_such.py`](../src/vcm/dataset/sources/timers_and_such.py).
 Takes ~20-25 minutes (latency-bound: ~1,071 individual range requests,
 not a bandwidth bottleneck) — this is expected, not a hung process.
 
@@ -607,7 +631,7 @@ script should read from.
 
 ## 11. Synthetic-audio QA gate
 
-[`src/vcm/dataset/qa/synthetic_check.py`](src/vcm/dataset/qa/synthetic_check.py)
+[`src/vcm/dataset/qa/synthetic_check.py`](../src/vcm/dataset/qa/synthetic_check.py)
 generalizes the transcribe-and-compare pattern from the QA tool used to
 filter the Option B dataset above, so it can screen output from *any*
 generator, not just the one it was built for. It needs a real
@@ -634,7 +658,7 @@ not automatically discarded.
 
 ## Manifest format
 
-[`src/vcm/dataset/manifest.py`](src/vcm/dataset/manifest.py) is the
+[`src/vcm/dataset/manifest.py`](../src/vcm/dataset/manifest.py) is the
 common row shape (`audio_path, label, source, is_synthetic, speaker_id,
 split`) every source normalizes into, via a per-source label-mapping
 layer (`apply_label_mapping()`) so no source is hardcoded to one
@@ -646,7 +670,7 @@ of combining sources through it.
 ```bash
 python -m pytest
 ```
-93 tests total; the dataset-specific ones are `tests/test_dataset_*.py`,
+The dataset-specific tests are `tests/test_dataset_*.py`,
 `tests/test_slurp_coverage.py`, `tests/test_fsc_coverage.py`,
 `tests/test_option_b.py`, `tests/test_gsc_background.py`,
 `tests/test_snips_lights.py`, `tests/test_timers_and_such.py`, and
@@ -673,6 +697,6 @@ not developed in isolation. Specifically:
   classmate resource.
 - Several other classmates contributed dataset leads, reference
   implementations, and corpus-sizing corrections that shaped the
-  candidate-source research in `VCM_Architecture_Review.md` Section 9.
+  candidate-source research in the [original architecture review](archive/original_architecture_review.md) Section 9.
 
 Everything above exists because of this collective effort.

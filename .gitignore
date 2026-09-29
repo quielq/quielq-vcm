@@ -45,7 +45,7 @@ data/distillation_labels.csv
 checkpoints/
 logs/
 
-# scripts/demo_infer.py --debug output — local diagnostic recordings
+# local diagnostic recordings (the archived push-to-talk demo's --debug output)
 debug_recordings/
 
 # macOS Finder metadata

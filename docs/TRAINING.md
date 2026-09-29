@@ -129,7 +129,7 @@ for f in logs/exp29*.log; do echo "$f: $(grep '^epoch' $f | tail -1)"; done
 | What | Where | How it moves |
 |---|---|---|
 | Code | Git (branch → PR) | Commit on the Mac, push, then `git fetch && git checkout <branch>` on the DGX. Avoid copying files with `rsync`: it leaves the DGX checkout showing uncommitted changes. |
-| Checkpoints, logs | `checkpoints/`, `logs/` on the DGX, both **gitignored** | `scp` the ones you need to the Mac, e.g. to test live with `scripts/demo_infer.py` |
+| Checkpoints, logs | `checkpoints/`, `logs/` on the DGX, both **gitignored** | `scp` the ones you need to the Mac, e.g. to export with `scripts/export_onnx.py` and test live with `scripts/vcm_listen.py --intent-model` |
 | Data | `data/` on the DGX only (~4.5 GB) | Not in git |
 
 **Where to run Claude Code for long jobs**: a session running *on the
@@ -138,3 +138,37 @@ sleeps or the VPN drops. A session running on the Mac that reaches the
 DGX with per-command `ssh` pauses whenever the Mac loses the VPN. The
 training runs themselves survive either way, since they're under
 `nohup`.
+
+## Reproducing the final model
+
+The exact launch scripts are in `logs/` on the DGX. Rebuilt from the recipe
+in EXPERIMENTS.md (Experiments 29b, 31, 34–36), with the data from
+[DATASET.md](DATASET.md) in place:
+
+```bash
+export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 NUMBA_NUM_THREADS=1
+export CUDA_VISIBLE_DEVICES=<an idle GPU>
+
+# Intent + slot model (Experiment 36, seed 1 shipped; seeds 0 and 2 for comparison)
+python -m vcm.train.train --model crnn --seed 1 \
+  --manifest data/dataset_manifest_exp36.csv --slot-labels data/slot_labels_exp36.csv --slot-weight 0.3 \
+  --epochs 80 --batch-size 128 --lr 1e-3 --warmup-epochs 5 --confusable-alpha 2.0 \
+  --window-s 5.0 --trim-silence --wave-augment --num-workers 8 \
+  --out checkpoints/exp36_joint_w03_s1.pt
+
+# "Hey Kiwi" wake word (Experiment 34, seed 0 shipped)
+python scripts/train_wakeword.py --seed 0 \
+  --extra-wake-manifest data/wakeword_real/manifest.csv \
+  --out checkpoints/kiwi_wakeword_v2_s0.pt
+
+# Evaluate (TESTING.md), then export to ONNX for the device
+python scripts/evaluate_checkpoint.py checkpoints/exp36_joint_w03_s*.pt \
+  --manifest data/dataset_manifest_exp36.csv --slot-labels data/slot_labels_exp36.csv \
+  --exclude-source snips_lights
+python scripts/export_onnx.py checkpoints/exp36_joint_w03_s1.pt --out models/vcm_intent
+python scripts/export_onnx.py checkpoints/kiwi_wakeword_v2_s0.pt --out models/kiwi_wakeword
+```
+
+Each intent run takes about 1.5 hours with 3–5 runs sharing one A100
+(80 epochs at ~65 s). Results vary by about ±0.4 points between seeds, so
+compare configurations over 3 seeds.

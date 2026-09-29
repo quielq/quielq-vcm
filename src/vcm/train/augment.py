@@ -3,7 +3,7 @@ Method for Automatic Speech Recognition", arXiv:1904.08779): randomly
 mask blocks of time steps and frequency bins directly on the log-mel
 spectrogram. Cheap (no extra audio processing) and directly targets
 overfitting to the training distribution's specific voices/phrasing —
-see MODEL.md Section 4 and EXPERIMENTS.md Experiment 1's overfitting
+see EXPERIMENTS.md Experiment 1's overfitting
 signal (train loss kept falling while val loss plateaued).
 
 Only ever applied to training data, never validation/test.

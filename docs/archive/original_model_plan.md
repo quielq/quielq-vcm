@@ -1,7 +1,9 @@
+> **Archived technology survey, written before training began, kept for the record.** Its recommendations (BC-ResNet, int8 PTQ, TFLite benchmarking) were tested and mostly not adopted. The shipped model is described in [../MODEL.md](../MODEL.md); what changed and why is in [AUDIT.md](AUDIT.md). Section numbers cited in EXPERIMENTS.md (for example "MODEL.md Section 9") refer to this file.
+
 # Model Training & Deployment — Technology Choices
 
 This documents the key technologies for the training/export/deployment
-pipeline (Section 5 of [VCM_Architecture_Review.md](VCM_Architecture_Review.md)),
+pipeline (Section 5 of [VCM_Architecture_Review.md](original_architecture_review.md)),
 why each was chosen, the research they're grounded in, and options that
 weren't in the original architecture writeup but are worth adopting.
 Nothing here is implemented yet — this is the design reference before
@@ -155,7 +157,7 @@ a surprise if it happens.
 
 Raspberry Pi 5 = Broadcom **BCM2712**, quad-core Arm **Cortex-A76** @
 2.4GHz, no on-board NPU/accelerator in the Tier-1 build (the Hailo AI
-HAT+ is Tier-2/future-use only, see Section 11 — everything here assumes
+HAT+ is Tier-2/future-use only — everything here assumes
 **CPU-only inference**). Cortex-A76 implements Armv8.2-A, which includes
 the **dot-product extension (SDOT/UDOT)** — this is the specific
 instruction-level feature that makes INT8 GEMM/convolution fast on this
@@ -366,7 +368,7 @@ accommodate the footprint** (e.g. a benchmark reference, or a future
 deployment target with more compute than an RPi4/5), not as something
 that competes with Options 1/2 for the actual deliverable.
 
-**Measured runtime footprint** (see [FOOTPRINT_COMPARISON.md](FOOTPRINT_COMPARISON.md)):
+**Measured runtime footprint** (see [FOOTPRINT_COMPARISON.md](../FOOTPRINT.md)):
 the deployed pipeline (CRNN intent + slot model and "Hey Kiwi" wake word,
 fp32 ONNX) is 539 KB of models, peaks at 88–96 MB of memory and takes
 ~3 ms per command on a laptop CPU.

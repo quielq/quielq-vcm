@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Train the ASR-cascade's text-intent classifier (see MODEL.md Section 9).
+"""Train the ASR-cascade's text-intent classifier (see docs/MODEL.md, "Alternative considered: ASR cascade").
 
 Pipeline: audio -> Whisper (scripts/transcribe_corpus_for_cascade.py,
 already run -> data/cascade_transcripts.csv) -> this script's

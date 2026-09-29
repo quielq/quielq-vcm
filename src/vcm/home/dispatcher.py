@@ -11,9 +11,9 @@ clear spoken reply and a dashboard entry instead of an error:
 | VOLUME_UP / VOLUME_DOWN | System output volume (USB or Bluetooth speaker), else Spotify's |
 | WEATHER, TIME | Weather API / system clock, spoken |
 | LIGHT_ON/OFF, BRIGHTNESS, COLOR | Virtual lamp on the dashboard (+ real Xiaomi bulb if configured) |
-| TEMPERATURE | Reports the simulated room temperature (seeded from the Sense HAT) + thermostat target (no direction yet: TODO.md) |
+| TEMPERATURE | A slot value (18 / 22 / 26 degrees) sets the simulated thermostat; no slot reports the room temperature (seeded from the Sense HAT) |
 | TIMER, ALARM | Scheduled from the slot value; rings when due until STOP / PAUSE |
-| CREATE_REMINDER, LIST_REMINDERS | Reminder list (text is edited on the dashboard: TODO.md) |
+| CREATE_REMINDER, LIST_REMINDERS | Reminder list; the slot gives the task (drink water / study / exercise), other text is edited on the dashboard |
 | CALL, MESSAGE | Your phone via the Mac bridge, else logged as simulated |
 """
 

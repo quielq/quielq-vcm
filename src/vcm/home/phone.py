@@ -12,7 +12,7 @@ The bridge needs the Mac awake and signed in to the same Apple ID as the
 iPhone. Settings: configs/settings.toml [phone]. If no bridge is
 configured, calls and messages are logged on the dashboard as simulated.
 Other routes (Bluetooth hands-free on the Pi, a phone notification app)
-are in TODO.md.
+are listed under "Future enhancements" in README.md.
 """
 
 from __future__ import annotations

@@ -1,11 +1,26 @@
 # Training Experiments Log
 
 Real results from actual training runs on the DGX (`ai-n002`, A100-40GB),
-against `data/dataset_manifest.csv` (64,665 rows, 20 classes: 19 intents
-+ `unknown_background`). See [MODEL.md](MODEL.md) for the technology
-survey behind these choices and [DATASET.md](DATASET.md) for the data
-itself. Every number below is copied from a real log file, not
-estimated — log paths are given so any entry can be re-checked.
+20 classes (19 intents + `unknown_background`). The manifest grew over the
+project, from 64,665 rows (Experiment 1) to 70,641 (Experiment 36); each
+entry names the one it used. Every number below is copied from a real log
+file, not estimated — log paths are given so any entry can be re-checked
+(logs and checkpoints live on the DGX, not in git).
+
+**Shipped model: Experiment 36, seed 1** (intent + slots, 84.84% real-speech
+test) and the Experiment 34 wake word. [MODEL.md](MODEL.md) describes them;
+[TESTING.md](TESTING.md) has the final results. The pre-training technology
+survey these experiments started from is
+[archive/original_model_plan.md](archive/original_model_plan.md) (the
+"MODEL.md Section N" references below point there). Scripts named below
+that were later archived (`demo_infer.py`, `demo_infer_cascade.py`,
+`record_real_examples.py`) are in
+[archive/legacy_code/scripts/](archive/legacy_code/scripts/).
+
+**Reading the numbers:** Experiments 1–27 report best *validation* accuracy
+over all clips. From Experiment 28 on, the comparable number is
+*real-speech test* accuracy (see "Evaluation change from Experiment 28
+onward").
 
 **Methodological note**: Experiments 1 and 2 below were run before
 `--seed` existed in `train.py` — neither run fixed a random seed, so
@@ -53,8 +68,17 @@ init, batch shuffling), not purely the effect being tested. Experiment
 | 31 | Same recipe as #29b on the base manifest **+ 4,357 targeted synthetic clips** (Chatterbox, cloned FSC/Timers speakers; schema phrasings + extra phrasings for PAUSE/STOP/PLAY_MUSIC/TIMER/COLOR/BRIGHTNESS), 3 seeds | waveform | 80 | 88.22 / 88.70 / 88.75% val; 84.9–85.3% real-speech test (≈ #29b); **98–99% on held-out targeted clips** (29b: 70–73%) | `logs/exp31_*.log`, `logs/exp31_report.md` |
 | 32 | #31 recipe + **slot heads** (timer/alarm/brightness/color values) + slots2 clips + Snips speaker re-split, 3 seeds | waveform | 80 | 84.36 / 84.43 / 84.88% val; **81.4–82.1% real-speech test (no Snips), −3.5pp vs #31**; slot values ALARM 98%, COLOR 87%, TIMER 74%, BRIGHTNESS 74%; int8 −6.8pp | `logs/exp32_*.log` (DGX), `reports/exp32_33_report.md` |
 | 33 | **"Hey Kiwi" wake word**, 25K-param CRNN, 2 seeds | waveform | 30 | seed 1 at threshold 0.95: 6.7% clean / 16.4% noisy false rejects, 0.67 false wake-ups/h | `logs/exp33_*.log` (DGX) |
+| 34 | Slot heads on the **frozen** Exp 31 encoder (3 seeds) vs. **joint** training at slot weight 0.3 (1 seed); **wake word v2** (all plausible positives + the author's recordings) | waveform | 30 / 80 | Frozen: 85.48% real speech, slot mean 77.6%. Joint w0.3: 84.80%, slot mean 83.4%. Wake v2 at 0.95: 14.1% missed (was 27.4%), 0/10 real takes missed — **wake word shipped** | `reports/exp34_report.md` |
+| 35 | Joint w0.3 + **TEMPERATURE and CREATE_REMINDER slot heads** (107,887 params), 3 seeds | waveform | 80 | 85.15 / 85.19 / 85.24% real speech; new heads 100% (synthetic clips only); third reminder value was the stale "call home" | `reports/exp35_report.md` |
+| 36 | Same as #35 with the reminder value corrected to **"exercise"**, 3 seeds | waveform | 80 | 84.86 / **84.84** / 84.46% real speech; slots TIMER 73.9, ALARM 98.1, BRIGHTNESS 74.9, COLOR 86.7, TEMPERATURE 100, CREATE_REMINDER 100% — **seed 1 shipped** | `reports/exp36_report.md` |
 
 ## Parked / to-do
+
+*Historical list, written during Experiments 9–27 and kept as it was. The
+DS-CNN ranking items were superseded by the CRNN (Experiment 28). Current
+open work is under "Future enhancements" in the
+[README](../README.md#future-enhancements); what was dropped, and why, is
+in [archive/AUDIT.md](archive/AUDIT.md).*
 
 Not yet run. Recorded here so they aren't lost, not because they're
 scheduled — pick back up when there's a reason to chase more accuracy
@@ -103,7 +127,7 @@ again.
   BC-ResNet default and matched-capacity) is cheap — just don't skip
   it once the dataset changes.
 - **ARCHIVED, not dropped: real-recording tool for CALL/NEXT/LIST_REMINDERS**
-  (`scripts/record_real_examples.py`, see DATASET.md step 8). Built,
+  (now `archive/legacy_code/scripts/record_real_examples.py`, see DATASET.md step 8). Built,
   tested, ready to use — paused pending course-adviser confirmation on
   recording new personal voice data for this project. Left in the repo
   rather than removed so it can be picked back up the moment that's

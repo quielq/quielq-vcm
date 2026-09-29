@@ -1,7 +1,7 @@
-# Starting the VCM (Mac + Raspberry Pi)
+# Runbook: starting, testing and demoing the VCM
 
-The short version of bringing the whole system up: what runs on which
-device, in what order. [DEPLOYMENT.md](DEPLOYMENT.md) has the full
+Day-to-day operation of the finished system: what runs on which device,
+in what order, how to check it, and what to do on demo day. [DEPLOYMENT.md](DEPLOYMENT.md) has the full
 explanations, and [the troubleshooting table](#troubleshooting) below
 covers the problems hit so far.
 
@@ -48,7 +48,8 @@ Listed so it can be repeated on a new Pi or Mac.
      - `bridge_token`: any secret (`openssl rand -hex 16`);
      - `contacts = { Mom = "+639..." }`, with `default_contact` one of
        those names.
-   - `[spotify]`: optional, not set up yet (DEPLOYMENT.md 8b).
+   - `[spotify]`: client id, secret and refresh token from
+     `scripts/spotify_auth.py`, and `device_name = "kiwi"` (DEPLOYMENT.md 8b).
 3. **iPhone:** *Settings → Phone → Calls on Other Devices* → on for the
    Mac. Optionally *Messages → Text Message Forwarding*. **Mac:** Messages
    signed in with the same Apple ID.
@@ -177,8 +178,8 @@ in training because the class benchmark uses them.
 | MESSAGE | Send a message (1/1) | Message *untested* | Send my message *untested* | |
 
 Most counts are 1-3 tries, so treat them as a first pass. CALL is the weak
-one: only "Make a call" worked reliably (Experiment 37, on hold, adds the
-author's recordings for it).
+one: only "Make a call" worked reliably. Adding real recordings of it is
+the planned fix (README, "Future enhancements").
 
 The dashboard's **Simulate a command** box runs the same actions without
 speaking. If a command works there but not by voice, the problem is

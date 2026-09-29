@@ -19,7 +19,7 @@ Endpoints:
 
 Standard library only (ThreadingHTTPServer), so it fits beside the voice
 pipeline on a 512 MB Pi. It has no authentication: run it on a trusted home
-network only (TODO.md).
+network only (README.md, "Future enhancements").
 """
 
 from __future__ import annotations
