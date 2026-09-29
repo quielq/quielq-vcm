@@ -1,0 +1,16 @@
+# Kiwi's home server and dashboard (http://<pi>:8000). Installed by
+# scripts/deploy_pi.sh --services into ~/.config/systemd/user/.
+[Unit]
+Description=VCM home server and dashboard
+After=pipewire-pulse.service wireplumber.service
+Wants=pipewire-pulse.service wireplumber.service
+
+[Service]
+WorkingDirectory=%h/quielq-vcm
+Environment=PYTHONUNBUFFERED=1
+ExecStart=%h/quielq-vcm/.venv/bin/python -m vcm.home.server
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target

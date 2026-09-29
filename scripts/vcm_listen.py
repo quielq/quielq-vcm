@@ -49,6 +49,61 @@ SILENCE_THRESHOLD = 0.005  # "was anything said?" gate (loudest 300 ms). 0.008 (
 SPEECH_OVER_FLOOR = 3.0  # speech starts when a chunk is 3x louder than the background (room, or music)
 KEEP_OVER_FLOOR = 1.5  # once started, it continues while chunks stay 1.5x over it (softer word endings)
 REJECT_THRESHOLD = 0.6  # same as scripts/demo_infer.py
+MIC_TIMEOUT_S = 3.0  # no audio from the mic this long -> exit, so systemd restarts on a working one
+
+
+class MicLost(SystemExit):
+    """The microphone stopped (unplugged) or the input changed device: exit
+    non-zero so systemd (deploy/systemd/vcm.service) starts the listener
+    again, on the right mic once it's back."""
+
+
+def next_chunk(chunks: "queue.Queue[np.ndarray]") -> np.ndarray:
+    try:
+        return chunks.get(timeout=MIC_TIMEOUT_S)
+    except queue.Empty:
+        raise MicLost(f"no audio from the microphone for {MIC_TIMEOUT_S:.0f} s (unplugged?); exiting to restart") from None
+
+
+def default_input() -> str | None:
+    """PipeWire/PulseAudio's default input device name, or None where there's no pactl (macOS)."""
+    import shutil
+    import subprocess
+
+    if not shutil.which("pactl"):
+        return None
+    try:
+        return subprocess.run(["pactl", "get-default-source"], capture_output=True, text=True, timeout=3).stdout.strip()
+    except (subprocess.SubprocessError, OSError):
+        return None
+
+
+def guard_input(device) -> None:
+    """With the system default input (no --device): refuse to run on a speaker
+    "monitor" (that records what the speaker plays, not the room), and exit
+    if the default input changes while running. Found on the Pi: the USB mic
+    dropped out for a few seconds, the soundbar's mic became the default, and
+    Kiwi went deaf. Exiting lets systemd restart it on the right device."""
+    import threading
+
+    if device is not None:
+        return
+    start = default_input()
+    if start is None:
+        return
+    if not start or start.endswith(".monitor"):
+        raise MicLost(f"no microphone: the default input is {start or 'missing'!r}; exiting to retry")
+    print(f"microphone: {start}")
+
+    def watch():
+        while True:
+            time.sleep(3)
+            now = default_input()
+            if now is not None and now != start:
+                print(f"\nmicrophone changed: {start} -> {now}; exiting to restart on the right one", flush=True)
+                os._exit(3)
+
+    threading.Thread(target=watch, daemon=True, name="mic-guard").start()
 
 
 def background_floor(levels: "list[float]") -> float:
@@ -72,7 +127,7 @@ def record_command(chunks: "queue.Queue[np.ndarray]", lead_in: np.ndarray, floor
     audio = [lead_in]
     heard_speech, quiet_s, total_s, levels = False, 0.0, 0.0, []
     while total_s < MAX_COMMAND_S:
-        chunk = chunks.get()
+        chunk = next_chunk(chunks)
         audio.append(chunk)
         total_s += len(chunk) / SAMPLE_RATE
         level = speech_level(chunk)
@@ -307,6 +362,7 @@ def main() -> None:
         follow_noise(args.server, detector, args.wake_threshold, args.noisy_wake_threshold)
     chunks: queue.Queue[np.ndarray] = queue.Queue()
     device = int(args.device) if args.device and args.device.isdigit() else args.device
+    guard_input(device)
     rate = input_rate(sd, device, SAMPLE_RATE)
     convert = StreamResampler(rate, SAMPLE_RATE) if rate != SAMPLE_RATE else (lambda x: x)
     if rate != SAMPLE_RATE:
@@ -326,7 +382,7 @@ def main() -> None:
     with stream:
         try:
             while True:
-                chunk = chunks.get()
+                chunk = next_chunk(chunks)
                 levels = [*levels[-29:], speech_level(chunk)]
                 if detector.feed(chunk):
                     print(f"\n[wake word, score {detector.last_score:.2f}] listening...")
@@ -339,7 +395,7 @@ def main() -> None:
                         sd.wait()
                         during = [chunks.get_nowait() for _ in range(chunks.qsize())]
                         if during:
-                            nxt = chunks.get()
+                            nxt = next_chunk(chunks)
                             lead_in = chime_lead_in(during, nxt, floor)
                             with chunks.mutex:  # put it back first in line for record_command
                                 chunks.queue.appendleft(nxt)
