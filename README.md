@@ -14,12 +14,38 @@ thermostat, timers, alarms, reminders, music and call log.
 | **Models on the device** | 539 KB in total. Intent + slot model: 432 KB, 108K parameters. Wake word: 107 KB, 25K parameters. Both fp32 ONNX. |
 | **Compute** | 54M multiply-adds per command. The wake word uses 5.3M per 1.5 s window, 10 times a second. |
 | **Commands** | 19 intents that cover all 10 required categories. Six of them also return a value (timer length, alarm time, brightness, color, temperature, reminder). |
-| **Accuracy** | **84.8%** on 6,577 real-speech test clips. Slot values are 74% to 100% correct. |
+| **Intent accuracy** | **84.8%** of 6,577 real spoken test commands got the right intent. When a command has a value, the value is right 74% to 100% of the time. |
 | **Speed on the Pi 5** | **9.9 ms** per command. The always-on wake word uses 2% of one CPU core. |
 | **Memory on the Pi 5** | 103 MB for the voice pipeline. About 300 MB for everything we run. |
 
+### What the percentages mean
+
+All accuracy numbers in this project measure **intent recognition**: did
+the model understand which command was said? We do not measure word-by-word
+transcription, because the model never produces text.
+
+- **Intent accuracy** is the share of test commands where the model's top
+  answer is the correct intent. For example, "turn the volume up" counts as
+  correct only if the model says VOLUME_UP. There are 19 intents plus a
+  background-noise class.
+- **The test commands are real people speaking.** They come from the test
+  split of public datasets (SLURP, Fluent Speech Commands, Timers and Such).
+  The model never trained on them. Synthetic voices are left out of the
+  headline number, because the model scores 94% to 99% on those and they
+  would hide mistakes.
+- **Every test command counts.** A low-confidence answer that the device
+  would reject with "please repeat" still counts as an error here.
+- **Slot accuracy** is separate. It only covers commands that carry a value,
+  like "5 minutes" or "blue", and asks if the value is right.
+- **Wake word** numbers are separate too. They count missed "Hey Kiwi"s and
+  false wake-ups per hour.
+
+So **84.8% means**: out of every 100 real spoken commands the model had
+never heard, it picked the right intent for about 85.
+
 ## Contents
 
+- [What the percentages mean](#what-the-percentages-mean)
 - [How it works](#how-it-works)
 - [The final model, and how we chose it](#the-final-model-and-how-we-chose-it)
 - [Dataset](#dataset)
@@ -28,6 +54,7 @@ thermostat, timers, alarms, reminders, music and call log.
 - [Course concepts applied](#course-concepts-applied)
 - [Codebase structure](#codebase-structure)
 - [Quick start](#quick-start)
+- [Deploy and run on the Raspberry Pi](#deploy-and-run-on-the-raspberry-pi)
 - [Documentation](#documentation)
 - [Future enhancements](#future-enhancements)
 - [Acknowledgments](#acknowledgments)
@@ -59,7 +86,7 @@ is checkpoint `exp36_joint_w03_s1.pt` (Experiment 36, seed 1), exported as
 **How we got there.** We ran 36 experiments. All of them are logged in
 [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
 
-| Step | Real-speech accuracy | What we learned |
+| Step | Intent accuracy (real speech) | What we learned |
 |---|---:|---|
 | DS-CNN and BC-ResNet, the usual keyword-spotting models (Exp 1 to 27) | ~70% | DS-CNN sees only about 240 ms at a time. That is shorter than one word, so it mixed up "volume up" and "volume down". Loss changes, rebalancing and regularization barely helped. |
 | **CRNN**: strided convolutions, a GRU and attention pooling (Exp 28) | 80.8% | Reading the whole command in order gave the biggest single gain, +11 points. |
@@ -78,9 +105,9 @@ measured what it costs to run ([docs/FOOTPRINT.md](docs/FOOTPRINT.md)):
 | Peak memory | **88 to 103 MB** | 478 to 696 MB | 5 to 7x |
 | Latency per command (laptop) | **~3 ms** | 440 to 950 ms | 150 to 300x |
 | Can run as the always-on wake word | **Yes** (2% of a Pi core) | No. It would need a separate wake word. | |
-| Real-speech accuracy | 84.8% | **90.6%** | +5.8 points |
+| Intent accuracy (real speech) | 84.8% | **90.6%** | +5.8 points |
 
-The cascade gains about 6 points of accuracy. In exchange it is 280 times
+The cascade gains about 6 points of intent accuracy. In exchange it is 280 times
 bigger and 150 times slower, and it still needs a second model for the wake
 word. The assignment asks for a tiny model with no ASR on the device. So we
 ship the CRNN and keep the cascade as the accuracy reference.
@@ -139,8 +166,9 @@ It also has the exact commands to reproduce the shipped models.
 These are the final numbers for the shipped models. The full tables and
 method are in [docs/TESTING.md](docs/TESTING.md).
 
-**Intent.** On the real-speech test split (6,577 clips), accuracy is
-**84.84%** and the macro average is 83.27%. TEMPERATURE reaches 99%. The
+**Intent.** On the real-speech test split (6,577 clips), intent accuracy
+is **84.84%**. The macro average, which gives every intent equal weight, is
+83.27%. TEMPERATURE reaches 99%. The
 weakest classes are COLOR (49%), CREATE_REMINDER (59%) and BRIGHTNESS
 (69%). Most of their real test clips come from SLURP, where people phrase
 commands freely.
@@ -246,12 +274,71 @@ python scripts/vcm_listen.py --server http://127.0.0.1:8000 --show-scores   # te
 ```
 Then say "Hey Kiwi, what time is it".
 
-**Deploy to a Raspberry Pi** running 64-bit Raspberry Pi OS, reachable over SSH.
+## Deploy and run on the Raspberry Pi
+
+This is the short version. The full setup from a blank SD card is in
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). Daily use and the demo checklist
+are in [docs/RUNBOOK.md](docs/RUNBOOK.md).
+
+### What this assumes is already set up
+
+- **The Pi.** A Raspberry Pi 5 (or 4) running **64-bit** Raspberry Pi OS,
+  with SSH turned on. We use the hostname `raspberrypi`, so it is reachable
+  as `raspberrypi.local`.
+- **The laptop.** A Mac or Linux laptop with this repo cloned. The commands
+  below run from the repo folder.
+- **SSH without a password.** `ssh raspberrypi.local` logs in with a key.
+  If it asks for a password, run `ssh-copy-id raspberrypi.local` once.
+- **The same network.** The laptop and the Pi are on the same Wi-Fi. Venue
+  Wi-Fi often blocks this, so a phone hotspot works as a backup.
+- **Audio.** A USB microphone and a USB speaker are plugged into the Pi's
+  black USB 2 ports.
+- **Settings.** `configs/settings.toml` exists on the laptop. Copy it from
+  `configs/settings.example.toml`. The weather key, Spotify and phone
+  sections are optional. Without them, those commands say they are not set
+  up and everything else still works.
+
+### Commands
+
+**1. Deploy from the laptop.** This installs the system packages, copies the
+code, the models and your settings, builds the Python environment, runs a
+benchmark, and installs two services that start at boot.
 ```bash
 scripts/deploy_pi.sh raspberrypi.local --services
 ```
-The step-by-step setup is in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). Daily
-use and the demo checklist are in [docs/RUNBOOK.md](docs/RUNBOOK.md).
+
+**2. Check that everything is ready.** The last line should say READY.
+```bash
+ssh raspberrypi.local 'cd ~/quielq-vcm && .venv/bin/python scripts/kiwi_doctor.py --beep'
+```
+If the microphone shows as silent right after a deploy, restart the audio
+stack and the services, then run the check again:
+```bash
+ssh raspberrypi.local 'systemctl --user restart pipewire pipewire-pulse wireplumber && sleep 3 && systemctl --user restart vcm-home vcm'
+```
+
+**3. Open the dashboard** at http://raspberrypi.local:8000. On Android, use
+the Pi's IP address instead (`ssh raspberrypi.local hostname -I`).
+
+**4. Talk to it.** Say "Hey Kiwi", then a command, like "what time is it" or
+"set a timer for five minutes". The dashboard's "Simulate a command" box
+runs the same actions without speaking.
+
+**5. Calls and messages (optional).** These go through your Mac and iPhone.
+Keep this running on the Mac:
+```bash
+.venv/bin/python scripts/mac_phone_bridge.py --token <bridge_token from settings.toml>
+```
+
+### Everyday commands
+
+| To | Run |
+|---|---|
+| Watch what Kiwi hears | `ssh raspberrypi.local journalctl --user -u vcm -f` |
+| Restart both services | `ssh raspberrypi.local systemctl --user restart vcm-home vcm` |
+| Stop both services | `ssh raspberrypi.local systemctl --user stop vcm vcm-home` |
+| Update the Pi after a change | `git pull`, then `scripts/deploy_pi.sh raspberrypi.local --services` |
+| Push changed settings | `scripts/deploy_pi.sh raspberrypi.local --settings` |
 
 ## Documentation
 
