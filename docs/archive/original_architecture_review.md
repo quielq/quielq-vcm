@@ -21,7 +21,7 @@ This document exists so an AI assistant picking up this project cold, or a human
 
 **Where things stand as of this document**: the architecture decisions (Section 3) and hardware plan (Section 4) are settled enough to start building. Dataset development (Section 9's candidate-source research) has since become an active, collective effort — **see [DATASET.md](../DATASET.md) for its current status, the adopted taxonomy, and how the class's contributions are being incorporated**; this document stays focused on architecture and doesn't track day-to-day dataset progress. Read Section 3 for the "why" behind each decision before proposing changes to it, several choices (e.g. dropping the SIM800L module, audio-only output, the Tier 1/Tier 2 split) were arrived at after considering and rejecting alternatives, documented inline so that reasoning isn't lost.
 
-**How to use this document**: Sections 1–2 are the original assignment and constraints, unedited source material. Section 3 onward is our own analysis and decisions. Sections 4, 6, and 10 (hardware, task coverage, circuit diagrams) matter for the demo; Section 9 covers candidate dataset *sources* and the strategic reasoning behind them, for live dataset-development status see DATASET.md instead. Section 7 (open questions for the class) and Section 11 (future use cases, out of scope for this project) are explicitly not part of the current build.
+**How to use this document**: Sections 1–2 are the original assignment and constraints, unedited source material. Section 3 onward is our own analysis and decisions. Sections 4, 6, and 10 (hardware, task coverage, circuit diagrams) matter for the demo; Section 9 covers candidate dataset *sources* and the strategic reasoning behind them, for live dataset-development status see DATASET.md instead. Section 7 (open questions for the class) is explicitly not part of the current build.
 
 ---
 
@@ -330,13 +330,3 @@ GPIO 17 reads HIGH by default (pulled up to 3.3V through R1) and reads LOW the i
 *(Circuit image `tier2_sim800l_circuit.png`: never committed to the repo.)*
 
 This schematic documents what the SIM800L path would have required: its own regulated 4V rail stepped down from the Pi's 5V via a buck regulator, a large reservoir capacitor to absorb the current spikes GSM transmission draws, and level-shifted UART lines since its logic levels don't match the Pi's 3.3V GPIO. None of this is being built, the module is 2G-only and the Philippines' 2G network is being phased out nationwide by end of 2026 (already absent on DITO). Retained here in case a 4G-capable cellular module is considered for a future project.
-
----
-
-## 11. Future Use Cases for the RPi5 Hardware (Beyond This ME)
-
-Noted here for reference, not part of this project's scope or cost plan, so the RPi5 investment isn't a single-purpose purchase.
-
-- **Raspberry Pi AI HAT+ 2** (Hailo-10H accelerator, 8GB onboard RAM, sold directly by Cytron): purpose-built for running LLMs/VLMs locally on an RPi5, with working reference projects (e.g. Ollama running directly on the Hailo accelerator) already demonstrated in the community. This is a direct hardware match for the ASA Philippines local-first AI work (the Ollama + Qwen2.5 3B incident-report extraction pipeline and the privacy-first commercial product for BSP-regulated institutions), letting that pipeline be prototyped or demoed on dedicated, accelerated, fully offline hardware rather than a laptop. Requires proper active cooling and the 5A@5V PSU already covered by the kit purchase.
-- **Cheaper alternative for vision-specific work**: the plain Raspberry Pi AI HAT+ (Hailo-8L or Hailo-8, 13 or 26 TOPS) is aimed at camera-based inference rather than LLMs, a better fit if a future project leans toward object/vision detection (e.g. an illustrative demo prop for the AI literacy workshop project) rather than local language models.
-- **Caveat worth knowing before buying either**: the AI HAT+ variants use the Pi 5's PCIe bus, which means an NVMe SSD cannot be used on the same board at the same time (an NVMe-via-USB adapter is the workaround if both are wanted).

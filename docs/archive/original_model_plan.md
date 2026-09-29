@@ -157,7 +157,7 @@ a surprise if it happens.
 
 Raspberry Pi 5 = Broadcom **BCM2712**, quad-core Arm **Cortex-A76** @
 2.4GHz, no on-board NPU/accelerator in the Tier-1 build (the Hailo AI
-HAT+ is Tier-2/future-use only, see Section 11 — everything here assumes
+HAT+ is Tier-2/future-use only — everything here assumes
 **CPU-only inference**). Cortex-A76 implements Armv8.2-A, which includes
 the **dot-product extension (SDOT/UDOT)** — this is the specific
 instruction-level feature that makes INT8 GEMM/convolution fast on this

@@ -8,6 +8,7 @@ exported to fp32 ONNX and run with ONNX Runtime (no PyTorch on the device).
 | File | `models/vcm_intent.onnx` | `models/kiwi_wakeword.onnx` |
 | Size | 432 KB | 107 KB |
 | Parameters | 107,887 | 25,475 |
+| Compute | 53.7M multiply-adds (~107 MFLOPs) per command | 5.3M multiply-adds per window, 10 windows a second |
 | Input | 40 log-mel bands × 501 frames (5.0 s, silence-trimmed) | 40 × 151 frames (1.5 s window) |
 | Output | 20 classes (19 intents + `unknown_background`) and 6 slot-value heads | wake / not wake |
 | When it runs | Once per command, after the wake word | Every 100 ms, always on |
