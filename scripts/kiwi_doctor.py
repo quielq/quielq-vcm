@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import shutil
 import socket
 import subprocess
@@ -36,6 +37,7 @@ results: list[tuple[str, str, str]] = []
 
 
 def report(status: str, what: str, detail: str = "") -> None:
+    detail = re.sub(r"(appid|api_key|key|token)=[^&\s]+", r"\1=***", detail)  # never print secrets in URLs
     results.append((status, what, detail))
     print(f"{status:<5} {what}{': ' + detail if detail else ''}", flush=True)
 
@@ -55,10 +57,16 @@ def check_power() -> None:
 
 
 def record_level(source: str, seconds: float = 2.0) -> tuple[float, float]:
-    with tempfile.NamedTemporaryFile(suffix=".raw") as f:
-        subprocess.run(["timeout", str(seconds), "parecord", f"--device={source}", "--raw", "--format=s16le",
-                        "--channels=1", "--rate=16000", f.name], capture_output=True)  # fmt: skip
-        data = Path(f.name).read_bytes()
+    """RMS and peak of `seconds` from a PipeWire source (pw-record: parecord
+    returned silence from the USB mic on the Pi while pw-record heard it)."""
+    with tempfile.NamedTemporaryFile(suffix=".wav") as f:
+        subprocess.run(["timeout", str(seconds), "pw-record", "--target", source, "--rate", "16000", "--channels", "1",
+                        "--format", "s16", f.name], capture_output=True)  # fmt: skip
+        try:
+            with wave.open(f.name) as w:
+                data = w.readframes(w.getnframes())
+        except (wave.Error, EOFError):
+            data = b""
     samples = [int.from_bytes(data[i : i + 2], "little", signed=True) for i in range(0, len(data) - 1, 2)]
     if not samples:
         return 0.0, 0.0
