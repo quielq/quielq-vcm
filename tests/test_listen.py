@@ -40,3 +40,24 @@ def test_model_hears_the_command_not_the_music_after_it():
     assert 0.5 <= len(span) / 16000 <= 1.0  # "stop" + margins, no bursts
     long_cmd = np.concatenate([sec(0.002, 0.3), sec(0.2, 0.8), sec(0.002, 0.3), sec(0.15, 0.8), sec(0.002, 1.0)])
     assert len(vcm_listen.first_speech_span(long_cmd)) / 16000 >= 1.9  # a short pause inside a phrase is kept
+
+
+def test_duck_requests_reach_the_server_in_order(monkeypatch):
+    import time
+
+    sent = []
+
+    def slow_first(server, path, payload, timeout=10):
+        if not sent:
+            time.sleep(0.2)  # the "on" request is slow (e.g. the Spotify API)
+        sent.append(payload["on"])
+        return {}
+
+    monkeypatch.setattr(vcm_listen, "post_json", slow_first)
+    monkeypatch.setattr(vcm_listen, "_duck_requests", None)
+    vcm_listen.duck("http://x", True)
+    vcm_listen.duck("http://x", False)
+    deadline = time.time() + 2
+    while len(sent) < 2 and time.time() < deadline:
+        time.sleep(0.01)
+    assert sent == [True, False]
