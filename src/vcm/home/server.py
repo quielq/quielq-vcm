@@ -132,7 +132,9 @@ def make_handler(state: HomeState, dispatcher: Dispatcher, speaker: Speaker):
                 self._json(200, meta)
             elif path == "/api/noisy":
                 ringing = bool(dispatcher.x.ringer and dispatcher.x.ringer.ringing)
-                self._json(200, {"noisy": ringing or state.snapshot()["music"]["playing"]})
+                # Music counts whether Kiwi started it or not (Spotify from a phone).
+                playing = state.snapshot()["music"]["playing"] or dispatcher.x.other_audio_playing()
+                self._json(200, {"noisy": ringing or playing})
             elif path == "/api/events":
                 self._events()
             else:

@@ -107,7 +107,9 @@ cd ~/quielq-vcm && .venv/bin/python scripts/vcm_listen.py --intent-model models/
 **4. Say "Hey Kiwi"**, then a command. You can go straight into it
 ("Hey Kiwi, stop"); speech during the chime is kept. With `--show-scores`,
 the wake score jumps toward 1.00 when you say it. The wake threshold is
-0.6 (`--wake-threshold 0.7` or `0.85` if it wakes by itself too often),
+0.6, and 0.4 while music plays on the Pi (from Kiwi or any app), since
+"Hey Kiwi" scores lower over music (`--wake-threshold 0.7` /
+`--noisy-wake-threshold 0.5` if it wakes by itself too often),
 and any music playing on the Pi drops by about 12 dB while Kiwi listens.
 
 To run everything at boot instead, without steps 2–3, use
@@ -163,6 +165,38 @@ author's recordings for it).
 The dashboard's **Simulate a command** box runs the same actions without
 speaking. If a command works there but not by voice, the problem is
 recognition, not the action.
+
+## Demo day
+
+Everything that went wrong in testing, and what now prevents it:
+
+| What happened | Prevention |
+|---|---|
+| After a reboot, nothing ran | `scripts/deploy_pi.sh raspberrypi.local --services`: Kiwi starts on boot and restarts 3 s after any crash |
+| The USB mic dropped out; the soundbar's mic became the input and Kiwi went deaf | WirePlumber rules (`deploy/wireplumber/51-kiwi-audio.lua`): the USB mic is always preferred, the soundbar's mic is disabled. The listener also exits (and restarts) if the mic stops sending audio or the input changes |
+| Music and Kiwi's replies stuck near silent | Ducking fixed (-12 dB, not -36), Kiwi's replies never ducked, ducks undo themselves after 20 s, and stream volumes aren't remembered between streams |
+| A running listener lost its mic after an audio restart and never noticed | The listener now exits and restarts; `kiwi_doctor.py` flags a listener that isn't capturing |
+
+**The day before:**
+1. `scripts/deploy_pi.sh raspberrypi.local --services` (installs everything
+   above; then Kiwi runs without SSH).
+2. Reboot the Pi (`ssh raspberrypi.local sudo reboot`) and check it comes
+   back by itself: `.venv/bin/python scripts/kiwi_doctor.py --beep` should
+   say READY.
+3. Set up the venue network: add a phone hotspot to the Pi in advance (on
+   the Pi: `sudo nmcli dev wifi connect "<hotspot name>" password "<password>"`),
+   since venue Wi-Fi often blocks device-to-device traffic. Without internet
+   only Spotify and weather stop; everything else runs on the Pi.
+4. Tape the mic and soundbar USB plugs down (the mic dropout wasn't power:
+   `vcgencmd get_throttled` stayed `0x0`). Use the official 27 W supply.
+
+**At the venue, before presenting:**
+1. `ssh raspberrypi.local 'cd ~/quielq-vcm && .venv/bin/python scripts/kiwi_doctor.py --beep --fix'` → READY.
+2. If the mic shows clipping when you speak at normal distance, lower its gain:
+   `amixer -c 2 sset Mic 12` (0-16; 16 is the maximum).
+3. Say the phrases from the table above, not the ones in the "Avoid" column.
+4. Backup if voice fails in a loud room: the dashboard's **Simulate a
+   command** box runs every action.
 
 ## Stop
 

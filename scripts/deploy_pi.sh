@@ -75,37 +75,19 @@ ssh "$TARGET" 'cd quielq-vcm && sed -i "s/include-system-site-packages = true/in
 echo "== benchmark (DEPLOYMENT.md step 6)"
 ssh "$TARGET" "cd quielq-vcm && .venv/bin/python scripts/benchmark_pi.py && free -m"
 
+echo "== audio device rules (WirePlumber: pin the USB mic and the soundbar, no saved stream volumes)"
+ssh "$TARGET" 'mkdir -p ~/.config/wireplumber/main.lua.d \
+  && cp quielq-vcm/deploy/wireplumber/51-kiwi-audio.lua ~/.config/wireplumber/main.lua.d/ \
+  && systemctl --user restart wireplumber && sleep 2 \
+  && echo "  input:  $(pactl get-default-source)" && echo "  output: $(pactl get-default-sink)"'
+
 if [[ $SERVICES == 1 ]]; then
-  echo "== start on boot (DEPLOYMENT.md step 9)"
-  ssh -t "$TARGET" 'mkdir -p ~/.config/systemd/user && cat > ~/.config/systemd/user/vcm-home.service <<UNIT
-[Unit]
-Description=VCM home server and dashboard
-After=network-online.target
-
-[Service]
-WorkingDirectory=%h/quielq-vcm
-ExecStart=%h/quielq-vcm/.venv/bin/python -m vcm.home.server
-Restart=always
-
-[Install]
-WantedBy=default.target
-UNIT
-cat > ~/.config/systemd/user/vcm.service <<UNIT
-[Unit]
-Description=VCM voice pipeline (Hey Kiwi)
-After=sound.target vcm-home.service
-
-[Service]
-WorkingDirectory=%h/quielq-vcm
-ExecStart=%h/quielq-vcm/.venv/bin/python scripts/vcm_listen.py --server http://127.0.0.1:8000
-Restart=always
-
-[Install]
-WantedBy=default.target
-UNIT
-systemctl --user daemon-reload && systemctl --user enable vcm-home vcm && systemctl --user restart vcm-home vcm
-sudo loginctl enable-linger "$USER"
-systemctl --user --no-pager status vcm-home vcm | grep -E "Active|●"'
+  echo "== start on boot, restart on failure (DEPLOYMENT.md step 9)"
+  ssh -t "$TARGET" 'mkdir -p ~/.config/systemd/user \
+    && cp quielq-vcm/deploy/systemd/vcm-home.service quielq-vcm/deploy/systemd/vcm.service ~/.config/systemd/user/ \
+    && systemctl --user daemon-reload && systemctl --user enable vcm-home vcm && systemctl --user restart vcm-home vcm \
+    && sudo loginctl enable-linger "$USER" \
+    && systemctl --user --no-pager status vcm-home vcm | grep -E "Active|●"'
 fi
 
 HOST="${TARGET#*@}"

@@ -61,3 +61,22 @@ def test_duck_requests_reach_the_server_in_order(monkeypatch):
     while len(sent) < 2 and time.time() < deadline:
         time.sleep(0.01)
     assert sent == [True, False]
+
+
+def test_listener_exits_when_the_mic_goes_silent(monkeypatch):
+    import queue
+
+    import pytest
+
+    monkeypatch.setattr(vcm_listen, "MIC_TIMEOUT_S", 0.05)
+    with pytest.raises(vcm_listen.MicLost):
+        vcm_listen.next_chunk(queue.Queue())
+
+
+def test_listener_refuses_a_speaker_monitor_as_its_microphone(monkeypatch):
+    import pytest
+
+    monkeypatch.setattr(vcm_listen, "default_input", lambda: "alsa_output.usb-Dell_SoundBar.analog-stereo.monitor")
+    with pytest.raises(vcm_listen.MicLost):
+        vcm_listen.guard_input(None)
+    vcm_listen.guard_input("USB PnP")  # an explicit --device isn't second-guessed

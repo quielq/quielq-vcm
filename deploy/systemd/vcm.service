@@ -1,0 +1,18 @@
+# Kiwi's voice loop ("Hey Kiwi" -> command). Installed by
+# scripts/deploy_pi.sh --services into ~/.config/systemd/user/. The listener
+# exits when the mic stops or changes, and systemd starts it again on the
+# right one (RestartSec), so an unplugged/replugged mic recovers by itself.
+[Unit]
+Description=VCM voice pipeline (Hey Kiwi)
+After=vcm-home.service pipewire-pulse.service wireplumber.service
+Wants=pipewire-pulse.service wireplumber.service
+
+[Service]
+WorkingDirectory=%h/quielq-vcm
+Environment=PYTHONUNBUFFERED=1
+ExecStart=%h/quielq-vcm/.venv/bin/python scripts/vcm_listen.py --server http://127.0.0.1:8000 --save-commands %h/kiwi_commands
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target
