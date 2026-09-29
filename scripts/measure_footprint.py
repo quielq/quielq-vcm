@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """Measure memory and per-command latency of one voice pipeline, in a fresh
-process, stage by stage (FOOTPRINT_COMPARISON.md). Run each pipeline in its
+process, stage by stage (docs/FOOTPRINT.md). Run each pipeline in its
 own process so memory numbers don't mix:
 
     # our pipeline: int8 ONNX intent model + wake-word model

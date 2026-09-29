@@ -318,7 +318,7 @@ def _slots3_phrases() -> dict[str, tuple[tuple[str, str], ...]]:
 
 # --- Batch "wakeword" (Hey Kiwi) ----------------------------------------------
 # Positives, plus hard negatives taken from the wake-word confusability
-# analysis (TODO.md): the transcript near-matches ("queen", "every week"),
+# analysis (EXPERIMENTS.md, "Wake-word selection"): the transcript near-matches ("queen", "every week"),
 # English sound-alikes ("pee-wee", "kiki"), "kiwi" without "hey", and
 # other "hey <name>" greetings, so the detector must hear the whole phrase.
 WAKE_PHRASES = ("hey kiwi", "hey, kiwi", "hey kiwi!")

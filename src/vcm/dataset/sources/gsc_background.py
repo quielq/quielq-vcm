@@ -24,7 +24,7 @@ from vcm.dataset.manifest import ManifestRow
 
 WINDOW_S = 1.5  # matches vcm.audio.features.WINDOW_S
 SAMPLE_RATE = 16_000  # matches vcm.audio.capture.SAMPLE_RATE
-BACKGROUND_LABEL = "unknown_background"  # matches vcm.taxonomy.UNKNOWN_BACKGROUND
+BACKGROUND_LABEL = "unknown_background"  # the non-command class in vcm.train.dataset
 
 
 def _assign_split(rng: np.random.Generator) -> str:

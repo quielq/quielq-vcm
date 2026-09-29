@@ -3,15 +3,13 @@
 Reuses vcm.dataset.manifest.read_manifest (the same manifest schema
 built during dataset development, spanning all 5 combined sources) and
 vcm.audio.features.extract_log_mel (the same feature extraction the
-live push-to-talk path uses), so training and inference features never
+live pipeline uses), so training and inference features never
 drift apart.
 
 Label space is the class-shared 19-intent taxonomy
 (vcm.dataset.sources.dataset_schema.INTENT_LABELS) plus
-unknown_background — deliberately NOT vcm.taxonomy.LABELS (the original
-10-category taxonomy dispatch.py/main.py still use). Reconciling those
-two is a separate, later integration step; this module's label space
-is self-contained here and in whatever checkpoint training produces.
+unknown_background. The label list is stored in every checkpoint and
+exported ONNX file, so the runtime never needs a separate copy.
 """
 
 from __future__ import annotations

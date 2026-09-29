@@ -20,8 +20,8 @@ Currently combines:
 - Real recordings for the synthetic-only gap (CALL, NEXT, TIMER,
   LIST_REMINDERS, plus specific under-covered phrasings) —
   data/real_recordings/manifest.csv, produced by
-  scripts/record_real_examples.py. See that script's docstring for why
-  this source exists.
+  docs/archive/legacy_code/scripts/record_real_examples.py (archived: on
+  hold pending adviser approval, never run). Skipped when absent.
 - Timers and Such (real TIMER/ALARM audio, ~90+ real speakers) —
   data/external/timers_and_such/manifest.csv, produced by
   scripts/fetch_timers_and_such.py.
@@ -104,7 +104,7 @@ def main() -> None:
         rows.extend(real_rows)
         print(f"Real recs:  {len(real_rows)} rows (real, gap-filling for CALL/NEXT/TIMER/LIST_REMINDERS + more)")
     else:
-        print(f"Real recs:  skipped, {REAL_RECORDINGS_MANIFEST} not found (run scripts/record_real_examples.py first)")
+        print(f"Real recs:  skipped, {REAL_RECORDINGS_MANIFEST} not found (optional, see docs/archive/AUDIT.md)")
 
     if TIMERS_AND_SUCH_MANIFEST.exists():
         timers_rows = read_manifest(TIMERS_AND_SUCH_MANIFEST)

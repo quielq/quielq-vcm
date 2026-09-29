@@ -92,7 +92,7 @@ def speaker_split(speaker_id: str) -> str:
 
     Replaces the original split-by-row-position (every 10th row to test),
     which scattered each speaker's recordings across all three splits and
-    let test-set voices leak into training (TODO.md / EXPERIMENTS.md
+    let test-set voices leak into training (EXPERIMENTS.md
     Experiment 32)."""
     bucket = int(hashlib.md5(speaker_key(speaker_id).encode()).hexdigest(), 16) % 10
     return "train" if bucket < 8 else "val" if bucket < 9 else "test"

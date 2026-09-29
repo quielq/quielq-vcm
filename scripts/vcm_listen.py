@@ -44,11 +44,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 CHUNK_S = 0.1
 END_SILENCE_S = 0.6  # quiet (under the keep bar) this long after speech ends the command
 MAX_COMMAND_S = 5.0
-SILENCE_THRESHOLD = 0.005  # "was anything said?" gate (loudest 300 ms). 0.008 (scripts/demo_infer.py,
-# Mac mic) dropped every command from a quieter mic; silent clips peak at 0.0023-0.0048.
+SILENCE_THRESHOLD = 0.005  # "was anything said?" gate (loudest 300 ms). 0.008 (the old push-to-talk
+# demo, Mac mic) dropped every command from a quieter mic; silent clips peak at 0.0023-0.0048.
 SPEECH_OVER_FLOOR = 3.0  # speech starts when a chunk is 3x louder than the background (room, or music)
 KEEP_OVER_FLOOR = 1.5  # once started, it continues while chunks stay 1.5x over it (softer word endings)
-REJECT_THRESHOLD = 0.6  # same as scripts/demo_infer.py
+REJECT_THRESHOLD = 0.6  # below this confidence: "please repeat" (EXPERIMENTS.md Experiment 31)
 MIC_TIMEOUT_S = 3.0  # no audio from the mic this long -> exit, so systemd restarts on a working one
 
 

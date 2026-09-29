@@ -43,7 +43,7 @@ ssh -t "$TARGET" "sudo apt-get update -qq && sudo apt-get install -y -qq git pyt
 echo "== copying code and models"
 rsync -az --delete \
   --exclude /.git --exclude /.venv --exclude /data --exclude /checkpoints --exclude /logs \
-  --exclude /debug_recordings --exclude /media --exclude /reports --exclude /models/tts --exclude '__pycache__' \
+  --exclude /debug_recordings --exclude /media --exclude /docs --exclude /models/tts --exclude '__pycache__' \
   --exclude .pytest_cache --exclude '*.egg-info' --exclude .DS_Store --exclude /configs/settings.toml \
   ./ "$TARGET:quielq-vcm/"
 

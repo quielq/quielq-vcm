@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""ASR-cascade prototype, milestone 1 (see MODEL.md Section 9): transcribe
+"""ASR-cascade prototype, milestone 1 (see docs/MODEL.md, "Alternative considered: ASR cascade"): transcribe
 every clip in data/dataset_manifest.csv with faster-whisper (base), pairing
 (Whisper's own transcript, existing label) as training data for a
 text-based intent classifier.
@@ -13,7 +13,7 @@ actually get.
 unknown_background is skipped (it's noise, not speech — nothing to
 transcribe, and it isn't a text-classification target anyway; the cascade
 would still need a separate audio-level silence/noise gate upstream of
-Whisper, same as today's RMS gate in demo_infer.py).
+Whisper, like the RMS silence gate in scripts/vcm_listen.py).
 
 Usage:
     python scripts/transcribe_corpus_for_cascade.py [--model-size base]

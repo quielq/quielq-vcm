@@ -1,4 +1,4 @@
-"""Model architectures surveyed in MODEL.md Section 2.
+"""Model architectures compared in EXPERIMENTS.md (see docs/MODEL.md).
 
 Input to every model here: (batch, n_mels, n_frames) log-mel
 spectrograms, the direct output of vcm.audio.features.extract_log_mel —
@@ -248,7 +248,7 @@ class BCResNet(nn.Module):
     """See BCResBlock above for the core mechanism and how this differs
     from the paper. A stem conv projects to `channels`, then a stack of
     BCResBlocks, global average pooling, then a linear classifier —
-    MODEL.md's actual recommended architecture, tried second
+    The original plan's recommended architecture, tried second
     (EXPERIMENTS.md Experiment 2+) specifically to address the
     polarity-word confusion DSCNN showed in Experiment 1.
     """

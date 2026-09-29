@@ -1,3 +1,5 @@
+> **Archived planning document (September 2026), kept for the record.** It describes the plan *before* any model was trained: push-to-talk, DS-CNN/TC-ResNet, int8, Xiaomi/Tapo devices. The system as built is in [../ARCHITECTURE.md](../ARCHITECTURE.md); what changed and why is in [AUDIT.md](AUDIT.md). The circuit images referenced in section 10 were never committed.
+
 # Voice Command Model (VCM) — Architecture Review
 
 Courses: AI222 (Supervised Learning) and AI231 (ML Operations), UP Diliman
@@ -17,7 +19,7 @@ This document exists so an AI assistant picking up this project cold, or a human
 
 **What's actually graded** (from Section 1): building the dataset (collective), training the model (individual), designing a benchmark (collective), validating performance (individual), and a real-time demo on an RPi (individual, tier 1 hardware is sufficient). No LLM is permitted anywhere in the recognition path.
 
-**Where things stand as of this document**: the architecture decisions (Section 3) and hardware plan (Section 4) are settled enough to start building. Dataset development (Section 9's candidate-source research) has since become an active, collective effort — **see [DATASET.md](DATASET.md) for its current status, the adopted taxonomy, and how the class's contributions are being incorporated**; this document stays focused on architecture and doesn't track day-to-day dataset progress. Read Section 3 for the "why" behind each decision before proposing changes to it, several choices (e.g. dropping the SIM800L module, audio-only output, the Tier 1/Tier 2 split) were arrived at after considering and rejecting alternatives, documented inline so that reasoning isn't lost.
+**Where things stand as of this document**: the architecture decisions (Section 3) and hardware plan (Section 4) are settled enough to start building. Dataset development (Section 9's candidate-source research) has since become an active, collective effort — **see [DATASET.md](../DATASET.md) for its current status, the adopted taxonomy, and how the class's contributions are being incorporated**; this document stays focused on architecture and doesn't track day-to-day dataset progress. Read Section 3 for the "why" behind each decision before proposing changes to it, several choices (e.g. dropping the SIM800L module, audio-only output, the Tier 1/Tier 2 split) were arrived at after considering and rejecting alternatives, documented inline so that reasoning isn't lost.
 
 **How to use this document**: Sections 1–2 are the original assignment and constraints, unedited source material. Section 3 onward is our own analysis and decisions. Sections 4, 6, and 10 (hardware, task coverage, circuit diagrams) matter for the demo; Section 9 covers candidate dataset *sources* and the strategic reasoning behind them, for live dataset-development status see DATASET.md instead. Section 7 (open questions for the class) and Section 11 (future use cases, out of scope for this project) are explicitly not part of the current build.
 
@@ -73,7 +75,7 @@ ASR models are not desirable for on-device computing because of footprint. The g
 - **On-device vs. internet boundary**: recognition (audio → intent) must run entirely on-device. Internet access is permitted for the *action* taken after recognition (weather API, smart bulb API, Spotify, phone call), since that is actuation, not understanding.
 - **Model architecture**: DS-CNN or TC-ResNet style convolutional network over log-mel spectrogram features, for real-time CPU inference on RPi-class hardware without attention/transformer layers. Post-training INT8 quantization planned for latency.
 - **Benchmark strategy**: accuracy alone rejected as the primary metric due to class imbalance in realistic "always listening" usage. Proposed benchmark: macro-F1 across intents, False Accept Rate / False Reject Rate against the background/unknown class (as a threshold curve, not a single number), a confusion matrix, and on-device latency. The under-3%-error target is proposed to apply to closed-set classification error under clean conditions, with open-set FAR/FRR reported separately. Pending the class-wide benchmark discussion (Task 3).
-- **Dataset strategy**: see Section 9 for the full candidate-dataset research. Summary: seed from SLURP and Fluent Speech Commands (real, intent-labeled audio), Google Speech Commands v2 for the negative/background class, and Common Voice's accent-tagged English subset (including a small Filipino-accented portion) for accent-robustness material. In-class recorded data is still the primary way to cover Filipino-accented command phrases specifically, since no open dataset covers that combination at any real volume. Dataset development is now an active collective effort, see [DATASET.md](DATASET.md) for current status.
+- **Dataset strategy**: see Section 9 for the full candidate-dataset research. Summary: seed from SLURP and Fluent Speech Commands (real, intent-labeled audio), Google Speech Commands v2 for the negative/background class, and Common Voice's accent-tagged English subset (including a small Filipino-accented portion) for accent-robustness material. In-class recorded data is still the primary way to cover Filipino-accented command phrases specifically, since no open dataset covers that combination at any real volume. Dataset development is now an active collective effort, see [DATASET.md](../DATASET.md) for current status.
 - **Scope discipline**: everything below Tier 1 is explicitly deferred until the dataset/model/benchmark work (the actually-graded core) is in good shape. Tier 2 items are documented so they aren't lost, not because they're scheduled next.
 
 ---
@@ -172,7 +174,7 @@ All ten categories are covered at Tier 1, now on the ordered Cytron RPi5 kit and
 
 - Final shared dataset collection protocol (recording setup, speaker diversity, class balance)
 - Final shared benchmark definition: held-out test set composition, background/foreground ratio, and whether the under-3%-error target applies to closed-set classification only or some combined metric
-- Whether slot-filling (extracting numeric values like timer duration, alarm time, target temperature) is in scope for this exercise, or whether intent classification alone is sufficient. **Update**: a class-shared draft schema (see [DATASET.md](DATASET.md)) answers this with a concrete fixed-vs-slotted taxonomy, adopted as this project's working taxonomy pending full class-wide ratification.
+- Whether slot-filling (extracting numeric values like timer duration, alarm time, target temperature) is in scope for this exercise, or whether intent classification alone is sufficient. **Update**: a class-shared draft schema (see [DATASET.md](../DATASET.md)) answers this with a concrete fixed-vs-slotted taxonomy, adopted as this project's working taxonomy pending full class-wide ratification.
 - **Label taxonomy**: a more granular flat draft has also circulated within the class, expanding the original ten categories into per-action classes. The fixed-vs-slotted schema above is being proposed as the reconciling frame between the two, since it resolves the slot-filling question the flat draft doesn't address. Needs to be finalized and formally adopted or amended as a class, not adopted unilaterally.
 - **Whether synthetic/self-generated data is permitted at all**: as of the Sept 14 2026 class discussion, this is genuinely unresolved, one classmate recalled the adviser warning that self-generated data would be difficult, not necessarily that it's disallowed, but this was secondhand and unconfirmed. **Working assumption as of Sept 14 2026: proceeding as if synthetic data is allowed**, so this doesn't block dataset progress. This is an assumption, not a confirmed answer, still get a direct answer from the adviser, and be ready to strip synthetic data back out if the assumption turns out wrong.
 
@@ -233,7 +235,7 @@ The RPi-specific parts of this build are a small fraction of the total pipeline.
 
 **Note on MASSIVE**: MASSIVE (Amazon's 51-language NLU dataset) was considered earlier but is text-only for its translated languages; audio exists only for the original English portion, which is SLURP itself. It does not add audio coverage beyond what SLURP already provides.
 
-**Dataset development is a collective, community effort.** Since this document's initial candidate-source research above, the class has moved into active, collaborative dataset work: a shared working taxonomy has been adopted, real-source coverage has been verified with exact numbers, a class-contributed synthetic dataset and a QA-screening tool are being integrated, and this keeps evolving quickly. Tracking that day-to-day here would turn this architecture document into a moving target instead of a stable reference, so it lives separately. **See [DATASET.md](DATASET.md)** for the current taxonomy, dataset sources in use, exact reproduction steps, and an acknowledgment of the collective contributions this pipeline is built on.
+**Dataset development is a collective, community effort.** Since this document's initial candidate-source research above, the class has moved into active, collaborative dataset work: a shared working taxonomy has been adopted, real-source coverage has been verified with exact numbers, a class-contributed synthetic dataset and a QA-screening tool are being integrated, and this keeps evolving quickly. Tracking that day-to-day here would turn this architecture document into a moving target instead of a stable reference, so it lives separately. **See [DATASET.md](../DATASET.md)** for the current taxonomy, dataset sources in use, exact reproduction steps, and an acknowledgment of the collective contributions this pipeline is built on.
 
 **Project size, as a point-in-time snapshot (2026-09-19)** — this
 number moves as the dataset and dependencies change, so treat DATASET.md
@@ -319,13 +321,13 @@ The block diagram above covers every connection actually built. Two schematics a
 
 **Tier 1 — push-to-talk pull-up circuit**
 
-![Tier 1 pushbutton circuit](tier1_pushbutton_circuit.png)
+*(Circuit image `tier1_pushbutton_circuit.png`: never committed to the repo.)*
 
 GPIO 17 reads HIGH by default (pulled up to 3.3V through R1) and reads LOW the instant the button is pressed, connecting the pin to ground. This is the standard debounced-in-software button pattern; Raspberry Pi OS's GPIO library can also enable an internal pull-up so R1 is optional in practice, it's shown here for clarity and because an external resistor is more reliable if the button ever moves to a different board.
 
 **Dropped: SIM800L power and level-shifting circuit (kept for reference only, not built)**
 
-![Tier 2 SIM800L circuit](tier2_sim800l_circuit.png)
+*(Circuit image `tier2_sim800l_circuit.png`: never committed to the repo.)*
 
 This schematic documents what the SIM800L path would have required: its own regulated 4V rail stepped down from the Pi's 5V via a buck regulator, a large reservoir capacitor to absorb the current spikes GSM transmission draws, and level-shifted UART lines since its logic levels don't match the Pi's 3.3V GPIO. None of this is being built, the module is 2G-only and the Philippines' 2G network is being phased out nationwide by end of 2026 (already absent on DITO). Retained here in case a 4G-capable cellular module is considered for a future project.
 

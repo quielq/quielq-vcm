@@ -3,10 +3,10 @@
 This gets the voice pipeline (**"Hey Kiwi" wake word → command → intent +
 slot value**) running on a Raspberry Pi 5 with **no monitor or keyboard**:
 everything happens over SSH from your laptop. For the rest of the device
-(pushbutton wiring, Sense HAT, lights, TTS, music), see
-[TESTING.md Part 3](TESTING.md#part-3--raspberry-pi-5-hardware-setup-and-testing).
+(actions, dashboard, TTS, music), see step 8b below; the hardware list is
+in [ARCHITECTURE.md](ARCHITECTURE.md#5-hardware-as-built).
 
-**Already set up? [STARTUP.md](STARTUP.md)** is the short runbook for
+**Already set up? [RUNBOOK.md](RUNBOOK.md)** is the short runbook for
 starting everything (what runs on the Pi, the Mac and the iPhone) and the
 problems hit so far.
 
@@ -42,18 +42,19 @@ command takes ~3.5 ms and the wake word uses ~1% of one core).
 
 | What | Memory |
 |---|---:|
-| Voice pipeline, peak (wake word listening + commands) | **~96 MB** (measured) |
+| Voice pipeline, peak (wake word listening + commands) | **~103 MB** (measured on the Pi 5) |
 | of which the two models themselves | ~8.5 MB |
-| Home server + dashboard (`vcm.home.server`, step 8b) | **~30 MB** (measured) |
+| Home server + dashboard (`vcm.home.server`, step 8b), espeak-ng voice | **~30 MB** (measured on a Mac) |
+| Home server + dashboard with the Piper voice loaded | **~185 MB** (measured on the Pi 5) |
 | Raspberry Pi OS Lite (64-bit), idle, including SSH | ~60–100 MB (typical; confirm with `free -m`, step 6) |
-| raspotify (Spotify speaker), if used | ~20–40 MB (typical, not measured) |
-| **Total needed** | **~200–270 MB**, so plan for **~300 MB** with headroom |
-| **Smallest workable board** | **512 MB** (Pi Zero 2 W, Pi 3 A+): about 40% of it stays free |
+| raspotify (Spotify speaker), if used | ~13 MB (measured on the Pi 5) |
+| **Total needed** | **~210–250 MB with espeak-ng**, ~360–400 MB with Piper |
+| **Smallest workable board** | **512 MB** (Pi Zero 2 W, Pi 3 A+) with espeak-ng: about half of it stays free |
 
 So any current Raspberry Pi with 512 MB or more has enough memory; with
 this runtime, the limit is the CPU architecture (64-bit ARM, for
 onnxruntime), not RAM. The process numbers come from an M-series Mac (see
-[FOOTPRINT_COMPARISON.md](FOOTPRINT_COMPARISON.md)); Linux on the Pi will
+[FOOTPRINT.md](FOOTPRINT.md)); Linux on the Pi will
 differ somewhat, so step 6 checks them on the board. Things that did *not*
 shrink it further: turning off ONNX Runtime's memory arena
 (`enable_cpu_mem_arena=False`) saved nothing measurable, because the
@@ -330,7 +331,7 @@ tested without speaking. On a Mac, the same two commands work with
 `http://127.0.0.1:8000`.
 
 The server has **no login**: anyone on the same network can open it.
-Keep it on your home network (TODO.md).
+Keep it on your home network (README.md, "Future enhancements").
 
 What each command does, and what it needs in `configs/settings.toml`:
 
@@ -385,12 +386,13 @@ until then). The free "Current Weather" API is enough; no card needed.
    Numbers go in international format (`+639171234567`); the bridge
    accepts phone numbers only, not emails. CALL and MESSAGE have no
    contact slot yet, so both always go to `default_contact`, which must
-   be a key in `contacts` (TODO.md).
+   be a key in `contacts`.
 
 Messages send automatically. Calls open macOS's call prompt, where one click
 on **Call** is needed (macOS doesn't allow fully automatic calls). The first
 message triggers a macOS prompt allowing Terminal to control Messages. The
-Mac must be awake. Other phone routes are in TODO.md.
+Mac must be awake. Other phone routes are under "Future enhancements" in
+the README.
 
 **Speaker.** Plug in a USB speaker, or pair a Bluetooth one over SSH with
 `bluetoothctl` (`scan on`, `pair <MAC>`, `trust <MAC>`, `connect <MAC>`).
@@ -443,7 +445,7 @@ It checks power, the mic (device and live signal), the speaker (device,
 volume, stuck streams, and with `--beep` a test tone), the services, whether
 the listener is actually capturing, the home server, the models, the
 internet, Spotify and the weather, and ends with READY or what to fix.
-STARTUP.md explains each line.
+RUNBOOK.md explains each line.
 
 ## Updating
 
@@ -455,16 +457,14 @@ systemctl --user restart vcm-home vcm   # if you set up step 9
 
 ## Troubleshooting
 
+Setup problems are below. Problems while running (sample-rate errors, no
+spoken replies, a deaf listener, silent music, SSH keys) are in
+[RUNBOOK.md](RUNBOOK.md#troubleshooting).
+
 | Symptom | Check |
 |---|---|
 | `PortAudioError: Error querying device` | `libportaudio2` installed (step 3)? Pass `--device` with the index from `sd.query_devices()`. |
 | Never wakes | Run with `--show-scores`. If scores stay low even up close, the mic level is too low (step 5). |
 | Wakes on everything | Raise `--wake-threshold`; check that the value matches EXPERIMENTS.md's recommendation. |
 | Slow, or results lag | `vcgencmd get_throttled` (anything other than `0x0` means under-voltage or heat throttling); `vcgencmd measure_temp`; use the official 27 W power supply. |
-| `Invalid sample rate [PaErrorCode -9997]` | The mic's raw device can't record at 16 kHz. Current `vcm_listen.py` resamples; update the Pi, or leave out `--device` to use PipeWire's default input. |
-| `Permission denied (publickey,password)` over SSH | No key installed on the Pi: run `ssh-copy-id raspberrypi.local` on the laptop once. |
-| No spoken replies | No speaker: `pactl list short sinks` only shows `auto_null`. Plug in or pair one (step 8b). |
-| The listener's wake score stops updating | It lost its mic connection (an audio restart or a mic replug). Current code exits and the service restarts it; by hand, restart it. `kiwi_doctor.py` flags it. |
-| Kiwi stops hearing after the mic is replugged | Another input became the default. Install the WirePlumber rules (any `deploy_pi.sh` run); check `pactl get-default-source`. |
-| Music or replies nearly silent | A duck that never ended: `kiwi_doctor.py --fix`. |
 | `Illegal instruction` on import | Make sure the OS is 64-bit: `uname -m` should print `aarch64`. |
