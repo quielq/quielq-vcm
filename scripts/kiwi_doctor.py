@@ -124,6 +124,12 @@ def check_services() -> None:
             running = run(["pgrep", "-f", "vcm.home.server" if unit == "vcm-home" else "vcm_listen.py"])
             report("WARN" if running else "FAIL", f"service {unit}",
                    "running by hand, won't restart after a reboot (deploy_pi.sh --services)" if running else "not running")  # fmt: skip
+    listener = run(["pgrep", "-f", "vcm_listen.py"])
+    if listener and shutil.which("pactl"):
+        # Running but deaf: its mic connection was cut (e.g. an audio restart) and old code didn't notice.
+        capturing = run(["pactl", "list", "short", "source-outputs"])
+        report("OK" if capturing else "FAIL", "listener hears the mic",
+               "capturing" if capturing else "running but not capturing: restart it")  # fmt: skip
     try:
         with urllib.request.urlopen(f"{SERVER}/api/state", timeout=3) as r:
             report("OK", "home server", f"{SERVER} answers ({r.status})")
