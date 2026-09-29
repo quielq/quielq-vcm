@@ -128,12 +128,37 @@ To run everything at boot instead, without steps 2–3, use
 | "pause" → "play music" | Pauses, then continues from the same spot |
 | "stop the music" → "play music" | Stops, then starts the song from the beginning |
 
-**Phrasings that work best on the author's voice** (from saved live
-commands, current model): say "Lights on" / "Lights off" rather than "Power
-on the lights" / "Kill the lights" (heard as BRIGHTNESS), and "Brightness
-to 60 percent" rather than "Brightness level 60 percent" (heard as
-WEATHER). The schema phrasings stay in training; the class benchmark uses
-them.
+**Three phrasings per command.** From the author's 137 saved live
+commands (current model; transcribed offline with Whisper): "right / tried"
+counts a command only if it was acted on (right intent, confidence >= 0.6).
+*Untested* = not said live yet. Avoid the last column; those phrasings stay
+in training because the class benchmark uses them.
+
+| Command | Phrasing 1 | Phrasing 2 | Phrasing 3 | Avoid |
+|---|---|---|---|---|
+| PLAY_MUSIC | Play music (7/7) | Start the music (3/3) | Play some music (1/1) | |
+| STOP | Stop the music (4/4, with "Stop music") | Stop (6/8) | Stop playing music *untested* | |
+| PAUSE | Pause (1/1) | Pause the music (1/1) | Pause song (1/1) | Pause audio (1/3) |
+| NEXT | Next song (1/1) | Skip song (1/1) | Go to the next song (1/1) | bare "Next" (fails offline too) |
+| VOLUME_UP | Volume up (3/3, with "Turn the volume up") | Increase the volume (1/1) | Turn the volume up | |
+| VOLUME_DOWN | Volume down (2/2, with "Turn the volume down") | Decrease the volume (1/1) | Lower the volume (1/1) | |
+| WEATHER | Weather (1/1) | What's the weather (1/1) | Tell me the weather (1/1) | |
+| TIME | Time (2/2) | What time is it (1/1) | Tell me the time (1/1) | |
+| LIGHT_ON | Lights on (1/1) | Turn on the lights (2/3) | Switch on the lights *untested* | Power on the lights (0/4) |
+| LIGHT_OFF | Lights off (2/2) | Switch off the lights (2/2) | Turn off the lights (1/1) | Kill the lights (0/1) |
+| BRIGHTNESS | Brightness to 60 percent (5/7; both misses were cut off, fixed) | Adjust brightness to 60 percent (4/5) | Set the brightness to 60 percent *untested* | Brightness level 60 percent (0/2) |
+| COLOR | Color red (3/4) | Change color to red (1/1) | Set the lights to red *untested* | |
+| TEMPERATURE | Temperature 18 degrees (1/1) | Change the temperature to 22 degrees (1/1) | Set the temperature to 26 degrees (2/3) | |
+| ALARM | Set an alarm for 7 AM (6/6) | Wake me up at 6 AM *untested* | Alarm 8 AM *untested* | |
+| TIMER | Set a timer for 5 minutes *untested* | Timer 30 seconds *untested* | Countdown for 1 minute *untested* | |
+| CREATE_REMINDER | Reminder to drink water (3/3) | Remind me to study (2/2) | Create a reminder to exercise (2/2) | "run" (not a value yet) |
+| LIST_REMINDERS | Reminders (2/2) | Show my reminders *untested* | List my reminders *untested* | |
+| CALL | Make a call (1/1) | Call (2/4) | *none reliable yet* | Make a phone call (0/2), Call mom (0/2) |
+| MESSAGE | Send a message (1/1) | Message *untested* | Send my message *untested* | |
+
+Most counts are 1-3 tries, so treat them as a first pass. CALL is the weak
+one: only "Make a call" worked reliably (Experiment 37, on hold, adds the
+author's recordings for it).
 
 The dashboard's **Simulate a command** box runs the same actions without
 speaking. If a command works there but not by voice, the problem is

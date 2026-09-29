@@ -42,11 +42,12 @@ from vcm.wakeword.detector import WakeWordDetector, onnx_scorer
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CHUNK_S = 0.1
-END_SILENCE_S = 0.7
+END_SILENCE_S = 0.6  # quiet (under the keep bar) this long after speech ends the command
 MAX_COMMAND_S = 5.0
 SILENCE_THRESHOLD = 0.005  # "was anything said?" gate (loudest 300 ms). 0.008 (scripts/demo_infer.py,
 # Mac mic) dropped every command from a quieter mic; silent clips peak at 0.0023-0.0048.
-SPEECH_OVER_FLOOR = 3.0  # a chunk is speech if 3x louder than the background (room, or music)
+SPEECH_OVER_FLOOR = 3.0  # speech starts when a chunk is 3x louder than the background (room, or music)
+KEEP_OVER_FLOOR = 1.5  # once started, it continues while chunks stay 1.5x over it (softer word endings)
 REJECT_THRESHOLD = 0.6  # same as scripts/demo_infer.py
 
 
@@ -78,12 +79,54 @@ def record_command(chunks: "queue.Queue[np.ndarray]", lead_in: np.ndarray, floor
         levels.append(level)
         if len(levels) >= 5:
             floor = min(floor, float(np.percentile(levels[-15:], 20))) if floor else float(np.percentile(levels[-15:], 20))
-        loud = level >= max(SILENCE_THRESHOLD, SPEECH_OVER_FLOOR * floor)
+        # Hysteresis: a high bar to start (music isn't speech), a lower one to
+        # keep going, so the soft end of a phrase ("...to sixty percent") over
+        # ducked music isn't taken for silence. With one 3x bar, live commands
+        # were cut mid-phrase ("brightness to 60" -> PLAY_MUSIC).
+        loud = level >= max(SILENCE_THRESHOLD, (KEEP_OVER_FLOOR if heard_speech else SPEECH_OVER_FLOOR) * floor)
         heard_speech |= loud
         quiet_s = 0.0 if loud else quiet_s + len(chunk) / SAMPLE_RATE
         if heard_speech and quiet_s >= END_SILENCE_S:
             break
     return np.concatenate(audio)
+
+
+def first_speech_span(audio: np.ndarray, gap_s: float = END_SILENCE_S, margin_s: float = 0.2) -> np.ndarray:
+    """The part of a recording the model should hear: from the first speech
+    to the first gap of `gap_s`, plus a small margin, so music or noise
+    after the command isn't classified with it.
+
+    Why: waiting patiently for the end of a long command means the
+    recording can run on with music bursts after a short one, and "Stop"
+    + 4 s of music was heard as PLAY_MUSIC. The model gets the command
+    alone; the recording can still be long. Speech here = 3x the clip's
+    quiet level (20th percentile of its chunks) to start, 1.5x to go on,
+    as in record_command. On 128 of the author's saved live commands:
+    97 -> 108 acted on correctly (one-word 14 -> 18 of 19, multi-word
+    83 -> 90 of 109).
+    """
+    step = int(CHUNK_S * SAMPLE_RATE)
+    levels = np.array([speech_level(audio[i : i + step]) for i in range(0, len(audio), step)])
+    if not len(levels):
+        return audio
+    floor = float(np.percentile(levels, 20))
+    start_bar = max(SILENCE_THRESHOLD, SPEECH_OVER_FLOOR * floor)
+    keep_bar = max(SILENCE_THRESHOLD, KEEP_OVER_FLOOR * floor)
+    onsets = np.nonzero(levels >= start_bar)[0]
+    if not len(onsets):
+        return audio
+    start = end = int(onsets[0])
+    quiet = 0
+    for i in range(start + 1, len(levels)):
+        if levels[i] >= keep_bar:
+            end, quiet = i, 0
+        else:
+            quiet += 1
+            if quiet * CHUNK_S >= gap_s - 1e-9:
+                break
+    lo = max(0, int((start * CHUNK_S - margin_s) * SAMPLE_RATE))
+    hi = min(len(audio), int(((end + 1) * CHUNK_S + margin_s) * SAMPLE_RATE))
+    return audio[lo:hi]
 
 
 def chime_lead_in(during: "list[np.ndarray]", next_chunk: np.ndarray, floor: float) -> np.ndarray:
@@ -286,7 +329,9 @@ def main() -> None:
                     audio = record_command(chunks, lead_in=lead_in, floor=floor)
                     if args.save_commands:
                         save_wav(args.save_commands, audio)
-                    report(model, audio, time.perf_counter(), args.server)
+                    command = first_speech_span(audio)
+                    print(f"  (recorded {len(audio) / SAMPLE_RATE:.1f} s, command {len(command) / SAMPLE_RATE:.1f} s)")
+                    report(model, command, time.perf_counter(), args.server)
                     duck(args.server, on=False)
                     print(f"  ({time.perf_counter() - t_wake:.1f} s from wake word to result)")
                     detector.reset()
