@@ -61,6 +61,22 @@ Listed so it can be repeated on a new Pi or Mac.
 
 ## Every time: start it up
 
+**Services installed (`deploy_pi.sh --services`, the setup for the demo)?**
+Then the Pi side starts by itself at boot, so skip step 2 below and **don't
+also start `vcm.home.server` or `vcm_listen.py` by hand**: two copies fight
+over port 8000 and the mic. Instead:
+
+| To | Run on the Pi |
+|---|---|
+| See what the listener hears and does | `journalctl --user -u vcm -f` |
+| See the home server's log | `journalctl --user -u vcm-home -f` |
+| Restart both (e.g. after an update) | `systemctl --user restart vcm-home vcm` |
+| Stop both (to run them by hand for testing) | `systemctl --user stop vcm vcm-home` |
+| Check everything | `cd ~/quielq-vcm && .venv/bin/python scripts/kiwi_doctor.py --beep --fix` |
+
+The services run the listener with `--save-commands ~/kiwi_commands` and
+the default thresholds (0.6, and 0.4 over music).
+
 **1. Mac: the phone bridge** (skip it if you don't need calls or messages).
 Keep this terminal open and the Mac awake:
 ```bash
@@ -102,7 +118,9 @@ To compare with the previous default:
 cd ~/quielq-vcm && .venv/bin/python scripts/vcm_listen.py --intent-model models/vcm_intent_frozen.onnx --server http://127.0.0.1:8000 --show-scores
 ```
 
-**3. Mac: open the dashboard** at http://raspberrypi.local:8000.
+**3. Mac: open the dashboard** at http://raspberrypi.local:8000. On an
+Android phone, which can't open `.local` names, use the Pi's IP address
+instead (`ssh raspberrypi.local hostname -I`; it changes with the network).
 
 **4. Say "Hey Kiwi"**, then a command. You can go straight into it
 ("Hey Kiwi, stop"); speech during the chime is kept. With `--show-scores`,
@@ -190,17 +208,39 @@ Everything that went wrong in testing, and what now prevents it:
 4. Tape the mic and soundbar USB plugs down (the mic dropout wasn't power:
    `vcgencmd get_throttled` stayed `0x0`). Use the official 27 W supply.
 
+**What `kiwi_doctor.py` checks.** Each line is OK, WARN or FAIL, and the
+last line is READY or the list of what to fix:
+
+| Line | FAIL / WARN means | Fix |
+|---|---|---|
+| power, temperature | Undervoltage or overheating | The official 27 W supply; airflow |
+| microphone device | The input isn't the USB PnP mic | Replug it; the WirePlumber rules pick it again |
+| speaker device, speaker volume | Not the soundbar, muted, or under 50% | Replug it; `pactl set-sink-volume @DEFAULT_SINK@ 100%` |
+| stream '...' | An app's sound is stuck turned down (a duck that never ended) | Run with `--fix` |
+| microphone signal | Silent (unplugged, muted) or clipping | Check the cable; `amixer -c 2 sset Mic 12` if clipping |
+| speaker output (`--beep`) | The test beep didn't reach the soundbar | Check the speaker device and volume lines |
+| service vcm-home / vcm | Not running, or run by hand (won't survive a reboot) | `deploy_pi.sh --services` |
+| listener hears the mic | Running but deaf (its mic connection was cut) | `systemctl --user restart vcm` |
+| home server | The dashboard server doesn't answer | `systemctl --user restart vcm-home` |
+| models | A model file is missing or broken | Redeploy |
+| internet, Spotify, weather | Offline, or a key rejected (HTTP 401) | Hotspot; a new key in `configs/settings.toml`, then `deploy_pi.sh --settings` |
+
+It plays a short beep only with `--beep`, and changes nothing without `--fix`.
+
 **At the venue, before presenting:**
 1. `ssh raspberrypi.local 'cd ~/quielq-vcm && .venv/bin/python scripts/kiwi_doctor.py --beep --fix'` → READY.
 2. If the mic shows clipping when you speak at normal distance, lower its gain:
    `amixer -c 2 sset Mic 12` (0-16; 16 is the maximum).
 3. Say the phrases from the table above, not the ones in the "Avoid" column.
-4. Backup if voice fails in a loud room: the dashboard's **Simulate a
+4. Dismiss any old alarm or timer banner on the dashboard.
+5. Backup if voice fails in a loud room: the dashboard's **Simulate a
    command** box runs every action.
 
 ## Stop
 
-- **Pi:** `tmux attach -t kiwi`, then `Ctrl-c` in each window. Or kill the
+- **Pi, with services:** `systemctl --user stop vcm vcm-home` (they start
+  again at the next boot; `systemctl --user disable vcm vcm-home` stops that).
+- **Pi, by hand:** `tmux attach -t kiwi`, then `Ctrl-c` in each window. Or kill the
   whole session: `tmux kill-session -t kiwi`.
 - **Mac:** `Ctrl-c` in the bridge terminal.
 
@@ -229,8 +269,12 @@ and merge them.
 | No spoken replies | No speaker set up: `pactl list short sinks` shows only `auto_null`. Plug in a USB speaker or pair a Bluetooth one (DEPLOYMENT.md 8b). |
 | "home server unreachable" | Start `vcm.home.server` in the other tmux window first. |
 | CALL / MESSAGE only "simulated" or failing | Bridge not running on the Mac, Mac asleep, `bridge_url` / `bridge_token` mismatch, or macOS blocked incoming connections (allow Python in the firewall prompt). |
-| Weather "isn't set up" / HTTP 401 | `api_key` missing, or a new key not active yet (up to ~2 h). |
-| Dashboard doesn't load from the Mac | Home server not running, or Mac and Pi on different networks (`ping raspberrypi.local`). |
+| Weather "isn't set up" / HTTP 401 | `api_key` missing, a new key not active yet (up to ~2 h), or the key was regenerated or disabled in the OpenWeatherMap account: make a new one, then `deploy_pi.sh --settings`. |
+| Dashboard doesn't load | Home server not running; the device on another network; the Pi's IP changed (a bookmarked IP is stale: `ssh raspberrypi.local hostname -I`); or an Android phone, which can't open `raspberrypi.local` (use the IP). An old tab: reload. |
+| The listener's wake score freezes (e.g. at 0.01) | It stopped receiving audio: its mic connection was cut (an audio restart, a mic replug). Current code exits and, with services, restarts in 3 s. By hand: `Ctrl-c` and start it again. `kiwi_doctor.py` shows "listener hears the mic: FAIL". |
+| Kiwi stops hearing after the mic is replugged | Another input became the default. The WirePlumber rules (`deploy/wireplumber/51-kiwi-audio.lua`, installed by `deploy_pi.sh`) keep the USB mic as the input and disable the soundbar's mic. Check: `pactl get-default-source`. |
+| Music or Kiwi's replies nearly silent | A duck that never ended. Fixed in code (#26, #27); to reset now: `kiwi_doctor.py --fix`, or restart raspotify for Spotify. |
+| An old "It's 5:00 AM..." alarm banner stays on the dashboard | A test alarm that rang and was never stopped: click **Dismiss**. |
 | `git pull` on the Pi fails | Local edits or untracked copies of tracked files on the Pi. Compare them with master, then `git restore` / remove them. Changes belong on the Mac. |
 
 More: [DEPLOYMENT.md § Troubleshooting](DEPLOYMENT.md#troubleshooting).
