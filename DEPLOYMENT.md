@@ -396,41 +396,54 @@ Mac must be awake. Other phone routes are in TODO.md.
 `bluetoothctl` (`scan on`, `pair <MAC>`, `trust <MAC>`, `connect <MAC>`).
 Either becomes the default output, and VOLUME_UP/DOWN controls it.
 
-## 9. Start on boot (optional)
+## 9. Start on boot, restart on failure (needed for a demo)
 
+From the laptop:
 ```bash
-mkdir -p ~/.config/systemd/user
-cat > ~/.config/systemd/user/vcm.service <<'UNIT'
-[Unit]
-Description=VCM voice pipeline (Hey Kiwi)
-After=sound.target vcm-home.service
-
-[Service]
-WorkingDirectory=%h/quielq-vcm
-ExecStart=%h/quielq-vcm/.venv/bin/python scripts/vcm_listen.py --server http://127.0.0.1:8000
-Restart=always
-
-[Install]
-WantedBy=default.target
-UNIT
-cat > ~/.config/systemd/user/vcm-home.service <<'UNIT'
-[Unit]
-Description=VCM home server and dashboard
-After=network-online.target
-
-[Service]
-WorkingDirectory=%h/quielq-vcm
-ExecStart=%h/quielq-vcm/.venv/bin/python -m vcm.home.server
-Restart=always
-
-[Install]
-WantedBy=default.target
-UNIT
-systemctl --user daemon-reload
-systemctl --user enable --now vcm-home vcm
-sudo loginctl enable-linger $USER      # keep user services running without an SSH login
-journalctl --user -u vcm -f             # follow the output
+scripts/deploy_pi.sh raspberrypi.local --services
 ```
+This installs the two user services from the repo, `deploy/systemd/vcm-home.service`
+(home server and dashboard) and `deploy/systemd/vcm.service` (the voice loop),
+into `~/.config/systemd/user/`, enables them and turns on lingering, so they
+run without an SSH login. They:
+- start after PipeWire and WirePlumber, and at every boot;
+- restart 3 s after any exit. The listener exits on purpose when the mic
+  stops sending audio, when the default input changes, or when the only
+  input is a speaker monitor, so an unplugged or replugged mic recovers by
+  itself;
+- run the listener with `--save-commands ~/kiwi_commands`.
+
+Every `deploy_pi.sh` run (with or without `--services`) also installs the
+audio device rules, `deploy/wireplumber/51-kiwi-audio.lua`, into
+`~/.config/wireplumber/main.lua.d/` and restarts WirePlumber:
+- the USB PnP mic is the input and the soundbar the output whenever plugged in;
+- the soundbar's own mic is disabled, so it can't become the input;
+- stream volumes aren't restored, so a music duck that never ended can't
+  carry over to new streams.
+
+The device names in that file are for this hardware (C-Media USB PnP mic,
+Dell AC511 soundbar); edit them for other devices (`pactl list short
+sources` / `sinks`).
+
+Then, on the Pi:
+```bash
+journalctl --user -u vcm -f                  # follow the listener
+systemctl --user restart vcm-home vcm        # after an update
+systemctl --user stop vcm vcm-home           # to run them by hand instead
+```
+Don't run `vcm.home.server` or `vcm_listen.py` by hand while the services
+are running: two copies fight over port 8000 and the mic.
+
+**Preflight check** (before a demo, after a reboot, or when something seems
+off):
+```bash
+cd ~/quielq-vcm && .venv/bin/python scripts/kiwi_doctor.py --beep --fix
+```
+It checks power, the mic (device and live signal), the speaker (device,
+volume, stuck streams, and with `--beep` a test tone), the services, whether
+the listener is actually capturing, the home server, the models, the
+internet, Spotify and the weather, and ends with READY or what to fix.
+STARTUP.md explains each line.
 
 ## Updating
 
@@ -451,4 +464,7 @@ systemctl --user restart vcm-home vcm   # if you set up step 9
 | `Invalid sample rate [PaErrorCode -9997]` | The mic's raw device can't record at 16 kHz. Current `vcm_listen.py` resamples; update the Pi, or leave out `--device` to use PipeWire's default input. |
 | `Permission denied (publickey,password)` over SSH | No key installed on the Pi: run `ssh-copy-id raspberrypi.local` on the laptop once. |
 | No spoken replies | No speaker: `pactl list short sinks` only shows `auto_null`. Plug in or pair one (step 8b). |
+| The listener's wake score stops updating | It lost its mic connection (an audio restart or a mic replug). Current code exits and the service restarts it; by hand, restart it. `kiwi_doctor.py` flags it. |
+| Kiwi stops hearing after the mic is replugged | Another input became the default. Install the WirePlumber rules (any `deploy_pi.sh` run); check `pactl get-default-source`. |
+| Music or replies nearly silent | A duck that never ended: `kiwi_doctor.py --fix`. |
 | `Illegal instruction` on import | Make sure the OS is 64-bit: `uname -m` should print `aarch64`. |
