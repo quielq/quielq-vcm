@@ -107,7 +107,9 @@ cd ~/quielq-vcm && .venv/bin/python scripts/vcm_listen.py --intent-model models/
 **4. Say "Hey Kiwi"**, then a command. You can go straight into it
 ("Hey Kiwi, stop"); speech during the chime is kept. With `--show-scores`,
 the wake score jumps toward 1.00 when you say it. The wake threshold is
-0.6 (`--wake-threshold 0.7` or `0.85` if it wakes by itself too often),
+0.6, and 0.4 while music plays on the Pi (from Kiwi or any app), since
+"Hey Kiwi" scores lower over music (`--wake-threshold 0.7` /
+`--noisy-wake-threshold 0.5` if it wakes by itself too often),
 and any music playing on the Pi drops by about 12 dB while Kiwi listens.
 
 To run everything at boot instead, without steps 2–3, use

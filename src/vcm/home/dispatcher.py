@@ -53,6 +53,7 @@ class Integrations:
     change_volume: Callable[[int], int | None] = system_volume.change_volume
     duck_streams: Callable[[], list] = system_volume.duck_streams  # other apps' audio, while listening
     restore_streams: Callable[[list], None] = system_volume.restore_streams
+    other_audio_playing: Callable[[], bool] = system_volume.other_audio_playing
 
 
 class Dispatcher:

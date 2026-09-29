@@ -105,3 +105,21 @@ def restore_streams(saved: list[tuple[int, list[int]]]) -> None:
             _run(["pactl", "set-sink-input-volume", str(index), *(str(v) for v in levels)])
         except (subprocess.SubprocessError, OSError):
             pass
+
+
+def other_audio_playing() -> bool:
+    """Is any app other than Kiwi playing sound on this device right now
+    (Spotify started from a phone, a browser...)? The listener then uses its
+    lower wake threshold, since "Hey Kiwi" scores lower over music."""
+    if platform.system() == "Darwin" or not shutil.which("pactl"):
+        return False
+    try:
+        streams = json.loads(_run(["pactl", "-f", "json", "list", "sink-inputs"]))
+    except (subprocess.SubprocessError, OSError, ValueError):
+        return False
+    for stream in streams:
+        props = stream.get("properties", {})
+        names = (str(props.get("application.process.binary", "")).lower(), str(props.get("application.name", "")).lower())
+        if not stream.get("corked", False) and not any(name.startswith(OWN_PLAYERS) for name in names):
+            return True
+    return False

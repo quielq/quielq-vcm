@@ -47,7 +47,8 @@ class FakePhone:
 def make(tmp_path, **kw):
     state = HomeState(tmp_path / "state.json")
     x = Integrations(**{"get_volume": lambda: 50, "change_volume": lambda step: 50 + step,
-                        "duck_streams": lambda: [], "restore_streams": lambda saved: None, **kw})
+                        "duck_streams": lambda: [], "restore_streams": lambda saved: None,
+                        "other_audio_playing": lambda: False, **kw})
     return state, Dispatcher(state, x)
 
 
@@ -393,3 +394,19 @@ def test_phone_bridge_client_and_mac_commands(monkeypatch):
     cmd = mod.message_command("+63917", 'hi" & do shell script "x', "iMessage")
     assert cmd[0] == "osascript" and cmd[3] == "+63917" and cmd[4].startswith("hi")  # text passed as argv, not spliced
     assert mod.call_command("+63 917-123") == ["open", "tel:+63917123"]
+
+
+def test_music_from_any_app_counts_as_noisy_but_kiwis_sounds_dont():
+    from vcm.home import volume
+
+    def check(streams):
+        with mock.patch.object(volume, "_run", return_value=json.dumps(streams)), \
+                mock.patch.object(volume.platform, "system", return_value="Linux"), \
+                mock.patch.object(volume.shutil, "which", return_value="/usr/bin/pactl"):
+            return volume.other_audio_playing()
+
+    librespot = {"properties": {"application.process.binary": "librespot"}, "corked": False}
+    assert check([librespot])
+    assert not check([{**librespot, "corked": True}])  # paused
+    assert not check([{"properties": {"application.process.binary": "pacat", "application.name": "paplay"}, "corked": False}])
+    assert not check([])

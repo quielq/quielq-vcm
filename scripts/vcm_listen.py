@@ -326,9 +326,10 @@ def main() -> None:
     parser.add_argument(
         "--noisy-wake-threshold",
         type=float,
-        default=0.6,
+        default=0.4,
         help="wake threshold while music plays or an alarm rings (needs --server); lower = hears you better over "
-        "music, more false wake-ups. Same as --wake-threshold by default",
+        "music, more false wake-ups (music is sensed from any app playing on the device). Below 0.5 is unmeasured "
+        "offline (0.5: 2.8%% clean / 4.9%% noisy missed)",
     )
     parser.add_argument("--trigger", choices=["wakeword", "button"], default="wakeword")
     parser.add_argument("--device", default=None, help="sounddevice input device (name or index); default: system default")

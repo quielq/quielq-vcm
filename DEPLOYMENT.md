@@ -249,6 +249,8 @@ the intent, the slot value, the confidence, and timing:
 ```
 - `--show-scores` prints the live wake-word score, which is useful for
   seeing how close near-misses get.
+- `--noisy-wake-threshold` (default 0.4) replaces it while music plays on
+  the Pi, from Kiwi or any other app (below 0.5 isn't measured offline).
 - `--wake-threshold` sets the trigger level (default 0.6, lowered after
   live tests so "Hey Kiwi" works from further away and in noise). On
   Experiment 34's test set:
