@@ -57,12 +57,19 @@ def change_volume(step: int) -> int | None:
 
 
 # Kiwi's own sounds (chime, spoken replies, alarm beeps): never ducked.
-OWN_PLAYERS = ("python", "paplay", "pw-play", "pw-cat", "aplay", "espeak-ng", "espeak", "say")
+# Matched against the stream's program and its app name: paplay runs as
+# `pacat` (found on the Pi, where replies were being ducked with the music).
+OWN_PLAYERS = ("python", "paplay", "pacat", "pw-play", "pw-cat", "aplay", "espeak-ng", "espeak", "say")
 
 
-def duck_streams(factor: float = 0.25) -> list[tuple[int, list[int]]]:
+def duck_streams(gain: float = 0.25) -> list[tuple[int, list[int]]]:
     """Turn every other app's audio (Spotify speaker, mpv, a browser...) down
-    to `factor` of its volume while Kiwi listens; returns what to restore.
+    to `gain` of its loudness (0.25 = -12 dB) while Kiwi listens; returns
+    what to restore.
+
+    PipeWire volumes are cubic (value = gain ** (1/3)), so the raw value is
+    scaled by gain ** (1/3): scaling it by the gain itself ducked by -36 dB,
+    and a few stuck ducks left music silent.
 
     Works per stream through PipeWire/PulseAudio (`pactl`), so it covers any
     music source, not just the Spotify API, and leaves the speaker's own
@@ -76,14 +83,15 @@ def duck_streams(factor: float = 0.25) -> list[tuple[int, list[int]]]:
         return []
     saved = []
     for stream in streams:
-        binary = str(stream.get("properties", {}).get("application.process.binary", "")).lower()
-        if binary.startswith(OWN_PLAYERS):
+        props = stream.get("properties", {})
+        names = (str(props.get("application.process.binary", "")).lower(), str(props.get("application.name", "")).lower())
+        if any(name.startswith(OWN_PLAYERS) for name in names):
             continue
         levels = [int(channel["value"]) for channel in stream.get("volume", {}).values()]
         if not levels:
             continue
         try:
-            _run(["pactl", "set-sink-input-volume", str(stream["index"]), *(str(int(v * factor)) for v in levels)])
+            _run(["pactl", "set-sink-input-volume", str(stream["index"]), *(str(int(v * gain ** (1 / 3))) for v in levels)])
             saved.append((int(stream["index"]), levels))
         except (subprocess.SubprocessError, OSError, KeyError):
             pass

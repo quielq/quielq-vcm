@@ -144,6 +144,18 @@ def test_duck_lowers_and_restores_other_audio_streams(tmp_path):
     assert calls == ["duck", ("restore", [(7, [65536, 65536])])]
 
 
+def test_a_duck_that_is_never_ended_undoes_itself(tmp_path, monkeypatch):
+    from vcm.home import dispatcher as dispatcher_module
+
+    monkeypatch.setattr(dispatcher_module, "DUCK_TIMEOUT_S", 0.05)
+    calls = []
+    state, d = make(tmp_path, duck_streams=lambda: calls.append("duck") or [(7, [65536])],
+                    restore_streams=lambda saved: calls.append("restore"))
+    d.duck(True)  # and the listener never sends duck(False)
+    __import__("time").sleep(0.3)
+    assert calls == ["duck", "restore"]
+
+
 def test_duck_streams_skips_kiwis_own_sounds():
     from vcm.home import volume
 
@@ -151,6 +163,7 @@ def test_duck_streams_skips_kiwis_own_sounds():
         {"index": 1, "properties": {"application.process.binary": "librespot"}, "volume": {"front-left": {"value": 65536}, "front-right": {"value": 32768}}},
         {"index": 2, "properties": {"application.process.binary": "python3.11"}, "volume": {"mono": {"value": 65536}}},
         {"index": 3, "properties": {"application.process.binary": "paplay"}, "volume": {"mono": {"value": 65536}}},
+        {"index": 5, "properties": {"application.process.binary": "pacat", "application.name": "paplay"}, "volume": {"mono": {"value": 65536}}},
         {"index": 4, "properties": {"application.process.binary": "mpv"}, "volume": {"mono": {"value": 40000}}},
     ]
     ran = []
@@ -164,10 +177,11 @@ def test_duck_streams_skips_kiwis_own_sounds():
         saved = volume.duck_streams(0.25)
         volume.restore_streams(saved)
     assert saved == [(1, [65536, 32768]), (4, [40000])]
-    assert ["pactl", "set-sink-input-volume", "1", "16384", "8192"] in ran
-    assert ["pactl", "set-sink-input-volume", "4", "10000"] in ran
+    # PipeWire volume is cubic: -12 dB (gain 0.25) is raw x 0.63, not x 0.25 (-36 dB)
+    assert ["pactl", "set-sink-input-volume", "1", "41285", "20642"] in ran
+    assert ["pactl", "set-sink-input-volume", "4", "25198"] in ran
     assert ["pactl", "set-sink-input-volume", "1", "65536", "32768"] in ran
-    assert not any(c[2:3] in (["2"], ["3"]) for c in ran if c[1] == "set-sink-input-volume")
+    assert not any(c[2:3] in (["2"], ["3"], ["5"]) for c in ran if c[1] == "set-sink-input-volume")
 
 
 def test_next_waits_for_spotify_to_switch_tracks():

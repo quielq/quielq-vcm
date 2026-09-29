@@ -230,10 +230,15 @@ def main() -> None:
     print(f"VCM home server on http://{args.host}:{args.port}  (integrations: {', '.join(configured) or 'none, all simulated'})")
     server = ThreadingHTTPServer((args.host, args.port), make_handler(state, dispatcher, speaker))
     server.daemon_threads = True
+    import signal
+
+    signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt))  # systemctl stop
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         print("\nExiting.")
+    finally:
+        dispatcher.duck(False)  # never leave the music turned down
 
 
 if __name__ == "__main__":
