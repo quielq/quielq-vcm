@@ -130,6 +130,14 @@ shared by the class, and our own synthetic clips. We screened every
 synthetic clip with Whisper. The steps to rebuild it are in
 [docs/DATASET.md](docs/DATASET.md).
 
+**Download it:** the exact dataset behind the shipped model is published at
+[quielq-vcm-dataset](https://github.com/quielq/quielq-vcm-dataset). It holds
+the manifests, splits, slot labels and a checksum for every audio file.
+Our synthetic clips and wake-word recordings are in its
+[v1.0 release](https://github.com/quielq/quielq-vcm-dataset/releases/tag/v1.0).
+Its README gives each third-party source's license and pinned version, and
+the fetch commands.
+
 | Source | Clips | Type | Covers |
 |---|---:|---|---|
 | Fluent Speech Commands | 24,223 | Real | Lights, volume, temperature, music, pause, stop |
