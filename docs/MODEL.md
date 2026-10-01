@@ -60,10 +60,20 @@ a sentence.
 
 ### 3.1 The diagram
 
+**Figure 1. The shipped CRNN: from a spectrogram to an intent and a slot value.**
+The model turns 5 seconds of audio into a picture of sound energy over time.
+Convolutions find short sound patterns in that picture. A GRU then reads the
+patterns in order, from start to end and from end to start. Attention pooling
+picks the moments that matter, and the classifiers name the intent and its
+value.
+
 Shapes are written as channels × mel bands × time frames. One time frame is
 10 ms at the input. Parameter counts are in brackets.
 
 ```mermaid
+---
+title: Figure 1. The shipped CRNN (107,887 parameters, 432 KB)
+---
 flowchart TB
     IN["<b>Input: log-mel spectrogram</b><br/>1 × 40 × 501<br/>5 seconds of audio, 10 ms per frame"]
 
@@ -141,7 +151,12 @@ The first 27 experiments used DS-CNN ("Hello Edge", Zhang et al. 2017). It
 plateaued at 68% to 71% on real speech. Each of its outputs sees only about
 24 frames, or 240 ms. That is shorter than the word "temperature". It then
 averages everything, so word order is lost. It classified a command like a
-bag of quarter-second snippets:
+bag of quarter-second snippets.
+
+**Figure 2. How DS-CNN and the CRNN hear the same command.** DS-CNN cuts the
+command into short pieces and averages them, so it cannot tell which word
+came first. The CRNN keeps every step in order, so the last word ("up")
+can decide the answer.
 
 ```
 command:   "turn    the    volume    up"
@@ -170,7 +185,15 @@ README).
 The standard keyword-spotting model from "Hello Edge". Shown at the
 "matched capacity" size from Experiment 11, with the 3 s input used then.
 
+**Figure 3. DS-CNN: convolutions, then one big average.** It uses the same
+kind of blocks as the CRNN's front end. Its blocks never stride, so each
+output only hears about 240 ms. Global average pooling then mixes all
+positions into one summary, and word order is lost.
+
 ```mermaid
+---
+title: Figure 3. DS-CNN (26,300 parameters)
+---
 flowchart LR
     IN["Log-mel<br/>1 × 40 × 301<br/>(3 s)"] --> C1["Conv 10×4, stride 2<br/>60 filters<br/>→ 60 × 20 × 150"]
     C1 --> D["5 depthwise-separable blocks<br/>no striding<br/>→ 60 × 20 × 150<br/>each output sees ~240 ms"]
@@ -187,10 +210,19 @@ order and reads it with a GRU.
 ### 4.2 BC-ResNet (Experiments 3 to 6, and 10)
 
 "Broadcasted residual learning" (Kim et al. 2021). The original plan
-recommended it because it beat DS-CNN on Google Speech Commands. Each block
-has two paths that are added together:
+recommended it because it beat DS-CNN on Google Speech Commands.
+
+**Figure 4. One BC-ResNet block: a frequency path and a time path, added
+together.** The frequency path keeps all 20 mel bands. The time path first
+averages the bands away, which makes it cheap, and then looks along time.
+Its result is copied ("broadcast") back to every band and added in. The
+model stacks 8 of these blocks and still ends with a global average, like
+DS-CNN.
 
 ```mermaid
+---
+title: Figure 4. One BC-ResNet block (the model stacks 8)
+---
 flowchart TB
     X["Block input<br/>48 × 20 × 301"] --> FP["Frequency path<br/>depthwise conv 3×1 over mel bands<br/>+ BatchNorm"]
     FP --> AVG["Average over the 20 mel bands<br/>→ 48 × 1 × 301"]
@@ -210,10 +242,15 @@ testing it before real-speech test accuracy became our main measure.
 
 ### 4.3 ASR cascade (Experiment 26)
 
-Two separate models. Speech is turned into text first, and then the text is
-classified.
+**Figure 5. The ASR cascade: speech to text, then text to intent.** Whisper
+writes down what was said. A small text classifier then counts the words
+and phrases and picks the intent. It was the most accurate option, but
+Whisper alone is about 145 MB.
 
 ```mermaid
+---
+title: Figure 5. ASR cascade (about 74M parameters, 149 MB)
+---
 flowchart LR
     AU["Audio"] --> W["Whisper base<br/>speech-to-text<br/>74M parameters, 145 MB"]
     W --> T["Text<br/>'turn the volume up'"]
