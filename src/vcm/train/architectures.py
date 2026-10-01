@@ -122,13 +122,24 @@ class CRNN(nn.Module):
         n_mels: int = 40,
         dropout: float = 0.1,
         slot_sizes: dict[str, int] | None = None,
+        rnn_layers: int = 1,
+        pool: str = "attention",
+        pool_heads: int = 1,
     ):
         """slot_sizes: {intent: number of values} adds one slot-value head per
         slotted intent (vcm.slots, Experiment 32). Each head has its own
         attention pooling, so it can focus on where the value is spoken
         rather than on what makes the intent recognizable. None (default)
-        is the plain intent model."""
+        is the plain intent model.
+
+        Experiment 39 options (defaults = the Exp 28-37 model): rnn_layers
+        stacks GRU layers; pool is "attention" (a learned weight per frame,
+        pool_heads independent weightings whose pooled vectors are
+        concatenated) or "mean" (plain average over time, no attention)."""
         super().__init__()
+        if pool not in ("attention", "mean"):
+            raise ValueError(f"pool must be 'attention' or 'mean', got {pool!r}")
+        self.pool = pool
         self.first_conv = nn.Sequential(
             nn.Conv2d(1, channels, kernel_size=(10, 4), stride=(2, 2), padding=(4, 1)),
             nn.BatchNorm2d(channels),
@@ -146,10 +157,15 @@ class CRNN(nn.Module):
             nn.BatchNorm1d(rnn_hidden),
             nn.ReLU(inplace=True),
         )
-        self.rnn = nn.GRU(rnn_hidden, rnn_hidden, batch_first=True, bidirectional=True)
-        self.attention = nn.Linear(2 * rnn_hidden, 1)
+        self.rnn = nn.GRU(
+            rnn_hidden, rnn_hidden, num_layers=rnn_layers, batch_first=True, bidirectional=True,
+            dropout=dropout if rnn_layers > 1 else 0.0,
+        )  # fmt: skip
+        heads = pool_heads if pool == "attention" else 1
+        if pool == "attention":
+            self.attention = nn.Linear(2 * rnn_hidden, heads)
         self.dropout = nn.Dropout(dropout)
-        self.classifier = nn.Linear(2 * rnn_hidden, num_classes)
+        self.classifier = nn.Linear(heads * 2 * rnn_hidden, num_classes)
         slot_sizes = slot_sizes or {}
         self.slot_attention = nn.ModuleDict({k: nn.Linear(2 * rnn_hidden, 1) for k in slot_sizes})
         self.slot_classifier = nn.ModuleDict({k: nn.Linear(2 * rnn_hidden, n) for k, n in slot_sizes.items()})
@@ -169,8 +185,11 @@ class CRNN(nn.Module):
         """Logits plus the per-frame features they were pooled from, in one
         pass — for training-only auxiliary heads (see sequence_features)."""
         seq = self.sequence_features(x)
-        weights = torch.softmax(self.attention(seq), dim=1)  # (B, T, 1)
-        pooled = (weights * seq).sum(dim=1)
+        if self.pool == "mean":
+            pooled = seq.mean(dim=1)
+        else:
+            weights = torch.softmax(self.attention(seq), dim=1)  # (B, T, heads)
+            pooled = torch.einsum("bth,btd->bhd", weights, seq).flatten(1)  # heads concatenated
         return self.classifier(self.dropout(pooled)), seq
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

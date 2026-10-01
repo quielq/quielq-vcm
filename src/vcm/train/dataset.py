@@ -7,8 +7,9 @@ live pipeline uses), so training and inference features never
 drift apart.
 
 Label space is the class-shared 19-intent taxonomy
-(vcm.dataset.sources.dataset_schema.INTENT_LABELS) plus
-unknown_background. The label list is stored in every checkpoint and
+(vcm.dataset.sources.dataset_schema.INTENT_LABELS) plus OUT_OF_SCOPE
+(called unknown_background, and noise only, through Experiment 36). The
+label list is stored in every checkpoint and
 exported ONNX file, so the runtime never needs a separate copy.
 """
 
@@ -27,13 +28,13 @@ from torch.utils.data import Dataset
 from vcm.audio.capture import SAMPLE_RATE
 from vcm.audio.features import WINDOW_S, extract_log_mel, trim_silence
 from vcm.dataset.manifest import ManifestRow, read_manifest
-from vcm.dataset.sources.dataset_schema import INTENT_LABELS
+from vcm.dataset.sources.dataset_schema import INTENT_LABELS, NON_COMMAND_LABELS, OUT_OF_SCOPE
 from vcm.slots import slot_target
 from vcm.train.augment import spec_augment
 from vcm.train.transcripts import pad_target
 from vcm.train.wave_augment import augment_waveform
 
-LABELS: tuple[str, ...] = INTENT_LABELS + ("unknown_background",)
+LABELS: tuple[str, ...] = INTENT_LABELS + (OUT_OF_SCOPE,)
 LABEL_TO_INDEX: dict[str, int] = {label: i for i, label in enumerate(LABELS)}
 
 # extract_log_mel's original behavior; every checkpoint before Experiment
@@ -70,13 +71,34 @@ def _read_mono(path: str) -> tuple[np.ndarray, int]:
     return audio, sample_rate
 
 
+# Sources whose non-command clips are pure background noise: Google Speech
+# Commands' _background_noise_ (our own build, and in the master dataset).
+# The master dataset's other out-of-scope clips are speech, which must not
+# be mixed under a command as "noise".
+NOISE_SOURCES = ("gsc_background", "SpeechCommands_v2")
+
+
+def load_babble_bank(rows: list[ManifestRow], n_clips: int) -> list[np.ndarray]:
+    """n_clips random speech clips from `rows` (e.g. the master dataset's
+    numerals set, which no test or holdout speaker is in) to mix under
+    commands as background talk, like the noise bank (Experiment 39)."""
+    bank = []
+    for row in random.sample(rows, min(n_clips, len(rows))):
+        audio, sample_rate = _read_mono(row.audio_path)
+        if sample_rate != SAMPLE_RATE:
+            audio = librosa.resample(audio, orig_sr=sample_rate, target_sr=SAMPLE_RATE)
+        bank.append(audio)
+    return bank
+
+
 def load_noise_bank(rows: list[ManifestRow]) -> list[np.ndarray]:
-    """unknown_background clips from the given rows (callers pass the
-    *train* split only, so val/test noise never leaks into training),
-    resampled to SAMPLE_RATE, for vcm.train.wave_augment's noise mixing."""
+    """Background-noise clips (non-command label, NOISE_SOURCES) from the
+    given rows (callers pass the *train* split only, so val/test noise never
+    leaks into training), resampled to SAMPLE_RATE, for
+    vcm.train.wave_augment's noise mixing."""
     bank = []
     for row in rows:
-        if row.label != "unknown_background":
+        if row.label not in NON_COMMAND_LABELS or row.source not in NOISE_SOURCES:
             continue
         audio, sample_rate = _read_mono(row.audio_path)
         if sample_rate != SAMPLE_RATE:
@@ -110,6 +132,7 @@ class ManifestDataset(Dataset):
         self.noise_bank = noise_bank
         self.ctc_targets = ctc_targets
         self.slot_labels = slot_labels
+        self.spec_augment_kwargs: dict = {}  # e.g. {"num_time_masks": 0}: frequency masks only
 
     @classmethod
     def from_csv(cls, csv_path: Path, split: str, augment: bool = False, **kwargs) -> "ManifestDataset":
@@ -135,7 +158,7 @@ class ManifestDataset(Dataset):
             extract_log_mel(audio, sample_rate=sample_rate, window_s=window_s, trim=trim)
         )
         if self.augment:
-            features = spec_augment(features)
+            features = spec_augment(features, **self.spec_augment_kwargs)
         label_idx = LABEL_TO_INDEX[row.label]
         # Returns (features, label) plus, in this order, whichever extras
         # are enabled: teacher_probs (distillation), then ctc_target and

@@ -141,34 +141,43 @@ training runs themselves survive either way, since they're under
 
 ## Reproducing the final model
 
-The exact launch scripts are in `logs/` on the DGX. Rebuilt from the recipe
-in EXPERIMENTS.md (Experiments 29b, 31, 34–36), with the data from
-[DATASET.md](DATASET.md) in place:
+From Experiment 37 the intent + slot model trains on the class master
+dataset ([DATASET.md](DATASET.md#the-class-master-dataset-experiment-37-on)).
+The exact launcher is `logs/launch_exp37.sh` on the DGX. All runs went on
+one idle GPU (GPU 6 at the time).
 
 ```bash
+# Data (once): download the master dataset and build data/me2/
+python -c "from huggingface_hub import snapshot_download; snapshot_download(
+  'airimonda/ai231-me2-voice-commands', repo_type='dataset', local_dir='data/me2/hf',
+  allow_patterns=['data/train-*', 'data/test-*', 'data/holdout-*', 'README.md', 'variations.csv'])"
+python scripts/build_me2_manifest.py
+
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 NUMBA_NUM_THREADS=1
 export CUDA_VISIBLE_DEVICES=<an idle GPU>
 
-# Intent + slot model (Experiment 36, seed 1 shipped; seeds 0 and 2 for comparison)
-python -m vcm.train.train --model crnn --seed 1 \
-  --manifest data/dataset_manifest_exp36.csv --slot-labels data/slot_labels_exp36.csv --slot-weight 0.3 \
-  --epochs 80 --batch-size 128 --lr 1e-3 --warmup-epochs 5 --confusable-alpha 2.0 \
-  --window-s 5.0 --trim-silence --wave-augment --num-workers 8 \
-  --out checkpoints/exp36_joint_w03_s1.pt
+# Intent + slot model (Experiment 37; seeds 0, 1 and 2)
+python -m vcm.train.train --model crnn --seed SEED \
+  --manifest data/me2/manifest.csv --slot-labels data/me2/slot_labels.csv --slot-weight 0.3 \
+  --epochs EPOCHS --batch-size 128 --lr 1e-3 --warmup-epochs 5 --confusable-alpha 2.0 \
+  --window-s 5.0 --trim-silence --wave-augment --num-workers 6 \
+  --out checkpoints/CHECKPOINT.pt
 
-# "Hey Kiwi" wake word (Experiment 34, seed 0 shipped)
+# Evaluate on the class-fixed test set and the Pi holdout set, then export
+python scripts/evaluate_checkpoint.py checkpoints/exp37*.pt \
+  --manifest data/me2/manifest.csv --slot-labels data/me2/slot_labels.csv \
+  --metadata data/me2/metadata.csv --split test        # and --split holdout
+python scripts/export_onnx.py checkpoints/CHECKPOINT.pt --out models/vcm_intent
+
+# "Hey Kiwi" wake word: unchanged (Experiment 34, seed 0), not part of the
+# master dataset
 python scripts/train_wakeword.py --seed 0 \
   --extra-wake-manifest data/wakeword_real/manifest.csv \
   --out checkpoints/kiwi_wakeword_v2_s0.pt
-
-# Evaluate (TESTING.md), then export to ONNX for the device
-python scripts/evaluate_checkpoint.py checkpoints/exp36_joint_w03_s*.pt \
-  --manifest data/dataset_manifest_exp36.csv --slot-labels data/slot_labels_exp36.csv \
-  --exclude-source snips_lights
-python scripts/export_onnx.py checkpoints/exp36_joint_w03_s1.pt --out models/vcm_intent
 python scripts/export_onnx.py checkpoints/kiwi_wakeword_v2_s0.pt --out models/kiwi_wakeword
 ```
 
-Each intent run takes about 1.5 hours with 3–5 runs sharing one A100
-(80 epochs at ~65 s). Results vary by about ±0.4 points between seeds, so
-compare configurations over 3 seeds.
+TIMING_NOTE
+
+The Experiment 36 commands (old dataset) are on the
+`archive/exp36-pre-me2-schema` branch.

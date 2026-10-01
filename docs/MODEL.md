@@ -10,7 +10,7 @@ exported to fp32 ONNX and run with ONNX Runtime (no PyTorch on the device).
 | Parameters | 107,887 | 25,475 |
 | Compute | 53.7M multiply-adds (~107 MFLOPs) per command | 5.3M multiply-adds per window, 10 windows a second |
 | Input | 40 log-mel bands × 501 frames (5.0 s, silence-trimmed) | 40 × 151 frames (1.5 s window) |
-| Output | 20 classes (19 intents + `unknown_background`) and 6 slot-value heads | wake / not wake |
+| Output | 20 classes (19 intents + `OUT_OF_SCOPE`) and 6 slot-value heads, 3 values each | wake / not wake |
 | When it runs | Once per command, after the wake word | Every 100 ms, always on |
 | Source checkpoint | `exp36_joint_w03_s1.pt` (Experiment 36, seed 1) | `kiwi_wakeword_v2_s0.pt` (Experiment 34) |
 | Headline result | **84.84%** real-speech test accuracy (n=6,577) | 3.1% missed wake words (clean), 0/10 of the author's real takes missed, at threshold 0.6 |
@@ -27,16 +27,22 @@ ASR on the device because of its footprint, and a closed-set classifier is
 orders of magnitude smaller.
 
 Six intents also carry a value, predicted by a classification head over a
-fixed vocabulary (`vcm/slots.py`):
+fixed vocabulary (`vcm/slots.py`). Since Experiment 37 each vocabulary is
+exactly the class schema's 3 values:
 
-| Intent | Values | Count |
-|---|---|---:|
-| TIMER | 10 s … 2 h | 24 |
-| ALARM | every hour 12:00 AM … 11:00 PM, plus 5:30–8:30 AM | 28 |
-| BRIGHTNESS | 10 … 100 % | 12 |
-| COLOR | red, blue, green, … warm white, teal | 14 |
-| TEMPERATURE | 18 / 22 / 26 degrees | 3 |
-| CREATE_REMINDER | drink water / study / exercise | 3 |
+| Intent | Values |
+|---|---|
+| TIMER | 10 seconds / 30 seconds / 1 minute |
+| ALARM | 6:00 AM / 8:00 AM / 9:00 PM |
+| TEMPERATURE | 18 / 22 / 26 degrees |
+| BRIGHTNESS | 20 / 60 / 100 percent |
+| COLOR | red / blue / green |
+| CREATE_REMINDER | drink water / study / exercise |
+
+Through Experiment 36 the TIMER, ALARM, BRIGHTNESS and COLOR heads had
+24, 28, 12 and 14 values. The 20th class was `unknown_background`
+(noise only); it is now `OUT_OF_SCOPE`, which is mostly speech that is
+not a command.
 
 ## 2. Features
 

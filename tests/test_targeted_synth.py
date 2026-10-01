@@ -11,9 +11,9 @@ def test_schema_phrasings_come_first_and_unduplicated(label):
 
 
 def test_schema_phrasing_examples():
-    assert "stop playing music" in PHRASES["STOP"]
-    assert "change the brightness to 60 percent" in PHRASES["BRIGHTNESS"]
-    assert "color red" in PHRASES["COLOR"]
+    assert "stop playing" in PHRASES["STOP"]
+    assert "adjust brightness to 60 percent" in PHRASES["BRIGHTNESS"]
+    assert "change color to red" in PHRASES["COLOR"]
 
 
 @pytest.mark.parametrize(

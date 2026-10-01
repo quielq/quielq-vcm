@@ -27,11 +27,11 @@ def _row(**overrides):
     return ManifestRow(**defaults)
 
 
-def test_labels_cover_19_intents_plus_background():
+def test_labels_cover_19_intents_plus_out_of_scope():
     assert len(LABELS) == 20
-    assert LABELS[-1] == "unknown_background"
+    assert LABELS[-1] == "OUT_OF_SCOPE"
     assert LABEL_TO_INDEX["PLAY_MUSIC"] == 0
-    assert LABEL_TO_INDEX["unknown_background"] == 19
+    assert LABEL_TO_INDEX["OUT_OF_SCOPE"] == 19
 
 
 def test_from_csv_filters_by_split(tmp_path):
@@ -114,7 +114,7 @@ def test_cap_per_class_total_matches_sum_of_per_label_caps():
 def _write_distillation_csv(path, rows):
     """rows: list of (audio_path, {label: prob, ...}) — only needs a subset
     of LABELS, matching how the cascade only covers 19 of 20 (no
-    unknown_background)."""
+    OUT_OF_SCOPE)."""
     import csv
 
     present_labels = sorted({label for _, probs in rows for label in probs})
@@ -136,7 +136,7 @@ def test_load_distillation_labels_remaps_into_labels_order(tmp_path):
     assert vec.shape == (len(LABELS),)
     assert vec[LABEL_TO_INDEX["CALL"]] == pytest.approx(0.7)
     assert vec[LABEL_TO_INDEX["PLAY_MUSIC"]] == pytest.approx(0.3)
-    assert vec[LABEL_TO_INDEX["unknown_background"]] == 0.0
+    assert vec[LABEL_TO_INDEX["OUT_OF_SCOPE"]] == 0.0
     assert vec.sum() == pytest.approx(1.0)
 
 
@@ -155,7 +155,7 @@ def test_manifest_dataset_returns_teacher_probs_when_available(tmp_path):
 
 def test_manifest_dataset_gives_zero_teacher_vector_when_missing(tmp_path):
     wav = _write_wav(tmp_path / "bg.wav")
-    row = _row(audio_path=str(wav), label="unknown_background")
+    row = _row(audio_path=str(wav), label="OUT_OF_SCOPE")
     ds = ManifestDataset([row], distillation_labels={})  # no teacher for this path
     _, _, teacher_probs = ds[0]
     assert teacher_probs.sum() == 0.0
@@ -179,6 +179,6 @@ def test_manifest_dataset_appends_padded_ctc_target(tmp_path):
 
 def test_manifest_dataset_ctc_target_empty_when_untranscribed(tmp_path):
     wav = _write_wav(tmp_path / "bg.wav")
-    ds = ManifestDataset([_row(audio_path=str(wav), label="unknown_background")], ctc_targets={})
+    ds = ManifestDataset([_row(audio_path=str(wav), label="OUT_OF_SCOPE")], ctc_targets={})
     _, _, target, length = ds[0]
     assert length == 0

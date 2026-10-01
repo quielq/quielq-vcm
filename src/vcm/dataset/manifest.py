@@ -17,7 +17,11 @@ from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
 FIELDS = ("audio_path", "label", "source", "is_synthetic", "speaker_id", "split")
-VALID_SPLITS = ("train", "val", "test")
+# "holdout" is the master dataset's small set kept for the live test on
+# the Raspberry Pi (Experiment 37 onwards); nothing trains or selects on it.
+# "numerals" is its separate set of number-only clips (no test or holdout
+# speaker is in it), used only through explicit training flags.
+VALID_SPLITS = ("train", "val", "test", "holdout", "numerals")
 
 
 @dataclass(frozen=True)

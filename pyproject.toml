@@ -3,6 +3,7 @@ name = "vcm"
 version = "0.1.0"
 description = "Tiny on-device Voice Command Model (AI222 / AI231 machine exercise)"
 requires-python = ">=3.10"
+license = { text = "MIT" }
 dependencies = [
     "numpy",
     "sounddevice",

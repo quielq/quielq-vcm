@@ -1,6 +1,7 @@
 """Recognized command (intent + slot value) -> action + spoken reply.
 
-Covers all 19 intents of the class taxonomy plus unknown_background. Every
+Covers all 19 intents of the class taxonomy plus the non-command class
+(OUT_OF_SCOPE; unknown_background in models before Exp 37). Every
 integration is optional and injected, so a missing one (no Spotify
 credentials, no phone bridge, no weather key, no real bulb) degrades to a
 clear spoken reply and a dashboard entry instead of an error:
@@ -25,6 +26,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 
+from vcm.dataset.sources.dataset_schema import NON_COMMAND_LABELS
 from vcm.home import volume as system_volume
 from vcm.home.phone import PhoneBridge, PhoneNotConfigured
 from vcm.home.scheduler import duration_seconds, next_alarm_time, spoken_duration
@@ -73,7 +75,7 @@ class Dispatcher:
         }  # fmt: skip
 
     def handle(self, intent: str, slot: str | None = None, confidence: float | None = None, source: str = "voice") -> str:
-        if intent == "unknown_background":
+        if intent in NON_COMMAND_LABELS:
             reply = ""
         elif intent in self.handlers:
             try:

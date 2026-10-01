@@ -1,4 +1,6 @@
 import csv
+import re
+from pathlib import Path
 
 from vcm.dataset.sources.dataset_schema import (
     FIXED_INTENTS,
@@ -64,3 +66,23 @@ def test_export_csv_roundtrips_to_the_same_phrases(tmp_path):
         assert row["slot_value"] == (phrase.slot_value or "")
         # every cell reads back as a plain str via csv, never a time/date type
         assert all(isinstance(v, str) for v in row.values())
+
+
+def test_matches_the_final_class_schema():
+    """The class's final Dataset Schema (Option B, agreed 2026-10-01), as
+    exported from the sheet: one row per intent, 3 variations and, for
+    slotted intents, 3 values."""
+    path = Path(__file__).resolve().parents[1] / "data/dataset_schema/final_dataset_schema.csv"
+    with path.open(newline="") as f:
+        rows = list(csv.DictReader(f))
+    assert [r["Label"] for r in rows] == list(INTENT_LABELS)
+    for r in rows:
+        variations = tuple(r[f"Variation {i}"] for i in (1, 2, 3))
+        if r["Type"] == "Fixed":
+            assert FIXED_INTENTS[r["Label"]] == variations
+        else:
+            spec = SLOTTED_INTENTS[r["Label"]]
+            assert tuple(re.sub(r"\{[^}]+\}", "{}", t) for t in spec["templates"]) == tuple(
+                re.sub(r"\{[^}]+\}", "{}", v) for v in variations
+            )
+            assert spec["values"] == tuple(r[f"Value {i}"] for i in (1, 2, 3))

@@ -32,7 +32,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from vcm.config import REPO_ROOT, load_settings
-from vcm.dataset.sources.dataset_schema import INTENT_LABELS
+from vcm.dataset.sources.dataset_schema import INTENT_LABELS, NON_COMMAND_LABELS
 from vcm.home.dispatcher import Dispatcher, Integrations, integrations_from_settings
 from vcm.home.scheduler import Scheduler
 from vcm.home.state import HomeState, new_id
@@ -169,7 +169,7 @@ def make_handler(state: HomeState, dispatcher: Dispatcher, speaker: Speaker):
                 return self._json(400, {"error": "bad json"})
             if self.path == "/api/command":
                 intent = body.get("intent")
-                if intent not in (*INTENT_LABELS, "unknown_background"):
+                if intent not in (*INTENT_LABELS, *NON_COMMAND_LABELS):
                     return self._json(400, {"error": f"unknown intent {intent!r}"})
                 reply = dispatcher.handle(intent, body.get("slot"), body.get("confidence"), body.get("source", "voice"))
                 speaker.say(reply)

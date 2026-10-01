@@ -92,14 +92,14 @@ uses a lower wake threshold (0.4 instead of 0.6) while music plays.
 | 1. Music | PLAY_MUSIC | — | Spotify on the Pi (raspotify); local files via mpv as a fallback |
 | 2. Questions | WEATHER, TIME | — | OpenWeatherMap; system clock; spoken |
 | 3. Lights | LIGHT_ON, LIGHT_OFF | — | Virtual lamp on the dashboard (plus a Xiaomi bulb, if configured) |
-| 4. Dim / color | BRIGHTNESS, COLOR | 12 percentages; 14 colors | Virtual lamp |
-| 5. Timer | TIMER | 24 durations, 10 s – 2 h | Scheduled; rings until "stop" |
-| 6. Alarm | ALARM | 28 times | Scheduled; rings until "stop" |
+| 4. Dim / color | BRIGHTNESS, COLOR | 20 / 60 / 100 percent; red / blue / green | Virtual lamp |
+| 5. Timer | TIMER | 10 s / 30 s / 1 min | Scheduled; rings until "stop" |
+| 6. Alarm | ALARM | 6:00 AM / 8:00 AM / 9:00 PM | Scheduled; rings until "stop" |
 | 7. Thermostat | TEMPERATURE | 18 / 22 / 26 degrees | Simulated thermostat; room temperature from the Sense HAT |
 | 8. Media control | PAUSE, STOP, NEXT, VOLUME_UP, VOLUME_DOWN | — | Spotify / mpv; speaker volume |
 | 9. Reminders | CREATE_REMINDER, LIST_REMINDERS | drink water / study / exercise | Stored and shown on the dashboard; listed aloud |
 | 10. Calls / messages | CALL, MESSAGE | — | Through the Mac bridge to the iPhone (default contact); simulated if the bridge is off |
-| — | `unknown_background` | — | Nothing |
+| — | `OUT_OF_SCOPE` (`unknown_background` in models before Exp 37) | — | Nothing |
 
 ## 5. Hardware (as built)
 

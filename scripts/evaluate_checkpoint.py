@@ -11,16 +11,26 @@ same basis as the cascade, plus the per-class and confusable-group
 breakdowns previously computed by ad hoc scratch scripts.
 
 "Real speech" matches scripts/train_cascade_classifier.py's real-only
-filter: is_synthetic == False, excluding unknown_background (which has
-no transcript, so the cascade was never scored on it).
+filter: is_synthetic == False, excluding the non-command class
+(unknown_background, which has no transcript, so the cascade was never
+scored on it; OUT_OF_SCOPE from Experiment 37).
+
+From Experiment 37 the class's fixed test set is the headline: "all"
+over the master dataset's test split (real and synthetic voices, every
+Option B variation balanced, plus out-of-scope clips). --metadata adds
+breakdowns from scripts/build_me2_manifest.py's metadata.csv, such as
+accent group.
 
 Usage:
     python scripts/evaluate_checkpoint.py checkpoints/a.pt checkpoints/b.pt [--split test]
+    python scripts/evaluate_checkpoint.py checkpoints/exp37_*.pt --manifest data/me2/manifest.csv \\
+        --slot-labels data/me2/slot_labels.csv --metadata data/me2/metadata.csv --split test
 """
 
 from __future__ import annotations
 
 import argparse
+import csv
 from collections import Counter
 from pathlib import Path
 
@@ -28,6 +38,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from vcm.dataset.manifest import read_manifest
+from vcm.dataset.sources.dataset_schema import NON_COMMAND_LABELS, OUT_OF_SCOPE
 from vcm.slots import load_slot_labels
 from vcm.train.dataset import LABELS, ManifestDataset
 from vcm.train.losses import CONFUSABLE_GROUPS
@@ -52,7 +63,8 @@ def predict(ckpt_path: Path, rows: list, device: torch.device, num_workers: int)
         model = MODELS[ckpt["model_name"]](**ckpt["model_kwargs"]).to(device)
         model.load_state_dict(ckpt["model_state_dict"])
         model.eval()
-    if tuple(labels) != LABELS:
+    # Models before Experiment 37 name the non-command class unknown_background.
+    if tuple(OUT_OF_SCOPE if label == "unknown_background" else label for label in labels) != LABELS:
         raise SystemExit(f"{ckpt_path}: label list differs from vcm.train.dataset.LABELS")
     # Pre-Experiment-29 checkpoints have no feature_config -> the defaults they were trained with.
     loader = DataLoader(ManifestDataset(rows, feature_config=feature_config), batch_size=256, num_workers=num_workers)
@@ -82,10 +94,12 @@ def print_slot_accuracy(rows: list, pairs: list[tuple[int, int]], result: dict, 
     `slot` reads the head of the clip's true intent (the slot head on its
     own); `joint` also requires the intent to be right (what the device
     would actually do). Split by where the label came from: ground-truth
-    text (synthetic clips) vs Whisper's transcript (real audio, noisy)."""
+    text (synthetic clips) vs Whisper's transcript (real audio, noisy). From Experiment 37 the labels come from the master
+    dataset and are split by voice instead: real vs synthetic."""
     print("\nslot values (slot-head accuracy / intent+slot joint accuracy):")
+    source_kinds = sorted({label[2] for label in slot_labels.values()})
     for intent, vocab in result["slot_vocab"].items():
-        for source_kind in ("ground_truth", "whisper"):
+        for source_kind in source_kinds:
             slot_hits = joint_hits = n = 0
             for i, row in enumerate(rows):
                 label = slot_labels.get(row.audio_path)
@@ -136,7 +150,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("checkpoints", type=Path, nargs="+")
     parser.add_argument("--manifest", type=Path, default=Path("data/dataset_manifest.csv"))
-    parser.add_argument("--split", default="test", choices=["train", "val", "test"])
+    parser.add_argument("--split", default="test", choices=["train", "val", "test", "holdout"])
     parser.add_argument("--num-workers", type=int, default=8)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument(
@@ -152,14 +166,25 @@ def main() -> None:
         help="Drop rows from these sources before scoring (e.g. snips_lights, to compare models "
         "trained before and after its speaker re-split without leakage).",
     )
+    parser.add_argument(
+        "--metadata",
+        type=Path,
+        default=None,
+        help="scripts/build_me2_manifest.py's metadata.csv; adds accuracy by accent group and by "
+        "variation match (exact Option B wording or not).",
+    )
     args = parser.parse_args()
 
+    metadata = {}
+    if args.metadata:
+        with args.metadata.open(newline="") as f:
+            metadata = {r["audio_path"]: r for r in csv.DictReader(f)}
     rows = [
         r for r in read_manifest(args.manifest) if r.split == args.split and r.source not in args.exclude_source
     ]
     slot_labels = load_slot_labels(args.slot_labels) if args.slot_labels else {}
     truth = [LABELS.index(r.label) for r in rows]
-    is_real_speech = [not r.is_synthetic and r.label != "unknown_background" for r in rows]
+    is_real_speech = [not r.is_synthetic and r.label not in NON_COMMAND_LABELS for r in rows]
     device = torch.device(args.device)
 
     for ckpt_path in args.checkpoints:
@@ -172,7 +197,10 @@ def main() -> None:
 
         print(f"\n=== {ckpt_path} ({args.split} split)")
         print(f"all:          {accuracy(pairs)}")
-        print(f"real speech:  {accuracy(real_pairs)}   <- comparable to the cascade's 90.62%")
+        print(f"real speech:  {accuracy(real_pairs)}")
+        per_class_all = [accuracy_value([p for p in pairs if p[0] == i]) for i in range(len(LABELS))]
+        per_class_all = [a for a in per_class_all if a is not None]
+        print(f"all, macro (mean of per-class): {sum(per_class_all) / len(per_class_all):.2%} over {len(per_class_all)} classes")
         per_class_real = [accuracy_value([p for p in real_pairs if p[0] == i]) for i in range(len(LABELS))]
         per_class_real = [a for a in per_class_real if a is not None]
         if per_class_real:
@@ -183,7 +211,15 @@ def main() -> None:
         print("by source:")
         for source in sorted({r.source for r in rows}):
             source_pairs = [pair for pair, row in zip(pairs, rows) if row.source == source]
-            print(f"  {source:<16}{accuracy(source_pairs)}")
+            print(f"  {source:<26}{accuracy(source_pairs)}")
+        for column in ("accent_group", "variation_match") if metadata else ():
+            print(f"by {column}:")
+            values = [metadata.get(r.audio_path, {}).get(column, "") for r in rows]
+            if column == "variation_match":
+                values = [v.split()[0] if v else "(none)" for v in values]  # "close 0.83" -> "close"
+            for value in sorted(set(values)):
+                group_pairs = [pair for pair, v in zip(pairs, values) if v == value]
+                print(f"  {value:<26}{accuracy(group_pairs)}")
 
         print("\nper-class (all / real speech):")
         for i, label in enumerate(LABELS):
