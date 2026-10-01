@@ -62,7 +62,7 @@ Mic · 16 kHz → log-mel 40 × 501 (5.0 s, silence-trimmed) → CRNN encoder �
 | Item | Value |
 |---|---|
 | Keyword / intent acc | Wake word: 96.9% of held-out "hey kiwi" clips caught (3.1% missed, Exp 34) · Intent: **92.98%** on the class test set (73.48% real speech), **94.90%** on the Pi holdout set |
-| False-accept rate | Wake word: 12.7 false wake-ups per hour of non-wake speech at threshold 0.6 · Commands: 21.3% of out-of-scope test clips taken as a command |
+| False-accept rate | Wake word: 12.7 false wake-ups per hour of non-wake speech at threshold 0.6 · Commands: 21.3% of out-of-scope test clips acted on as a command (confidence ≥ 0.6; 57.4% at any confidence) |
 | Latency p95 / RTF | Pi: run `scripts/benchmark_pi.py` on the device (not yet measured for this model). DGX, 1 CPU core: **8.8 ms / 0.008** end to end per command (features + model) |
 | Runtime | onnxruntime (CPU) · **1 thread** |
 
