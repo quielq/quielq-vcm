@@ -15,12 +15,13 @@ What runs on the Pi is two small ONNX files (fp32), with no torch:
 | Model | File | Size | Job |
 |---|---|---:|---|
 | Wake word | `models/kiwi_wakeword.onnx` | 107 KB | Always on: scores a 1.5 s window every 0.1 s |
-| Intent + slots | `models/vcm_intent.onnx` | 432 KB | Runs once per command: 20 intents + TIMER/ALARM/BRIGHTNESS/COLOR/TEMPERATURE/CREATE_REMINDER values |
+| Intent + slots | `models/vcm_intent.onnx` | 1.46 MB | Runs once per command: 19 intents + OUT_OF_SCOPE, and the TIMER/ALARM/TEMPERATURE/BRIGHTNESS/COLOR/CREATE_REMINDER values (Experiment 41d). `vcm_intent_small.onnx` (722 KB) is the smaller alternative |
 
 **Why fp32, not the `.int8.onnx` files:** int8 quantization cost the intent
 model 6.8 points of real-speech accuracy (82.1% → 75.3%, EXPERIMENTS.md
-Experiment 32) and saved only 134 KB. fp32 is 539 KB for both models,
-within the 1 MB budget, uses the same memory, and is no slower.
+Experiment 32) and saved only 134 KB. fp32 is 1.57 MB for both models
+(0.83 MB with `vcm_intent_small.onnx`), uses the same memory, and is no
+slower.
 
 Together they're well under the 1 MB budget. The runtime needs only
 **numpy, onnxruntime and sounddevice**: features are computed with a numpy

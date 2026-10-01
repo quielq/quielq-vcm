@@ -1,14 +1,19 @@
 # Training Experiments Log
 
 Real results from actual training runs on the DGX (`ai-n002`, A100-40GB),
-20 classes (19 intents + `unknown_background`). The manifest grew over the
+20 classes (19 intents + `unknown_background`, `OUT_OF_SCOPE` from
+Experiment 37). The manifest grew over the
 project, from 64,665 rows (Experiment 1) to 70,641 (Experiment 36); each
 entry names the one it used. Every number below is copied from a real log
 file, not estimated — log paths are given so any entry can be re-checked
 (logs and checkpoints live on the DGX, not in git).
 
-**Shipped model: Experiment 36, seed 1** (intent + slots, 84.84% real-speech
-test) and the Experiment 34 wake word. [MODEL.md](MODEL.md) describes them;
+**Shipped model: Experiment 41d, seed 0** (intent + slots, trained on the
+class master dataset: 92.98% on the class test set, 73.48% on its real
+speech) and the Experiment 34 wake word. Experiments 1–36 below used the
+project's own dataset; Part 2 (Experiment 37 on) uses only the class
+master dataset. Until Experiment 37 the shipped model was Experiment 36,
+seed 1 (84.84% real-speech test on the old test set). [MODEL.md](MODEL.md) describes them;
 [TESTING.md](TESTING.md) has the final results. The pre-training technology
 survey these experiments started from is
 [archive/original_model_plan.md](archive/original_model_plan.md) (the
@@ -2460,3 +2465,189 @@ Experiment 34:
 
 COLOR is up 6.6 and CREATE_REMINDER down 6.3, but seeds spanned
 59.1–65.9% on CREATE_REMINDER, so live-test the reminder commands.
+
+---
+
+# Part 2: the class master dataset (Experiment 37 on)
+
+On 2026-10-01 the class agreed on one dataset and one schema: the master
+dataset (huggingface.co/datasets/airimonda/ai231-me2-voice-commands) and
+the final Option B schema. From here on every model trains only on its
+train split (plus its numerals set, through explicit flags), selects
+epochs on our speaker-disjoint val split carved from train, and is
+compared on **val**. The class-fixed **test** split and the **holdout**
+(Raspberry Pi live-test) split are reported but never used to choose a
+configuration. 20 classes: 19 intents + `OUT_OF_SCOPE`. Slot heads have
+the schema's 3 values each. See
+[DATASET.md](DATASET.md#the-class-master-dataset-experiment-37-on).
+
+Numbers are mean ± standard deviation over 3 seeds unless a seed is
+named. "Real" = real-speech clips (not synthetic, not out of scope).
+Tables come from `scripts/summarize_experiments.py`.
+
+## Experiment 37 — the Exp 36 recipe on the master dataset
+
+**Setup**: CRNN + 6 slot heads exactly as shipped in Experiment 36
+(99,373 params now that each slot head has 3 values), slot weight 0.3,
+confusable-pair loss alpha 2.0, waveform augmentation (its noise bank is
+the train split's 11 Speech Commands noise clips), 5 s trimmed window,
+Adam 1e-3 with 5 warm-up epochs and cosine decay, batch 128. All runs on
+one A100 (GPU 6 of `ai-n002`), 6 at a time, ~18 s per epoch. Launcher:
+`logs/launch_exp37.sh`.
+
+- **37a**: 80 epochs (the shipped recipe).
+- **37b**: 150 epochs (train is ~7× smaller than the old 70,641 clips).
+- **37c**: 37a + `--real-oversample 3` (each real clip, out-of-scope
+  included, seen 3× per epoch; real clips are 27% of train).
+
+| Config | val all | val real | test all | test real | holdout all | holdout real |
+|---|---:|---:|---:|---:|---:|---:|
+| 37a (80 epochs) | 89.31 ± 0.27 | 64.04 ± 1.66 | 90.09 ± 0.45 | 63.58 ± 1.57 | 92.35 ± 0.51 | 90.70 ± 2.01 |
+| 37b (150 epochs) | 89.71 ± 0.87 | 64.67 ± 3.40 | 90.22 ± 0.57 | 63.94 ± 2.10 | 91.16 ± 1.28 | 88.76 ± 2.92 |
+| 37c (real × 3) | 89.66 ± 0.66 | 65.04 ± 2.46 | 90.17 ± 0.19 | 64.34 ± 1.00 | 91.84 ± 1.02 | 89.92 ± 2.92 |
+
+- All three are within seed noise of each other. More epochs and
+  repeating real clips don't move real-speech accuracy.
+- 37c roughly doubles OUT_OF_SCOPE test accuracy (25–40% vs 15% for 37a,
+  n=47), the class with the fewest train clips (187).
+- **Exact Option B wording scores 97–98%** on test (n=3,601): the demo
+  benchmark phrases work. Clips that ask for the same command in other
+  words ("close" variation match, n=770, mostly real speech) score 58–62%.
+  That is where the errors are.
+- Per accent (37a seed 1, test): Filipino group recordings 71.4% (n=189),
+  native English 66.1%, other non-native 58.0%, synthetic 99.0%.
+
+**Comparison with the Experiment 36 model (old dataset).** On the full
+test split the shipped Exp 36 model scores 92.37% overall and 78.27% on
+real speech, but it trained on much of it: hashing the decoded audio
+finds 2,439 of the 4,418 test clips in its training data (1,901 of the
+group's synthetic clips, which were Option B; 334 SLURP, 128 FSC, 74
+SNIPS) and 78 of 196 holdout clips (`data/me2/overlap_exp36_train.csv`).
+On the 1,979 test clips it never saw:
+
+| Model | all | real | synthetic | Filipino group recordings | SLURP |
+|---|---:|---:|---:|---:|---:|
+| Exp 36 (old dataset, 70,641 clips) | 86.71% | 65.82% | 95.71% | **88.36%** | 47.08% |
+| Exp 37a seed 1 (master dataset) | **89.24%** | 64.98% | **98.98%** | 71.43% | **53.33%** |
+
+So on unseen clips the new model matches the old one overall and on real
+speech, with ~7× less data. The one gap is the group's own Filipino
+recordings (−17 points). Log: `logs/exp37_eval_test_unseen_by_exp36.txt`.
+
+## Experiment 38 — comparable-size baselines
+
+Checklist item: a baseline of comparable size, same data and recipe
+(80 epochs, waveform augmentation, confusable-pair loss), intent only.
+Launchers: `logs/launch_exp38_baselines.sh`, `logs/launch_exp38_bcres.sh`.
+
+| Model | val all | val real | test all | test real | holdout all | holdout real |
+|---|---:|---:|---:|---:|---:|---:|
+| DS-CNN 128 filters × 5 blocks (99,604 params) | 85.52 ± 0.90 | 51.54 ± 2.91 | 86.90 ± 0.75 | 52.21 ± 2.96 | 82.65 ± 2.55 | 70.15 ± 5.85 |
+| BC-ResNet 112 channels × 6 blocks (89,396) | 77.69 ± 0.96 | 35.96 ± 2.64 | 78.83 ± 0.27 | 37.88 ± 1.51 | 67.52 ± 0.78 | 43.41 ± 1.78 |
+| CRNN, Exp 37a (99,373, with slot heads) | 89.31 ± 0.27 | 64.04 ± 1.66 | 90.09 ± 0.45 | 63.58 ± 1.57 | 92.35 ± 0.51 | 90.70 ± 2.01 |
+
+The CRNN beats a DS-CNN of the same size by about 3 points overall and
+11 points on real speech, the same gap that made us switch to it in
+Experiment 28. BC-ResNet, which keeps full frequency resolution through
+every block, does worst at this size (78.8% / 37.9%), as on the old
+dataset (Experiments 3–6). The full-resolution baselines also need 7–12 GB
+of GPU memory each against the CRNN's ~2.5 GB, because the CRNN's
+strided blocks shrink the map early.
+
+## Experiment 39 — one change at a time on Experiment 37a
+
+Each row changes one thing in 37a, 3 seeds, 80 epochs, all on GPU 6
+(two configs at a time). Configurations are compared on **val**; test and
+holdout are shown but were not used to choose. Launcher:
+`logs/run_queue_exp39.sh`.
+
+| Config | val all | val real | test all | test real | holdout all | holdout real |
+|---|---:|---:|---:|---:|---:|---:|
+| 37a (reference) | 89.31 ± 0.27 | 64.04 ± 1.66 | 90.09 ± 0.45 | 63.58 ± 1.57 | 92.35 ± 0.51 | 90.70 ± 2.01 |
+| 39a SpecAugment, frequency masks only | 89.47 ± 0.21 | 64.22 ± 0.56 | 91.42 ± 0.19 | 67.80 ± 0.75 | 91.16 ± 0.29 | 88.37 ± 0.00 |
+| 39b speed 0.85–1.15, noise 80% of clips | 89.40 ± 0.67 | 64.58 ± 2.99 | 89.82 ± 0.50 | 64.27 ± 2.00 | 92.86 ± 0.51 | 92.25 ± 1.78 |
+| 39c + 2,000 numerals clips as background talk | 88.79 ± 0.68 | 61.59 ± 1.34 | 89.23 ± 0.69 | 59.92 ± 2.19 | 90.14 ± 1.93 | 86.43 ± 3.74 |
+| 39d + 1,500 numerals clips as OUT_OF_SCOPE | 89.26 ± 0.50 | 64.40 ± 1.90 | 89.70 ± 0.43 | 63.61 ± 2.02 | 92.18 ± 0.59 | 89.53 ± 1.17 |
+| 39e EMA of weights (0.999) | 88.34 ± 0.18 | 60.42 ± 1.59 | 89.74 ± 0.26 | 63.31 ± 0.00 | 92.69 ± 0.78 | 91.47 ± 0.67 |
+| 39f 4-head attention pooling (107K) | 89.50 ± 0.75 | 64.40 ± 2.16 | 90.55 ± 0.44 | 65.60 ± 1.13 | 92.35 ± 0.51 | 89.92 ± 0.68 |
+| 39g 2-layer GRU (174K) | 89.87 ± 0.04 | 65.49 ± 0.54 | 90.54 ± 0.36 | 65.70 ± 1.99 | 92.35 ± 0.51 | 91.47 ± 1.78 |
+| 39h mean pooling instead of attention | 87.46 ± 0.78 | 58.42 ± 2.05 | 88.59 ± 0.27 | 58.39 ± 1.05 | 90.48 ± 1.18 | 86.82 ± 1.78 |
+| 39i label smoothing 0.1 | 89.64 ± 0.65 | 64.40 ± 2.45 | 89.94 ± 0.52 | 62.31 ± 2.69 | 91.33 ± 1.02 | 89.92 ± 1.35 |
+| 39j wider: 80 channels, GRU 96 (193K) | 89.71 ± 0.56 | 64.67 ± 1.44 | 90.89 ± 0.65 | 67.00 ± 2.04 | 93.71 ± 1.18 | 92.25 ± 2.93 |
+
+- **Attention pooling earns its place.** Mean pooling loses 5.6 points of
+  real speech on val (and 5.2 on test). This answers the open question
+  from Experiment 28 about whether attention pooling is needed.
+- **2-layer GRU** is the best single change: +1.5 real on val with the
+  smallest spread of any config (±0.5). It costs 75K parameters
+  (174K in all, ~0.7 MB fp32).
+- **Frequency-only SpecAugment, 4 attention heads and the wider model**
+  are neutral on val (within ±0.6) but each gains 2–4 points of real
+  speech on test. Kept for the combination, as none hurt.
+- **Numerals as OUT_OF_SCOPE** is neutral on intents but doubles
+  OUT_OF_SCOPE accuracy on test (15% → 30% mean, n=47): bare numbers
+  are not commands, and the dataset labels them out of scope itself.
+- **Hurt, dropped:** numerals as background talk (−2.5 real on val:
+  speech under speech blurs the command), EMA weights (−3.6), and label
+  smoothing and wider speed range (neutral, larger spread).
+
+## Experiment 40 — combining the changes, and self-distillation
+
+**40a (combo)** = 37a + 2-layer GRU + 4 attention-pooling heads +
+frequency-only SpecAugment + 1,500 numerals clips as OUT_OF_SCOPE: every
+Exp 39 change that didn't hurt on val, except the wider model. 181,936
+parameters. **40b** = 40a + distillation from the 9-model Exp 37 ensemble
+(`scripts/generate_ensemble_labels.py`; the ensemble scores 91.98% on
+val against ~89.3% for one of its members). The teacher's probabilities
+and the student's are both softened at T=3 (`--distill-soften-teacher`),
+weight 1.0. No outside data or model: the teacher is our own CRNNs on the
+same train split. Launcher: `logs/run_queue_exp40.sh`.
+
+| Config | val all | val real | test all | test real | holdout all | holdout real |
+|---|---:|---:|---:|---:|---:|---:|
+| 37a (reference) | 89.31 ± 0.27 | 64.04 ± 1.66 | 90.09 ± 0.45 | 63.58 ± 1.57 | 92.35 ± 0.51 | 90.70 ± 2.01 |
+| 39g 2-layer GRU (best single change) | 89.87 ± 0.04 | 65.49 ± 0.54 | 90.54 ± 0.36 | 65.70 ± 1.99 | 92.35 ± 0.51 | 91.47 ± 1.78 |
+| **40a combo** | 90.75 ± 0.62 | 69.65 ± 1.96 | 92.66 ± 0.24 | 73.24 ± 1.58 | 93.20 ± 0.59 | 92.25 ± 0.67 |
+| **40b combo + distillation** | 91.08 ± 0.39 | 70.38 ± 1.41 | 92.44 ± 0.26 | 71.65 ± 0.90 | 94.56 ± 0.78 | 94.19 ± 1.17 |
+
+- **The changes add up.** Individually each was worth 0–1.5 points of
+  real speech on val; together they are worth **+5.6 on val and +9.7 on
+  test** (63.6% → 73.2%), with the overall test score up 2.6 points.
+- **Filipino group recordings** (test, n=189) go from ~71% (37a) to
+  82.5–90.5% (40a seeds), most of the gap to the old Exp 36 model's 88%.
+- **Exact Option B wording: 98.8–99.1%** on test.
+- **Distillation** adds 0.3–0.7 on val and 1.4–1.9 on the holdout set,
+  and lifts OUT_OF_SCOPE (17–28% vs 11–19%), but is 1.6 lower on test
+  real speech. Mixed; see Experiment 41.
+
+## Experiment 41 — wider, a stronger teacher, more out-of-scope examples
+
+Four variations on 40a/40b, 3 seeds each, two configs at a time on GPU 6.
+The wider model has 80 channels and a GRU of 96 (372,096 parameters,
+1.46 MB). The Exp 40 teacher averages the 6 Exp 40 models (91.9% on val).
+Launcher: `logs/run_queue_exp41.sh`.
+
+| Config | val all | val real | test all | test real | holdout all | holdout real |
+|---|---:|---:|---:|---:|---:|---:|
+| 40a combo (182K) | 90.75 ± 0.62 | 69.65 ± 1.96 | 92.66 ± 0.24 | 73.24 ± 1.58 | 93.20 ± 0.59 | 92.25 ± 0.67 |
+| 40b combo + distillation from Exp 37 ensemble (182K) | 91.08 ± 0.39 | 70.38 ± 1.41 | 92.44 ± 0.26 | 71.65 ± 0.90 | 94.56 ± 0.78 | 94.19 ± 1.17 |
+| 41a combo, wider (372K) | 91.34 ± 0.61 | 70.29 ± 1.73 | 92.87 ± 0.35 | 73.68 ± 1.41 | 92.35 ± 1.35 | 89.92 ± 1.78 |
+| 41b combo + distillation from Exp 40 ensemble | 90.72 ± 0.20 | 69.57 ± 0.94 | 92.32 ± 0.16 | 71.85 ± 1.15 | 92.86 ± 0.51 | 91.86 ± 1.16 |
+| 41c = 40b with 4,000 numerals as OOS | 90.82 ± 0.34 | 69.84 ± 1.19 | 92.56 ± 0.42 | 72.55 ± 1.44 | 93.54 ± 0.29 | 92.25 ± 0.67 |
+| **41d combo, wider + distillation (372K)** | 91.60 ± 0.43 | 72.28 ± 1.51 | 92.92 ± 0.10 | 73.21 ± 0.23 | 93.88 ± 1.02 | 91.47 ± 2.42 |
+
+- **41d is the best on val** (91.60% / 72.28% real) and has the smallest
+  test spread of any config (92.92 ± 0.10%).
+- A stronger teacher (41b) and more numerals as OUT_OF_SCOPE (41c) did
+  not help.
+- Width adds about 1 point of real speech on val with distillation, about
+  0 without it (41a vs 40a: +0.6).
+
+**Shipped: 41d seed 0**, the best seed on val (91.98% all, 73.91% real):
+92.98% on test (73.48% real speech), 94.90% on holdout. Exported as
+`models/vcm_intent.onnx` (1,463 KB) and `models/vcm_intent.pt`; the ONNX
+file gives identical results to the checkpoint. **Also kept: 40b seed 1**
+(the best 182K seed on val) as `models/vcm_intent_small.onnx` (722 KB):
+92.21% / 70.99% / 95.41%, for when the intent and wake-word files must
+stay under 1 MB together. On one DGX CPU core the two take 8.8 ms and
+7.0 ms per command at p95, end to end.

@@ -44,7 +44,7 @@ flowchart LR
     subgraph PI[Raspberry Pi 5]
         WAKE["Wake word<br/>kiwi_wakeword.onnx, 107 KB<br/>every 100 ms"] -->|"Hey Kiwi"| REC["Record the command<br/>until 0.6 s of quiet"]
         REC --> FEAT["Log-mel features<br/>numpy"]
-        FEAT --> MODEL["Intent + slot model<br/>vcm_intent.onnx, 432 KB"]
+        FEAT --> MODEL["Intent + slot model<br/>vcm_intent.onnx, 1.46 MB"]
         MODEL -->|"confidence ≥ 0.6"| HOME["Home server<br/>vcm.home.server :8000"]
         MODEL -->|"< 0.6"| REPEAT["Please repeat"]
         HOME --> ACT["Actions: lamp, thermostat, timers,<br/>alarms, reminders, music, volume"]

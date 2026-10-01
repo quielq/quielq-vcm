@@ -317,6 +317,12 @@ def main() -> None:
         help="Softmax temperature for the distillation KL term (Hinton et al. 2015's default "
         "is a mild 2-4). Only used when --distill-weight > 0.",
     )
+    parser.add_argument(
+        "--distill-soften-teacher",
+        action="store_true",
+        help="Soften the teacher's probabilities with --distill-temperature too (for near one-hot "
+        "teachers such as scripts/generate_ensemble_labels.py output).",
+    )
     parser.add_argument("--out", type=Path, default=Path("checkpoints/best.pt"))
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--seed", type=int, default=0, help="Random seed, for comparable experiments")
@@ -440,7 +446,10 @@ def main() -> None:
 
     if use_distillation:
         distill_criterion = DistillationLoss(
-            criterion, distill_weight=args.distill_weight, temperature=args.distill_temperature
+            criterion,
+            distill_weight=args.distill_weight,
+            temperature=args.distill_temperature,
+            soften_teacher=args.distill_soften_teacher,
         )
 
     model_kwargs: dict[str, int | float] = {"num_classes": len(LABELS)}

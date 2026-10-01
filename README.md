@@ -1,63 +1,110 @@
 # VCM: a tiny on-device Voice Command Model ("Hey Kiwi")
 
-Machine exercise for AI222 (Supervised Learning) and AI231 (ML Operations),
-UP Diliman.
+Machine exercise 2 (Voice Controlled Smart Device) for AI231 (ML Operations)
+and AI222 (Supervised Learning), UP Diliman. Always-on keyword and intent
+recognition at the edge, with no cloud round-trip.
 
-Say **"Hey Kiwi"** and then a command, like "set a timer for five minutes"
-or "turn the lights blue". A Raspberry Pi 5 recognizes the command on the
-device. It does not use speech-to-text, a cloud model or an LLM. The Pi then
-acts on the command and answers out loud. A web dashboard shows the lamp,
+Say **"Hey Kiwi"** and then a command, like "set a timer for 30 seconds" or
+"set color to blue". A Raspberry Pi recognizes the command on the device.
+It does not use speech-to-text, a cloud model or an LLM. The Pi then acts on
+the command and answers out loud. A web dashboard shows the lamp,
 thermostat, timers, alarms, reminders, music and call log.
 
-| | |
+**Data:** trained and tested only on the class's shared master dataset and
+final Dataset Schema (19 commands, 6 with slot values), as the class agreed
+on 2026-10-01. The project's earlier version, trained on its own 70k-clip
+dataset (Experiments 1–36), is on the branch
+[`archive/exp36-pre-me2-schema`](https://github.com/quielq/quielq-vcm/tree/archive/exp36-pre-me2-schema)
+(tag `v1-exp36`).
+
+## Submission summary
+
+Every value the ME2 deck asks for. Details and sources are in the linked
+docs.
+
+### Model
+
+```
+Mic · 16 kHz → log-mel 40 × 501 (5.0 s, silence-trimmed) → CRNN encoder → intent head (20) + 6 slot heads (3 values each) → actuator (home server) on the Raspberry Pi
+```
+
+| Item | Value |
 |---|---|
-| **Models on the device** | 539 KB in total. Intent + slot model: 432 KB, 108K parameters. Wake word: 107 KB, 25K parameters. Both fp32 ONNX. |
-| **Compute** | 54M multiply-adds per command. The wake word uses 5.3M per 1.5 s window, 10 times a second. |
-| **Commands** | 19 intents that cover all 10 required categories. Six of them also return a value (timer length, alarm time, brightness, color, temperature, reminder). |
-| **Intent accuracy** | **84.8%** of 6,577 real spoken test commands got the right intent. When a command has a value, the value is right 74% to 100% of the time. |
-| **Speed on the Pi 5** | **9.9 ms** per command. The always-on wake word uses 2% of one CPU core. |
-| **Memory on the Pi 5** | 103 MB for the voice pipeline. About 300 MB for everything we run. |
+| Input | 16 kHz mono → 40-band log-mel, 10 ms hop, **40 × 501** frames (5.0 s window after silence trim) |
+| Encoder | Conv 10×4 stride 2 + 4 depthwise-separable conv blocks (80 channels) → 2-layer bidirectional GRU, 96 per direction (192-dim frame features) → 4-head attention pooling. Not causal: the command is recognized once it ends (the wake word handles streaming) |
+| Intent head | Linear → 20 classes (19 intents + `OUT_OF_SCOPE`) |
+| Slot heads | 6 heads, each with its own attention pooling → 3 schema values (TIMER, ALARM, TEMPERATURE, BRIGHTNESS, COLOR, CREATE_REMINDER) |
+| Actuator | `vcm.home` server: lamp, thermostat, timers, alarms, reminders, Spotify/local music, volume, weather, calls/messages via phone bridge; spoken reply |
+| Parameters / weights | **0.372 M** parameters · **1.46 MB** fp32 ONNX (`models/vcm_intent.onnx`); wake word adds 0.025 M · 0.11 MB |
+| Wake word ("Hey Kiwi") | Small CRNN, 25K params, 1.5 s window scored every 100 ms (Experiment 34, unchanged) |
 
-### What the percentages mean
+### Dataset
 
-All accuracy numbers in this project measure **intent recognition**: did
-the model understand which command was said? We do not measure word-by-word
-transcription, because the model never produces text.
+| Item | Value |
+|---|---|
+| Source | Class master dataset: [huggingface.co/datasets/airimonda/ai231-me2-voice-commands](https://huggingface.co/datasets/airimonda/ai231-me2-voice-commands) (group recordings, Xela's recordings, SLURP, FSC, SNIPS, Timers and Such, Common Voice, Speech Commands, group synthetic set) |
+| Hours / utterances | train 6.34 h / 10,682 · test 2.57 h / 4,418 · holdout 0.17 h / 196 · numerals 21.8 h / 66,390 |
+| Speakers (incl. synthetic voices) | train 315 · test 121 · holdout 5 · numerals 2,547. No speaker in two splits |
+| Labels | **19 intents + OUT_OF_SCOPE · 6 slots** (3 values each, 18 in all), from the final Dataset Schema (Option B, 93 phrases) |
 
-- **Intent accuracy** is the share of test commands where the model's top
-  answer is the correct intent. For example, "turn the volume up" counts as
-  correct only if the model says VOLUME_UP. There are 19 intents plus a
-  background-noise class.
-- **The test commands are real people speaking.** They come from the test
-  split of public datasets (SLURP, Fluent Speech Commands, Timers and Such).
-  The model never trained on them. Synthetic voices are left out of the
-  headline number, because the model scores 94% to 99% on those and they
-  would hide mistakes.
-- **Every test command counts.** A low-confidence answer that the device
-  would reject with "please repeat" still counts as an error here.
-- **Slot accuracy** is separate. It only covers commands that carry a value,
-  like "5 minutes" or "blue", and asks if the value is right.
-- **Wake word** numbers are separate too. They count missed "Hey Kiwi"s and
-  false wake-ups per hour.
+### Training on the A100 cluster
 
-So **84.8% means**: out of every 100 real spoken commands the model had
-never heard, it picked the right intent for about 85.
+| Item | Value |
+|---|---|
+| Cluster | UP DGX `ai-n002`, **1 × A100-40GB** (GPU 6), shared node. ~34 min per seed with 6 runs sharing the GPU |
+| Objective | Class-weighted cross-entropy on the intent + confusable-pair penalty (alpha 2.0) + slot cross-entropy (weight 0.3) + distillation (KL, T=3) toward an ensemble of 9 of our own CRNNs. No CTC |
+| Optimizer | Adam, lr 1e-3, 5 warm-up epochs then cosine decay, batch 128 |
+| Steps / loss | 80 epochs × 85 steps = **6,800 steps**; final train loss 0.64 (incl. distillation term), best val loss 0.50 at epoch 62 (seed 0) |
+| Seeds | 3 (0, 1, 2); shipped seed 0 |
 
-## Contents
+### Validation on the Raspberry Pi
 
-- [What the percentages mean](#what-the-percentages-mean)
-- [How it works](#how-it-works)
-- [The final model, and how we chose it](#the-final-model-and-how-we-chose-it)
-- [Dataset](#dataset)
-- [Training](#training)
-- [Test results](#test-results)
-- [Course concepts applied](#course-concepts-applied)
-- [Codebase structure](#codebase-structure)
-- [Quick start](#quick-start)
-- [Deploy and run on the Raspberry Pi](#deploy-and-run-on-the-raspberry-pi)
-- [Documentation](#documentation)
-- [Future enhancements](#future-enhancements)
-- [Acknowledgments](#acknowledgments)
+| Item | Value |
+|---|---|
+| Keyword / intent acc | Wake word: 96.9% of held-out "hey kiwi" clips caught (3.1% missed, Exp 34) · Intent: **92.98%** on the class test set (73.48% real speech), **94.90%** on the Pi holdout set |
+| False-accept rate | Wake word: 12.7 false wake-ups per hour of non-wake speech at threshold 0.6 · Commands: 21.3% of out-of-scope test clips taken as a command |
+| Latency p95 / RTF | Pi: run `scripts/benchmark_pi.py` on the device (not yet measured for this model). DGX, 1 CPU core: **8.8 ms / 0.008** end to end per command (features + model) |
+| Runtime | onnxruntime (CPU) · **1 thread** |
+
+### To be submitted
+
+| Item | Value |
+|---|---|
+| GitHub repository | [github.com/quielq/quielq-vcm](https://github.com/quielq/quielq-vcm), public, MIT ([LICENSE](LICENSE)) |
+| Dataset location | Hugging Face `airimonda/ai231-me2-voice-commands`; each source keeps its own license (CC BY 4.0, CC0, FSC non-commercial academic, …, see the dataset card). DOI: not minted yet (the dataset owner can create one from the Hugging Face dataset settings or Zenodo) |
+| A100 cluster | `ai-n002`, 1 × A100-40GB, ~34 min per seed, seeds 0/1/2 |
+| Model weights | `models/vcm_intent.onnx`, `models/vcm_intent.pt` (this repo) · release to be created (GitHub release with the two files) · licence: MIT (code and weights); the training data's own terms apply to its use |
+
+### Reviewer checklist
+
+| # | Item | Status |
+|---|---|---|
+| 1 | Repo public, one-command reproduction | `bash scripts/reproduce.sh` (data → train → evaluate → ONNX → benchmark) |
+| 2 | Dataset licensed and citable (DOI) | Licensed per source on the dataset card; DOI pending, to be minted by the dataset owner |
+| 3 | Training logs + final checkpoint committed | [`results/`](results/) (logs, evaluations, launchers for Experiments 37–41) and `models/vcm_intent.pt` |
+| 4 | Pi latency reproduced by the posted script | `python scripts/benchmark_pi.py --clips data/me2/holdout/audio --json bench_pi.json` |
+| 5 | Held-out test set, unseen speakers | Class-fixed test split (4,418 clips, 121 speakers) and holdout (196); no speaker or synthetic voice in two splits |
+| 6 | Baseline of comparable size compared | DS-CNN 99.6K and BC-ResNet 89K params, same data and recipe ([Experiment 38](docs/EXPERIMENTS.md#experiment-38--comparable-size-baselines)) |
+
+## What the percentages mean
+
+All accuracy numbers measure **intent recognition**: did the model pick the
+right command? The model never produces text, so there is no word error
+rate.
+
+- **Test set** = the class's fixed test split of the master dataset:
+  4,418 clips, 47 per Option B variation plus 47 out-of-scope clips. 76% of
+  it is the group's synthetic voices and 24% real people. No test speaker
+  is in training.
+- **Real speech** = the 1,003 test clips spoken by real people (group
+  recordings, SLURP, FSC, SNIPS, …). It is the harder, more honest number:
+  synthetic voices score ~99%.
+- **Holdout** = 196 clips the class set aside for the live test on the
+  Raspberry Pi (2 per variation).
+- **Slot accuracy** is separate: for commands with a value, is the value
+  right?
+- We chose every setting on our **validation** split (carved from train,
+  by speaker) and only report test and holdout.
 
 ## How it works
 
@@ -76,194 +123,203 @@ The full design is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## The final model, and how we chose it
 
-**The shipped model is a CRNN** (convolutional recurrent neural network). It
-reads a 40-band log-mel spectrogram of the command. It outputs one of 20
-classes: 19 intents and background noise. Six **slot heads** also pick the
-value, like "5 minutes", "blue" or "7:00 AM", from a fixed list. The model
-is checkpoint `exp36_joint_w03_s1.pt` (Experiment 36, seed 1), exported as
+**The shipped model is a CRNN** (convolutional recurrent neural network),
+checkpoint `exp41d_combo_wide_distill_s0.pt` (Experiment 41d, seed 0), exported as
 `models/vcm_intent.onnx`. Details are in [docs/MODEL.md](docs/MODEL.md).
 
-**How we got there.** We ran 36 experiments. All of them are logged in
-[docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
+**How we got there on the master dataset** (3 seeds each, mean; every
+experiment is in [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md)):
 
-| Step | Intent accuracy (real speech) | What we learned |
-|---|---:|---|
-| DS-CNN and BC-ResNet, the usual keyword-spotting models (Exp 1 to 27) | ~70% | DS-CNN sees only about 240 ms at a time. That is shorter than one word, so it mixed up "volume up" and "volume down". Loss changes, rebalancing and regularization barely helped. |
-| **CRNN**: strided convolutions, a GRU and attention pooling (Exp 28) | 80.8% | Reading the whole command in order gave the biggest single gain, +11 points. |
-| + waveform augmentation: noise, speed and reverb (Exp 29b) | 85.7% | This closed most of the gap between synthetic and real voices. |
-| + targeted synthetic phrasings (Exp 31) | 85.3% | This fixed phrasings that failed in live tests, like "pause the song". |
-| + slot-value heads, trained together with the intent at weight 0.3 (Exp 32 to 36) | **84.8%** | The model now returns values for 6 intents. It cost about 0.6 points of intent accuracy. |
+| Step | Params | val real | test all | test real | holdout |
+|---|---:|---:|---:|---:|---:|
+| Experiment 36 recipe retrained on the master dataset (37a) | 99K | 64.0% | 90.1% | 63.6% | 92.4% |
+| DS-CNN baseline, same size (38) | 100K | 51.5% | 86.9% | 52.2% | 82.7% |
+| + 2-layer GRU, 4-head attention pooling, frequency-only SpecAugment, numerals as out-of-scope (40a) | 182K | 69.7% | 92.7% | 73.2% | 93.2% |
+| + distillation from an ensemble of our own CRNNs (40b) | 182K | 70.4% | 92.4% | 71.7% | 94.6% |
+| + wider: 80 channels, GRU 96 (**41d, shipped**) | 372K | **72.3%** | **92.9%** | **73.2%** | **93.9%** |
 
-**Why we didn't ship the more accurate ASR cascade.** Commercial assistants
-transcribe speech first and then classify the text. We built that too, with
-Whisper and a text classifier (Experiment 26). It scored **90.6%**. Then we
-measured what it costs to run ([docs/FOOTPRINT.md](docs/FOOTPRINT.md)):
+The shipped file is seed 0 of 41d, the best seed on val: **92.98%** on the
+class test set, **73.48%** on its real speech, **94.90%** on the holdout
+set. `models/vcm_intent_small.onnx` (40b seed 1, 722 KB) is the smaller
+alternative: 92.21% / 70.99% / 95.41%.
 
-| | **Ours (shipped)** | ASR cascade | Cost of the cascade |
-|---|---:|---:|---:|
-| Model files | **539 KB** | ~149 MB | ~280x |
-| Peak memory | **88 to 103 MB** | 478 to 696 MB | 5 to 7x |
-| Latency per command (laptop) | **~3 ms** | 440 to 950 ms | 150 to 300x |
-| Can run as the always-on wake word | **Yes** (2% of a Pi core) | No. It would need a separate wake word. | |
-| Intent accuracy (real speech) | 84.8% | **90.6%** | +5.8 points |
+**Size.** The shipped model is 1.46 MB fp32, above the 1 MB that the
+earlier models kept to. It is still 0.37 M parameters and its latency is
+within a millisecond of the small one (features dominate). Pick
+`--intent-model models/vcm_intent_small.onnx` to stay under 1 MB.
 
-The cascade gains about 6 points of intent accuracy. In exchange it is 280 times
-bigger and 150 times slower, and it still needs a second model for the wake
-word. The assignment asks for a tiny model with no ASR on the device. So we
-ship the CRNN and keep the cascade as the accuracy reference.
+**Compared with the old model.** The previous model (Experiment 36, old
+70k-clip dataset, `models/vcm_intent_exp36.onnx`) trained on 2,439 of the
+4,418 test clips, so its 92.4% on this test set is inflated. On the 1,979
+test clips it never saw it scores 86.7% (65.8% real speech); our first
+retrain on the master dataset already scored 89.2% there.
 
-Other decisions in the final version:
-- **fp32 instead of int8.** int8 lost 6.8 points of accuracy to save 134 KB.
-- **numpy features instead of librosa on the device.** Peak memory dropped
-  from about 330 MB to about 90 MB.
-- **"Hey Kiwi" as the wake word.** It had the fewest sound-alikes among 11
-  candidates.
+What helped and what didn't (Experiment 39, one change at a time):
 
-Everything we tried and dropped is in
-[docs/archive/AUDIT.md](docs/archive/AUDIT.md).
+- **Helped:** a 2-layer GRU; 4-head attention pooling; SpecAugment with
+  frequency masks only; bare numbers from the numerals set as
+  out-of-scope examples; and all of them together (+9.7 points on real
+  speech).
+- **Attention pooling is needed:** plain mean pooling loses 5.6 points of
+  real speech.
+- **Hurt:** numerals as background talk, an EMA of the weights. Label
+  smoothing, a wider speed range and more epochs did nothing.
+- **Comparable-size baselines:** DS-CNN (99.6K params) reaches 86.9% /
+  52.2% real speech and BC-ResNet (89K) 78.8% / 37.9%, against 90.1% /
+  63.6% for the CRNN of the same size (Experiment 38).
+
+**Before the master dataset** we ran 36 experiments on our own data: the
+CRNN beat DS-CNN and BC-ResNet by 11 points, and waveform augmentation
+added 5. An ASR cascade (Whisper + text classifier) was more accurate but
+~280× bigger and 150× slower ([docs/FOOTPRINT.md](docs/FOOTPRINT.md)), and
+the assignment rules out ASR on the device.
 
 ## Dataset
 
-The training data has **70,641 labelled clips in 20 classes**. 64% of them
-are real speech. The clips come from public datasets, a synthetic dataset
-shared by the class, and our own synthetic clips. We screened every
-synthetic clip with Whisper. The steps to rebuild it are in
-[docs/DATASET.md](docs/DATASET.md).
+The class master dataset, as published, with its own train / test /
+holdout splits. We only add a validation split (12% of train, by speaker)
+for choosing epochs and settings. Full description, statistics and build
+steps: [docs/DATASET.md](docs/DATASET.md).
 
-**Download it:** the exact dataset behind the shipped model is published at
-[quielq-vcm-dataset](https://github.com/quielq/quielq-vcm-dataset). It holds
-the manifests, splits, slot labels and a checksum for every audio file.
-Our synthetic clips and wake-word recordings are in its
-[v1.0 release](https://github.com/quielq/quielq-vcm-dataset/releases/tag/v1.0).
-Its README gives each third-party source's license and pinned version, and
-the fetch commands.
+| Split | Clips | Real | Synthetic | Filipino voices | Speakers | Used for |
+|---|---:|---:|---:|---:|---:|---|
+| train | 9,273 | 2,494 | 6,779 | 737 | 271 | Training |
+| val (ours) | 1,409 | 382 | 1,027 | 5 | 44 | Choosing epochs and settings |
+| **test** | **4,418** | 1,050 | 3,368 | 203 | 121 | **Reported results** |
+| holdout | 196 | 96 | 100 | 76 | 5 | Raspberry Pi live test; also scored offline |
+| numerals | 66,390 | all | — | — | 2,547 | Bare numbers as out-of-scope examples (1,500 sampled) |
 
-| Source | Clips | Type | Covers |
-|---|---:|---|---|
-| Fluent Speech Commands | 24,223 | Real | Lights, volume, temperature, music, pause, stop |
-| SLURP | 17,452 | Real | Weather, time, music, messages, alarms, lights, reminders |
-| Snips SLU (lighting) | 2,472 | Real | Lights, brightness, color |
-| Timers and Such | 1,071 | Real | Timers, alarms |
-| Google Speech Commands background noise | 600 | Real noise | `unknown_background` |
-| Option B (class-shared, voice-cloned, QA-filtered) | 16,500 | Synthetic | All 19 intents |
-| Our targeted and slot-value clips (Chatterbox TTS) | 8,323 | Synthetic | Weak phrasings and every slot value |
-
-We mapped each source's labels from its real transcripts and audited them.
-For example, SLURP's "lists" intent turned out to be shopping lists, so we
-dropped it from LIST_REMINDERS. CALL, NEXT and LIST_REMINDERS have no public
-real recordings. Their data is synthetic only.
+Slot values are exactly the schema's: 10 s / 30 s / 1 min, 6:00 AM /
+8:00 AM / 9:00 PM, 18 / 22 / 26 degrees, 20 / 60 / 100 percent, red /
+blue / green, drink water / study / exercise.
 
 ## Training
 
-We trained with PyTorch on UP's shared DGX (A100 GPUs). The final recipe:
+PyTorch on one A100 of UP's shared DGX. The final recipe:
 
-- 80 epochs, batch size 128.
-- Adam optimizer, learning rate 1e-3, 5 warm-up epochs, then cosine decay.
-- Class-weighted cross-entropy for class imbalance.
-- An extra penalty for confusing one-word pairs (up/down, on/off).
-- Slot loss at weight 0.3.
-- Waveform augmentation (background noise, speed change, reverb, time shift).
+- CRNN as above, 372K parameters, dropout 0.1.
+- 80 epochs, batch size 128 (85 steps per epoch, 6,800 steps); Adam, learning
+  rate 1e-3, 5 warm-up epochs, then cosine decay. Best epoch on val: 62.
+- Loss: class-weighted cross-entropy, plus an extra penalty for confusing
+  VOLUME_UP/VOLUME_DOWN/TEMPERATURE and LIGHT_ON/LIGHT_OFF, plus slot
+  cross-entropy at weight 0.3, plus distillation (KL at temperature 3,
+  weight 1) toward the averaged predictions of 9 CRNNs from Experiment 37,
+  trained on the same split.
+- Augmentation: background noise, speed 0.9–1.1×, reverb and start shift
+  on the waveform; 2 frequency masks on the log-mel (no time masks).
+- 1,500 bare-number clips from the numerals set added as OUT_OF_SCOPE.
+- 3 seeds, all on one A100; checkpoints and settings chosen on val.
 
-We trained 3 seeds per configuration. We picked checkpoints on the
-validation split and compared them on the **real-speech test** split.
-[docs/TRAINING.md](docs/TRAINING.md) explains how we ran on the shared node.
-It also has the exact commands to reproduce the shipped models.
+[docs/TRAINING.md](docs/TRAINING.md) explains how we ran on the shared
+node and gives the exact commands. `bash scripts/reproduce.sh` runs all of
+it from a fresh clone.
 
 ## Test results
 
-These are the final numbers for the shipped models. The full tables and
-method are in [docs/TESTING.md](docs/TESTING.md).
+Final numbers for the shipped model. Tables for every seed and split are
+in [docs/TESTING.md](docs/TESTING.md).
 
-**Intent.** On the real-speech test split (6,577 clips), intent accuracy
-is **84.84%**. The macro average, which gives every intent equal weight, is
-83.27%. TEMPERATURE reaches 99%. The
-weakest classes are COLOR (49%), CREATE_REMINDER (59%) and BRIGHTNESS
-(69%). Most of their real test clips come from SLURP, where people phrase
-commands freely.
+**Intent** (`models/vcm_intent.onnx`, identical to its checkpoint):
 
-**Slot values.** How often the slot head picks the right value:
+| | Accuracy | n |
+|---|---:|---:|
+| **Class test set, all clips** | **92.98%** | 4,418 |
+| Real speech | 73.48% | 1,003 |
+| Synthetic voices | 99.50% | 3,368 |
+| Exact Option B wording (the demo phrases) | 99.06% | 3,601 |
+| Same command in other words | 67.66% | 770 |
+| Filipino group recordings | 87.30% | 189 |
+| Macro average over 20 classes | 88.06% | |
+| **Holdout (Pi live-test set)** | **94.90%** (real 94.19%) | 196 |
 
-| TIMER | ALARM | BRIGHTNESS | COLOR | TEMPERATURE\* | CREATE_REMINDER\* |
-|---:|---:|---:|---:|---:|---:|
-| 73.9% | 98.1% | 74.9% | 86.7% | 100% | 100% |
+Strongest classes on real speech: TEMPERATURE and CREATE_REMINDER (100%),
+ALARM 90%, TIMER 89%. Weakest: LIGHT_ON 47%, PLAY_MUSIC 49%, MESSAGE 56%,
+most of them SLURP's free-form phrasings. OUT_OF_SCOPE is right 43% of
+the time; only 21% of out-of-scope test clips would make the device act
+(confidence ≥ 0.6), and in use the wake word filters most of them first.
 
-\*Measured on synthetic speech only. No real recording in the datasets says
-these values.
+**Slot values** (test, slot head right / intent and slot both right):
+97.9% over all 2,538 slotted clips. Real speech: TIMER 89 / 79%, ALARM
+80 / 75%, BRIGHTNESS 100 / 88%, COLOR 87 / 72%, TEMPERATURE 93 / 93%,
+CREATE_REMINDER 78 / 78% (n = 18–118 each).
+
+**Reject threshold.** At 0.6 confidence the device rejects 22% of real
+commands ("please repeat") and is right on 84% of those it accepts.
+
+**Latency.** One CPU core of the DGX: 8.8 ms p95 per command, RTF 0.008
+(`scripts/benchmark_pi.py`). The Raspberry Pi numbers come from the same
+script on the Pi (the previous, smaller model took 9.9 ms on the Pi 5).
 
 **Wake word.** At the default threshold of 0.6, it misses 3.1% of held-out
 "hey kiwi" clips and 5.6% with background noise. It caught all 10 of the
 author's held-out recordings. It fires 12.7 times per hour on a test stream
-full of deliberately confusing phrases.
+full of deliberately confusing phrases. (Experiment 34; the wake word is
+not part of the master dataset.)
 
-**Automated tests.** 237 unit tests run without any hardware
+**Automated tests.** 244 unit tests run without any hardware
 (`python -m pytest`).
 
 ## Course concepts applied
 
-Where the main deep learning concepts from the course show up in this
-project:
-
 | Concept | How we used it | Where |
 |---|---|---|
-| Supervised learning, train/val/test splits | Validation only picks the checkpoint. The test split is used for the final comparison. We split synthetic voices by speaker and re-split Snips by speaker to avoid leakage. | [TESTING.md](docs/TESTING.md), [DATASET.md](docs/DATASET.md) |
-| Datasets and dataloaders | Six sources merged into one manifest format. PyTorch `DataLoader` workers compute features on the fly. Fixed seeds for repeatable runs. | `src/vcm/dataset/`, `src/vcm/train/dataset.py` |
-| Input normalization | Log-mel features are scaled to roughly zero mean and unit variance, using statistics from 2,000 training clips. | `src/vcm/audio/features.py` |
-| CNN | Depthwise-separable convolutions share weights across time and frequency. Strided blocks act like pooling and widen the receptive field. | `CRNN` in `src/vcm/train/architectures.py` |
-| RNN | A bidirectional GRU reads the command frame by frame, so word order matters. | same |
-| Attention | Attention pooling weights the frames that matter most, like the word "up". It is a single linear scorer over time, much smaller than a Transformer's self-attention. | same, [MODEL.md](docs/MODEL.md) |
-| Optimization | Adam, learning-rate warm-up and cosine decay, 3 seeds per setting. | `src/vcm/train/train.py` |
-| Regularization | Data augmentation (waveform noise, speed, reverb, shift) gave the largest gain. The CRNN uses dropout of 0.1. Weight decay and label smoothing were tested and not kept. SpecAugment masking hurt because it can erase the one word that matters. | [EXPERIMENTS.md](docs/EXPERIMENTS.md) Exp 2, 8, 24, 29b |
-| Class imbalance | Inverse-frequency class weights. Focal loss and per-class caps were tested and dropped. | Exp 18 to 23 |
-| Evaluation | Overall and per-class accuracy, confusion pairs, macro average, and a reject threshold for low confidence. | `scripts/evaluate_checkpoint.py` |
-| Efficiency | We compared models by accuracy against parameters, FLOPs, latency, memory and file size. | [FOOTPRINT.md](docs/FOOTPRINT.md) |
-| Model packaging | PyTorch → ONNX export, checked against the checkpoint, then ONNX Runtime on the Pi's CPU. | `src/vcm/deploy/`, `scripts/export_onnx.py` |
-| Knowledge distillation | The ASR cascade taught the small DS-CNN (Exp 27). It helped some classes and hurt others, so we dropped it. | Exp 27 |
-| Quantization | int8 was tested. It lost 6.8 points of accuracy, so we ship fp32. | Exp 32 |
+| Supervised learning, train/val/test splits | The class fixes train/test/holdout by speaker; we carve val from train by speaker and choose every setting on val only. | [DATASET.md](docs/DATASET.md), [TESTING.md](docs/TESTING.md) |
+| Datasets and dataloaders | The Hugging Face dataset is converted to one manifest format; PyTorch `DataLoader` workers compute features on the fly. Fixed seeds. | `scripts/build_me2_manifest.py`, `src/vcm/train/dataset.py` |
+| Input normalization | Log-mel features scaled to roughly zero mean and unit variance. | `src/vcm/audio/features.py` |
+| CNN | Depthwise-separable convolutions; strided blocks act like pooling and widen the receptive field. | `CRNN` in `src/vcm/train/architectures.py` |
+| RNN | A 2-layer bidirectional GRU reads the command frame by frame, so word order matters. | same |
+| Attention | Multi-head attention pooling weights the frames that matter; removing it costs 5.6 points of real speech. | same, [MODEL.md](docs/MODEL.md) |
+| Optimization | Adam, warm-up and cosine decay, 3 seeds per setting. | `src/vcm/train/train.py` |
+| Regularization and augmentation | Waveform noise, speed, reverb and shift; frequency-only SpecAugment (time masks can erase the one word that matters); dropout 0.1. EMA and label smoothing tested, not kept. | [EXPERIMENTS.md](docs/EXPERIMENTS.md) Exp 39 |
+| Class imbalance | Inverse-frequency class weights; extra out-of-scope examples from the numerals set. | Exp 39d |
+| Knowledge distillation | An ensemble of our own CRNNs (same data) teaches a single CRNN. | Exp 40–41 |
+| Evaluation | Overall, real-speech, per-class, per-accent and per-source accuracy; confusion pairs; slot accuracy; reject threshold. | `scripts/evaluate_checkpoint.py` |
+| Efficiency | Accuracy against parameters, file size, latency and memory; comparable-size baselines. | [FOOTPRINT.md](docs/FOOTPRINT.md), Exp 38 |
+| Model packaging | PyTorch → ONNX with labels and slot values in its metadata, then ONNX Runtime on the Pi's CPU. | `src/vcm/deploy/`, `scripts/export_onnx.py` |
 
 ## Codebase structure
 
 ```
 .
 ├── README.md                  ← you are here
+├── LICENSE                    MIT
 ├── pyproject.toml             package and dependencies (extras: dev, train, deploy, rpi)
 ├── requirements-pi.txt        the only packages the Raspberry Pi needs
 ├── configs/
 │   └── settings.example.toml  template for API keys and devices (copy to settings.toml)
-├── models/                    the trained models (ONNX)
-│   ├── vcm_intent.onnx          ★ shipped intent + slot model
+├── models/                    the trained models
+│   ├── vcm_intent.onnx          ★ shipped intent + slot model (ONNX, runs on the Pi)
+│   ├── vcm_intent.pt            ★ its PyTorch checkpoint
 │   ├── kiwi_wakeword.onnx       ★ shipped wake word
-│   ├── vcm_intent_frozen.onnx   earlier variant (Exp 34), kept for comparison
-│   └── kiwi_wakeword.int8.onnx  int8 variant, not used
+│   ├── vcm_intent_exp36.onnx    the previous model (old dataset), for comparison
+│   └── vcm_intent_frozen.onnx, kiwi_wakeword.int8.onnx   older variants, not used
+├── results/                   training logs, evaluation outputs and launchers, Experiments 37–41
 ├── src/vcm/                   the Python package
 │   ├── audio/                 microphone capture, log-mel features, numpy DSP, resampling
 │   ├── wakeword/              "Hey Kiwi" streaming detector
 │   ├── deploy/                ONNX export and ONNX Runtime inference
-│   ├── slots.py               slot-value lists and parsers
+│   ├── slots.py               slot-value vocabularies and parsers
 │   ├── home/                  home server: actions, scheduler, dashboard, Spotify, phone bridge client
 │   ├── actions/               weather API, optional Xiaomi bulb, local music (used by home/)
 │   ├── tts/                   spoken replies (Piper, espeak-ng, macOS say)
 │   ├── hal/                   hardware layer: GPIO button, Sense HAT temperature
 │   ├── config.py              settings loading, platform detection
-│   ├── dataset/               loaders for each data source, manifest format, synthetic-audio QA
+│   ├── dataset/               manifest format, schema, loaders for the old sources
 │   └── train/                 architectures, training loop, losses, augmentation
 ├── scripts/                   command-line tools (see the table below)
-├── tests/                     237 unit tests (pytest), no hardware needed
+├── tests/                     unit tests (pytest), no hardware needed
 ├── deploy/                    systemd services and audio-device rules for the Pi
-├── data/dataset_schema/       the class's 19-intent taxonomy (other data is downloaded, not in git)
+├── data/dataset_schema/       the final class schema (CSV); other data is downloaded, not in git
 └── docs/                      all documentation (see below)
-    ├── reports/               detailed reports for Experiments 32 to 36
-    └── archive/               audit of dropped options, original plans, legacy code
 ```
-
-The scripts, grouped by where they run:
 
 | Stage | Scripts |
 |---|---|
-| **Device** (Pi or laptop) | `vcm_listen.py` (the voice loop), `kiwi_doctor.py` (preflight check), `benchmark_pi.py`, `measure_footprint.py` |
-| **Laptop** | `deploy_pi.sh` (deploy to the Pi), `mac_phone_bridge.py` (calls and messages through the iPhone), `spotify_auth.py`, `record_wakeword.py` |
-| **Build the dataset** (DGX) | `slurp_coverage.py`, `fetch_slurp_audio.py`, `refilter_slurp_manifest.py`, `process_fsc.py`, `fetch_snips_lights.py`, `resplit_snips_by_speaker.py`, `fetch_gsc_background.py`, `fetch_timers_and_such.py`, `qa_filter_option_b.py`, `generate_targeted_synthetic.py`, `add_targeted_synth_to_manifest.py`, `build_manifest.py`, `build_slot_labels.py` |
-| **Train and evaluate** (DGX) | `python -m vcm.train.train`, `train_wakeword.py`, `evaluate_checkpoint.py`, `evaluate_wakeword.py`, `export_onnx.py` |
-| **ASR cascade and analysis** (DGX) | `transcribe_corpus_for_cascade.py` (Whisper transcripts, also used for slot labels), `train_cascade_classifier.py`, `generate_distillation_labels.py` (Exp 27), `wakeword_confusability.py` |
+| **Device** (Pi or laptop) | `vcm_listen.py` (the voice loop), `kiwi_doctor.py` (preflight check), `benchmark_pi.py` (latency p95 / RTF), `measure_footprint.py` |
+| **Laptop** | `deploy_pi.sh` (deploy to the Pi), `mac_phone_bridge.py`, `spotify_auth.py`, `record_wakeword.py` |
+| **Data** (DGX) | `build_me2_manifest.py` (master dataset → manifest, slot labels, metadata) |
+| **Train and evaluate** (DGX) | `reproduce.sh` (all steps), `python -m vcm.train.train`, `generate_ensemble_labels.py` (distillation teacher), `evaluate_checkpoint.py`, `summarize_experiments.py`, `export_onnx.py`, `train_wakeword.py`, `evaluate_wakeword.py` |
+| **Old dataset** (Experiments 1–36) | `build_manifest.py`, `fetch_*.py`, `process_fsc.py`, `qa_filter_option_b.py`, `generate_targeted_synthetic.py`, `build_slot_labels.py`, cascade scripts; see the archive branch |
 
 ## Quick start
 
@@ -272,6 +328,11 @@ The scripts, grouped by where they run:
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev,train,deploy]"
 python -m pytest
+```
+
+**Reproduce the model** on a GPU machine (downloads ~3 GB):
+```bash
+bash scripts/reproduce.sh
 ```
 
 **Try it on a laptop** with its built-in microphone.
@@ -290,7 +351,7 @@ are in [docs/RUNBOOK.md](docs/RUNBOOK.md).
 
 ### What this assumes is already set up
 
-- **The Pi.** A Raspberry Pi 5 (or 4) running **64-bit** Raspberry Pi OS,
+- **The Pi.** A Raspberry Pi 4 or 5 running **64-bit** Raspberry Pi OS,
   with SSH turned on. We use the hostname `raspberrypi`, so it is reachable
   as `raspberrypi.local`.
 - **The laptop.** A Mac or Linux laptop with this repo cloned. The commands
@@ -325,14 +386,21 @@ stack and the services, then run the check again:
 ssh raspberrypi.local 'systemctl --user restart pipewire pipewire-pulse wireplumber && sleep 3 && systemctl --user restart vcm-home vcm'
 ```
 
-**3. Open the dashboard** at http://raspberrypi.local:8000. On Android, use
+**3. Measure latency on the Pi** (for the deck: p95 and RTF, 1 thread). Copy
+the holdout clips over first, or leave out `--clips` to use a synthetic
+command.
+```bash
+ssh raspberrypi.local 'cd ~/quielq-vcm && .venv/bin/python scripts/benchmark_pi.py --json bench_pi.json'
+```
+
+**4. Open the dashboard** at http://raspberrypi.local:8000. On Android, use
 the Pi's IP address instead (`ssh raspberrypi.local hostname -I`).
 
-**4. Talk to it.** Say "Hey Kiwi", then a command, like "what time is it" or
-"set a timer for five minutes". The dashboard's "Simulate a command" box
-runs the same actions without speaking.
+**5. Talk to it.** Say "Hey Kiwi", then a command from the schema, like
+"what time is it" or "start a timer for 30 seconds". The dashboard's
+"Simulate a command" box runs the same actions without speaking.
 
-**5. Calls and messages (optional).** These go through your Mac and iPhone.
+**6. Calls and messages (optional).** These go through your Mac and iPhone.
 Keep this running on the Mac:
 ```bash
 .venv/bin/python scripts/mac_phone_bridge.py --token <bridge_token from settings.toml>
@@ -354,57 +422,41 @@ Keep this running on the Mac:
 |---|---|
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | The assignment, system design, key decisions, hardware |
 | [MODEL.md](docs/MODEL.md) | The shipped models: features, architecture, training recipe, wake word, export |
-| [DATASET.md](docs/DATASET.md) | Every data source, label mapping and quality fix, with steps to rebuild |
+| [DATASET.md](docs/DATASET.md) | The class master dataset and how we use it; the old dataset as history |
 | [TRAINING.md](docs/TRAINING.md) | Training on the shared DGX, and commands to reproduce the shipped models |
-| [EXPERIMENTS.md](docs/EXPERIMENTS.md) | All 36 experiments with results and log paths |
+| [EXPERIMENTS.md](docs/EXPERIMENTS.md) | All experiments: 1–36 on the old dataset, 37 on on the master dataset |
 | [TESTING.md](docs/TESTING.md) | Final test results, evaluation method, the automated test suite |
 | [FOOTPRINT.md](docs/FOOTPRINT.md) | SD card and RAM use on the Pi, and our pipeline vs. the ASR cascade |
 | [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Setting up a Raspberry Pi from a blank SD card |
 | [RUNBOOK.md](docs/RUNBOOK.md) | Starting, testing and demoing the system, and troubleshooting |
-| [reports/](docs/reports/) | Detailed reports for Experiments 32 to 36 |
+| [reports/](docs/reports/) | Detailed reports for Experiments 32 to 36 (old dataset) |
 | [archive/AUDIT.md](docs/archive/AUDIT.md) | Everything we considered and did not ship, and why |
 
 ## Future enhancements
 
-**Accuracy**
-- Improve the weakest real-speech classes with a second round of targeted
-  phrasings based on SLURP's wording. COLOR is at 49% and CREATE_REMINDER at
-  59%. BRIGHTNESS is at 69%, down from 75% in Experiment 29b.
-- Record classmates saying CALL, NEXT and LIST_REMINDERS. These have no real
-  training or test audio. The recording tool is built and waits on the
-  adviser's approval.
-- Audit labels where the ASR cascade confidently disagrees with the label.
-- Try a larger CRNN with 200K to 300K parameters (still under 1.5 MB), over
-  3 seeds.
-- Ask the adviser if attention pooling is allowed. If not, test plain
-  average pooling.
-
-**Features**
-- Add contacts and message text for CALL and MESSAGE. Today both go to one
-  default contact.
-- Add free-text reminders with a due time, and repeating alarms.
-- Add "play <song>", which needs a song slot. On Spotify, STOP currently
-  pauses.
-- Send COLOR to the real Xiaomi bulb. On/off and brightness already work.
-- Make calls without the Mac, through Bluetooth hands-free on the Pi or a
-  phone notification.
-- Make the dashboard an installable phone web app.
-
-**Engineering**
-- Add a login or token to the home server and dashboard. Today anyone on
-  the same network can use them.
-- Split `pyproject.toml` so a plain install is the small device runtime.
-  Training and desktop libraries (librosa, pynput, python-miio) would become
-  extras.
+- **More real speech.** Real clips are 27% of train; synthetic voices
+  score ~99% and real speakers 73.48%. Commands phrased in the
+  speaker's own words are the main source of errors.
+- **Out-of-scope rejection.** OUT_OF_SCOPE has the fewest train clips
+  (187); the device also rejects low-confidence commands.
 - Measure on a Pi Zero 2 W (512 MB), the smallest board that should fit.
+- Add a login or token to the home server and dashboard.
 - Run the test suite in CI on every pull request.
 
 ## Acknowledgments
 
-The dataset is a class effort. Mark Macalacad shared the working taxonomy
-and generated the synthetic "Option B" dataset. Anthony Navarez built the
-transcribe-and-compare QA tool that our synthetic-audio screening is based
-on. Other classmates shared dataset leads and corrections. The details are
-in [docs/DATASET.md](docs/DATASET.md#acknowledgments). Public datasets used:
-SLURP, Fluent Speech Commands, Snips SLU, Timers and Such, and Google Speech
-Commands.
+The dataset is a class effort. Ailene (`airimonda`) collated the master
+dataset and its documentation. Mark Macalacad shared the Dataset Schema
+(Option B) and generated the group's synthetic set. Xela Ubalde shared her
+recordings. Anthony Navarez built the transcribe-and-compare QA tool our
+earlier synthetic-audio screening was based on. Every classmate who
+recorded commands made the real-speech test possible. Public datasets in
+the master dataset: SLURP, Fluent Speech Commands, SNIPS SLU, Timers and
+Such, Common Voice, Google Speech Commands, MLEnd and the Multi-Sensor
+Voice Command dataset.
+
+## License
+
+Code and model weights: [MIT](LICENSE). The dataset is not in this
+repository; each of its sources keeps its own license (see the dataset
+card).

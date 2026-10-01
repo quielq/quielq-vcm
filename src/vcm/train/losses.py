@@ -170,11 +170,18 @@ class DistillationLoss(nn.Module):
     to the base criterion alone for that row, via a per-row mask.
     """
 
-    def __init__(self, base_criterion: nn.Module, distill_weight: float = 1.0, temperature: float = 2.0):
+    def __init__(
+        self, base_criterion: nn.Module, distill_weight: float = 1.0, temperature: float = 2.0, soften_teacher: bool = False
+    ):
+        """soften_teacher: also soften the teacher's probabilities with the
+        temperature (p ** (1 / T), renormalized), as in Hinton et al.; for
+        teachers whose labels are near one-hot, like an ensemble of our own
+        CRNNs on its training clips (Experiment 41). Off for Experiment 27."""
         super().__init__()
         self.base_criterion = base_criterion
         self.distill_weight = distill_weight
         self.temperature = temperature
+        self.soften_teacher = soften_teacher
 
     def forward(self, logits: torch.Tensor, targets: torch.Tensor, teacher_probs: torch.Tensor) -> torch.Tensor:
         base_loss = self.base_criterion(logits, targets)
@@ -184,6 +191,8 @@ class DistillationLoss(nn.Module):
         if not has_teacher.any():
             return base_loss
         student_log_probs = F.log_softmax(logits / self.temperature, dim=1)
+        if self.soften_teacher:
+            teacher_probs = F.softmax(torch.log(teacher_probs.clamp(min=1e-8)) / self.temperature, dim=1)
         kl = F.kl_div(student_log_probs, teacher_probs, reduction="none").sum(dim=1)  # (batch,)
         kl = kl * (self.temperature**2)  # standard distillation temperature scaling
         kl = kl * has_teacher.to(kl.dtype)

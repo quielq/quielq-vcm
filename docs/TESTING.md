@@ -12,78 +12,111 @@ Three kinds of testing, from most to least formal:
 
 ### How the test set is defined
 
-- **Test split only.** Each real dataset keeps its own published
-  train/val/test split; synthetic clips are split by cloned voice.
-- **Real speech only** for the headline number: synthetic clips score 94–99%
-  and would hide real-speech weaknesses. `unknown_background` (noise) is
-  excluded because it isn't speech.
-- **Snips lighting excluded.** Its original split put the same speakers in
-  train and test. It was re-split by speaker in Experiment 32, and earlier
-  models had seen some of the new test speakers, so leaving it out keeps
-  the comparison with older experiments fair. Scores with it are given too.
-- **Model selection on validation, reporting on test.** Checkpoints are
-  chosen by validation accuracy; seeds and configurations are compared on
-  test.
-
-That leaves **6,577 real-speech test clips** from SLURP, Fluent Speech
-Commands and Timers and Such, across 16 intents.
+- **The class's fixed test split** of the master dataset
+  ([DATASET.md](DATASET.md#the-class-master-dataset-experiment-37-on)):
+  4,418 clips, 47 per Option B variation (93 variations) plus 47
+  out-of-scope clips, from 121 speakers and synthetic voices that are in
+  no other split. This is the headline number, the same set every group in
+  the class reports on.
+- **Real speech** is reported next to it: the 1,003 test clips spoken by
+  real people (group recordings, SLURP, FSC, SNIPS, Common Voice, …).
+  Synthetic voices score ~99.5% and make up 76% of the test set, so the
+  real-speech number is the honest one.
+- **Holdout**: the 196 clips the class kept for the live test on the
+  Raspberry Pi, scored offline the same way.
+- **Choosing on validation only.** Every setting and checkpoint was chosen
+  on our val split (12% of train, by speaker). Test and holdout were
+  reported but never used to choose.
+- Every test clip counts, including ones the device would reject for low
+  confidence.
 
 ### Intent accuracy (shipped model, `models/vcm_intent.onnx`)
 
+The ONNX file and its checkpoint (`models/vcm_intent.pt`, Experiment 41d
+seed 0) give identical results.
+
 | Measure | Result |
 |---|---:|
-| **Real-speech test accuracy** | **84.84%** (n = 6,577) |
-| Real speech, macro average (mean of per-class accuracy, 16 classes) | 83.27% |
-| Real speech, including Snips lighting | 83.82% |
-| Seeds of the same recipe (0 / 1 / 2) | 84.86 / **84.84** / 84.46% |
-| ASR cascade on the same clips, for reference (not shippable) | 90.62% |
+| **Class test set, all clips** | **92.98%** (n = 4,418) |
+| Real speech | 73.48% (n = 1,003) |
+| Synthetic voices | 99.50% (n = 3,368) |
+| Macro average over 20 classes | 88.06% |
+| Exact Option B wording (the demo benchmark phrases) | 99.06% (n = 3,601) |
+| Same command and value in other words | 67.66% (n = 770) |
+| Filipino group recordings | 87.30% (n = 189) |
+| **Holdout (Pi live-test set)** | **94.90%** (real speech 94.19%, n = 196) |
+| Seeds of the same recipe (0 / 1 / 2), test all | **92.98** / 92.80 / 92.98% |
+| Seeds, test real speech | **73.48** / 73.08 / 73.08% |
+| Small alternative, `vcm_intent_small.onnx` (722 KB) | 92.21% all, 70.99% real, 95.41% holdout |
 
-The exported ONNX file and its PyTorch checkpoint give identical real-speech
-results, so the numbers above are for the file that runs on the Pi.
+**By accent** (test): Filipino group recordings 87.3% (n=189), Filipino
+open-source 71.4% (n=14), native English 72.8% (n=254), other non-native
+67.3% (n=560), other Asian English 35.0% (n=20), synthetic 99.5%.
 
-**Progress over the project** (real-speech test accuracy, best seed):
+**By source** (test): group recordings 86.6%, Xela's recordings 100%
+(n=21), FSC 78.4%, Common Voice 71.4%, SLURP 67.8%, SNIPS 56.1%.
 
-| Model | Real speech | What changed |
-|---|---:|---|
-| DS-CNN, Experiments 25 / 27 | 70.6% / 71.6% | Baseline |
-| CRNN, Experiment 28 | 80.8% | Architecture: sees the whole command in order |
-| CRNN + waveform augmentation, Experiment 29b | 85.7% | Noise, speed, reverb |
-| + targeted synthetic phrasings, Experiment 31 | 85.3% | Fixed live-test phrasings (98–99% on held-out targeted clips) |
-| + 6 slot-value heads, Experiment 36 (**shipped**) | **84.8%**\* | Timer, alarm, brightness, color, temperature, reminder values |
+**Per class** (test, all / real speech):
 
-\*Experiments 25–31 were scored before the Snips speaker re-split, with
-Snips included; Experiment 36 without it. On Experiment 36's basis,
-Experiment 31 scores 85.5%, so adding the slot heads cost about 0.6 points.
+| Class | All | Real | | Class | All | Real |
+|---|---:|---:|---|---|---:|---:|
+| PLAY_MUSIC | 73.8% | 48.6% | | CALL | 89.4% | 66.7% |
+| WEATHER | 83.0% | 68.1% | | MESSAGE | 94.3% | 55.6% |
+| TIME | 91.5% | 79.0% | | LIST_REMINDERS | 96.5% | 87.2% |
+| LIGHT_ON | 77.3% | 46.6% | | TIMER | 99.5% | 89.5% |
+| LIGHT_OFF | 82.3% | 66.7% | | ALARM | 97.9% | 90.2% |
+| PAUSE | 91.5% | 83.0% | | TEMPERATURE | 100% | 100% |
+| STOP | 92.2% | 88.9% | | BRIGHTNESS | 98.6% | 88.0% |
+| NEXT | 95.7% | 85.7% | | COLOR | 94.3% | 79.7% |
+| VOLUME_UP | 80.1% | 61.1% | | CREATE_REMINDER | 100% | 100% |
+| VOLUME_DOWN | 80.9% | 63.9% | | OUT_OF_SCOPE | 42.6% | — |
 
-**Per class.** Measured for the shipped model on real speech: TEMPERATURE
-99.4%, BRIGHTNESS 69.1%, CREATE_REMINDER 59.1%, COLOR 49.3%
-([reports/exp36_report.md](reports/exp36_report.md)). The last full
-per-class table (EXPERIMENTS.md Experiment 29b, same architecture) has
-PAUSE and STOP at ~100%, TEMPERATURE 99%, TIMER 97% and LIGHT_ON 95%, with
-the same weakest classes. Those classes are dominated by SLURP's free-form
-phrasing ("olly brighten the lights", "do i need a coat") and share
-vocabulary with each other ("set the lights to…").
+The weakest real-speech classes are dominated by SLURP and SNIPS
+free-form phrasings ("olly turn on the lights", "put some music on").
 
-**Reject threshold.** Below 0.6 confidence the device says "didn't catch
-that, please repeat" instead of acting. On validation (measured on the
-Experiment 34 model) this rejects ~11% of commands and raises accuracy on the accepted ones from 86% to 92%.
+**Out of scope.** 42.6% of out-of-scope test clips are labeled
+OUT_OF_SCOPE; 57.4% are taken for some command, but only **21.3%** with
+confidence ≥ 0.6, the level at which the device acts. On the device the
+wake word filters most non-command speech before the model hears it.
+
+**Reject threshold** (real speech): at 0.6 the device says "didn't catch
+that, please repeat" for 21.8% of commands and is right on 84.2% of the
+ones it accepts (53% of its errors are caught).
+
+**Progress on the master dataset** (mean of 3 seeds; EXPERIMENTS.md
+Experiments 37–41):
+
+| Model | Params | val real | test all | test real | holdout |
+|---|---:|---:|---:|---:|---:|
+| DS-CNN baseline, same size (38) | 100K | 51.5% | 86.9% | 52.2% | 82.7% |
+| Experiment 36 recipe, retrained (37a) | 99K | 64.0% | 90.1% | 63.6% | 92.4% |
+| + 2-layer GRU, 4 heads, freq-only SpecAugment, numerals as OOS (40a) | 182K | 69.7% | 92.7% | 73.2% | 93.2% |
+| + self-distillation (40b) | 182K | 70.4% | 92.4% | 71.7% | 94.6% |
+| + wider (41d, **shipped**) | 372K | **72.3%** | **92.9%** | **73.2%** | **93.9%** |
+
+**The old model on this test set.** The Experiment 36 model (old 70k-clip
+dataset) scores 92.37% / 78.27% real here, but 2,439 of the 4,418 test
+clips were in its training data (found by hashing the decoded audio). On
+the 1,979 clips it never saw: 86.71% all, 65.82% real; our first retrain
+(37a) scored 89.24% / 64.98% on the same clips
+(`results/eval/exp37_eval_test_unseen_by_exp36.txt`).
 
 ### Slot values (shipped model)
 
-Accuracy of the predicted value on test clips whose value is known from the
-script (synthetic clips and scripted real recordings), Snips excluded:
+The value head's accuracy on test clips whose value is one of the
+schema's (labels from the dataset). "Joint" also requires the intent to be
+right, which is what the device needs.
 
-| Slot | Values | Slot accuracy | Intent and slot both right | n |
+| Slot | Values | Real: slot / joint | Synthetic: slot / joint | n (real / synthetic) |
 |---|---:|---:|---:|---:|
-| ALARM (time) | 28 | 98.1% | 97.8% | 321 |
-| COLOR | 14 | 86.7% | 85.5% | 337 |
-| BRIGHTNESS (percent) | 12 | 74.9% | 74.9% | 255 |
-| TIMER (duration) | 24 | 73.9% | 73.2% | 395 |
-| TEMPERATURE | 3 | 100% | 100% | 267 |
-| CREATE_REMINDER (task) | 3 | 100% | 99.2% | 261 |
+| TIMER | 10 s, 30 s, 1 min | 89.5% / 79.0% | 100% / 100% | 19 / 404 |
+| ALARM | 6:00 AM, 8:00 AM, 9:00 PM | 80.4% / 74.5% | 99.2% / 98.4% | 51 / 372 |
+| TEMPERATURE | 18, 22, 26 degrees | 92.9% / 92.9% | 99.0% / 99.0% | 28 / 395 |
+| BRIGHTNESS | 20, 60, 100 percent | 100% / 88.0% | 98.5% / 98.2% | 25 / 398 |
+| COLOR | red, blue, green | 87.3% / 72.0% | 98.4% / 98.4% | 118 / 305 |
+| CREATE_REMINDER | drink water, study, exercise | 77.8% / 77.8% | 99.5% / 99.5% | 18 / 405 |
 
-TEMPERATURE and CREATE_REMINDER values are measured on synthetic speech
-only: no real recording in the datasets says those values.
+Over all 2,538 slotted test clips the slot head is right 97.9% of the time.
 
 ### Wake word (`models/kiwi_wakeword.onnx`)
 
@@ -104,31 +137,41 @@ The false-wake stream deliberately includes near-miss phrases ("hey kitty",
 
 ### Known limits of the test set
 
-- **CALL, NEXT and LIST_REMINDERS have no real-speech test clips.** No
-  public dataset covers them, so their scores (94–100%) are on synthetic
-  speech only. Live tests found CALL the least reliable command.
-- No real-speech dataset has Filipino-accented English. It appears only in
-  16 of Option B's 100 voice-cloned reference speakers and in live tests.
+- **Mostly synthetic.** 76% of test clips are the group's synthetic
+  voices, which score ~99.5%. Report real speech next to the overall
+  number.
+- **Small real-speech counts for some classes.** MESSAGE, TIMER and
+  CREATE_REMINDER have 18–19 real test clips each; OUT_OF_SCOPE has 47
+  clips in all.
+- **The wake word is not in the master dataset**; its numbers are from
+  Experiment 34's own held-out voices.
 
 ### Reproduce
 
-On the DGX, with the data in `data/` ([DATASET.md](DATASET.md)):
+On a GPU machine, from a fresh clone: `bash scripts/reproduce.sh`. Or, with
+`data/me2/` built ([DATASET.md](DATASET.md)):
 ```bash
 python scripts/evaluate_checkpoint.py models/vcm_intent.onnx \
-  --manifest data/dataset_manifest_exp36.csv --slot-labels data/slot_labels_exp36.csv \
-  --exclude-source snips_lights
+  --manifest data/me2/manifest.csv --slot-labels data/me2/slot_labels.csv \
+  --metadata data/me2/metadata.csv --split test        # or --split holdout
+python scripts/summarize_experiments.py --logs results/eval --glob '4*'
 python scripts/evaluate_wakeword.py checkpoints/kiwi_wakeword_v2_s0.pt \
   --extra-wake-manifest data/wakeword_real/manifest.csv
 ```
 `evaluate_checkpoint.py` accepts `.pt` checkpoints or `.onnx` files and
-prints real-speech, per-class, confusable-group, slot and reject-threshold
-tables.
+prints overall, real-speech, per-source, per-accent, per-class,
+confusable-group, slot and reject-threshold tables.
 
 ## 2. On-device and live tests
 
-**Speed and memory on the Raspberry Pi 5** (`scripts/benchmark_pi.py`, no
-microphone needed): 9.9 ms per command, the wake word uses 2% of one core,
-94 MB peak. Details in [FOOTPRINT.md](FOOTPRINT.md).
+**Speed and memory** (`scripts/benchmark_pi.py`, no microphone needed;
+`--clips` times real recordings, `--json` saves the numbers). It reports
+mean, p50 and p95 latency per command and the real-time factor, with ONNX
+Runtime on 1 thread. One DGX CPU core, 196 holdout clips: 8.2 ms mean,
+8.8 ms p95, RTF 0.008 at p95. The previous model took 9.9 ms per command
+on the Raspberry Pi 5, with the wake word at 2% of one core and 94 MB peak.
+Run the script on the Pi for this model. Details in
+[FOOTPRINT.md](FOOTPRINT.md).
 
 **Preflight check** before a demo: `scripts/kiwi_doctor.py --beep` checks
 power, microphone, speaker, services, the listener, the home server, the
@@ -144,13 +187,13 @@ tell recognition problems from action problems.
 
 ## 3. Automated test suite
 
-237 tests, all pure logic: no microphone, speaker, network, GPU or dataset
+244 tests, all pure logic: no microphone, speaker, network, GPU or dataset
 needed. They use synthetic arrays, small fixture files and mocked hardware.
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev,train]"      # train adds PyTorch, needed by the training tests
-python -m pytest                   # expect: 237 passed
+python -m pytest                   # expect: 244 passed
 ```
 
 Use `python -m pytest`, not bare `pytest`: on macOS a Homebrew `pytest` can

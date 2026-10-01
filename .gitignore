@@ -61,3 +61,4 @@ debug_recordings/
 
 # Piper TTS voices (~60 MB each): downloaded on the device, see DEPLOYMENT.md
 models/tts/
+models/vcm_intent_reproduced*

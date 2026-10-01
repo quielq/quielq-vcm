@@ -1,0 +1,114 @@
+Using device: cuda, model: bcresnet, augment: False, seed: 0
+Feature config: {'window_s': 5.0, 'trim': True}
+Waveform augmentation on, noise bank: 11 train-split clips
+train: 9273 examples (train_fraction=1.0), val: 1409 examples
+Using ConfusablePairLoss (alpha=2.0, gamma=0.0, label_smoothing=0.0)
+Model params: 89,396
+epoch   1/80  train_loss=4.0321  val_loss=3.9424  val_acc=0.0944  lr=1.00e-05  (50.5s)
+  -> saved new best checkpoint (val_acc=0.0944) to checkpoints/exp38_bcres112x6_s0.pt
+epoch   2/80  train_loss=3.1108  val_loss=3.0972  val_acc=0.0738  lr=2.08e-04  (53.3s)
+epoch   3/80  train_loss=2.9323  val_loss=2.9759  val_acc=0.2136  lr=4.06e-04  (55.5s)
+  -> saved new best checkpoint (val_acc=0.2136) to checkpoints/exp38_bcres112x6_s0.pt
+epoch   4/80  train_loss=2.8589  val_loss=2.8370  val_acc=0.2094  lr=6.04e-04  (54.9s)
+epoch   5/80  train_loss=2.8067  val_loss=2.7614  val_acc=0.2406  lr=8.02e-04  (47.6s)
+  -> saved new best checkpoint (val_acc=0.2406) to checkpoints/exp38_bcres112x6_s0.pt
+epoch   6/80  train_loss=2.7345  val_loss=2.6698  val_acc=0.2321  lr=1.00e-03  (51.4s)
+epoch   7/80  train_loss=2.6737  val_loss=2.5922  val_acc=0.2775  lr=1.00e-03  (53.5s)
+  -> saved new best checkpoint (val_acc=0.2775) to checkpoints/exp38_bcres112x6_s0.pt
+epoch   8/80  train_loss=2.6391  val_loss=2.7304  val_acc=0.3314  lr=9.98e-04  (50.9s)
+  -> saved new best checkpoint (val_acc=0.3314) to checkpoints/exp38_bcres112x6_s0.pt
+epoch   9/80  train_loss=2.5956  val_loss=2.5736  val_acc=0.3804  lr=9.96e-04  (53.7s)
+  -> saved new best checkpoint (val_acc=0.3804) to checkpoints/exp38_bcres112x6_s0.pt
+epoch  10/80  train_loss=2.5405  val_loss=2.6475  val_acc=0.2619  lr=9.93e-04  (53.0s)
+epoch  11/80  train_loss=2.4792  val_loss=2.7535  val_acc=0.2534  lr=9.89e-04  (50.0s)
+epoch  12/80  train_loss=2.4308  val_loss=2.4510  val_acc=0.3435  lr=9.84e-04  (46.8s)
+epoch  13/80  train_loss=2.3914  val_loss=2.4171  val_acc=0.4244  lr=9.79e-04  (46.1s)
+  -> saved new best checkpoint (val_acc=0.4244) to checkpoints/exp38_bcres112x6_s0.pt
+epoch  14/80  train_loss=2.3418  val_loss=2.2560  val_acc=0.4017  lr=9.72e-04  (32.0s)
+epoch  15/80  train_loss=2.2503  val_loss=2.5857  val_acc=0.3435  lr=9.65e-04  (18.2s)
+epoch  16/80  train_loss=2.2078  val_loss=2.3192  val_acc=0.4060  lr=9.57e-04  (16.1s)
+epoch  17/80  train_loss=2.1470  val_loss=2.1423  val_acc=0.4471  lr=9.48e-04  (16.5s)
+  -> saved new best checkpoint (val_acc=0.4471) to checkpoints/exp38_bcres112x6_s0.pt
+epoch  18/80  train_loss=2.0821  val_loss=3.0036  val_acc=0.3428  lr=9.38e-04  (16.4s)
+epoch  19/80  train_loss=2.0512  val_loss=2.4036  val_acc=0.4180  lr=9.28e-04  (15.7s)
+epoch  20/80  train_loss=1.9889  val_loss=2.0098  val_acc=0.5117  lr=9.16e-04  (15.4s)
+  -> saved new best checkpoint (val_acc=0.5117) to checkpoints/exp38_bcres112x6_s0.pt
+epoch  21/80  train_loss=1.9102  val_loss=2.0987  val_acc=0.5124  lr=9.05e-04  (50.2s)
+  -> saved new best checkpoint (val_acc=0.5124) to checkpoints/exp38_bcres112x6_s0.pt
+epoch  22/80  train_loss=1.8924  val_loss=2.3460  val_acc=0.3747  lr=8.92e-04  (46.4s)
+epoch  23/80  train_loss=1.8468  val_loss=2.1774  val_acc=0.5671  lr=8.78e-04  (52.4s)
+  -> saved new best checkpoint (val_acc=0.5671) to checkpoints/exp38_bcres112x6_s0.pt
+epoch  24/80  train_loss=1.8219  val_loss=2.3527  val_acc=0.4067  lr=8.64e-04  (51.6s)
+epoch  25/80  train_loss=1.7805  val_loss=2.1782  val_acc=0.4017  lr=8.50e-04  (55.0s)
+epoch  26/80  train_loss=1.7293  val_loss=4.8477  val_acc=0.3322  lr=8.35e-04  (56.3s)
+epoch  27/80  train_loss=1.6997  val_loss=1.8052  val_acc=0.5756  lr=8.19e-04  (53.7s)
+  -> saved new best checkpoint (val_acc=0.5756) to checkpoints/exp38_bcres112x6_s0.pt
+epoch  28/80  train_loss=1.6452  val_loss=1.9083  val_acc=0.5507  lr=8.02e-04  (46.2s)
+epoch  29/80  train_loss=1.6255  val_loss=1.7152  val_acc=0.6253  lr=7.85e-04  (52.9s)
+  -> saved new best checkpoint (val_acc=0.6253) to checkpoints/exp38_bcres112x6_s0.pt
+epoch  30/80  train_loss=1.5764  val_loss=1.8244  val_acc=0.5699  lr=7.68e-04  (50.7s)
+epoch  31/80  train_loss=1.5418  val_loss=1.7556  val_acc=0.5848  lr=7.50e-04  (54.2s)
+epoch  32/80  train_loss=1.5224  val_loss=1.7185  val_acc=0.6004  lr=7.32e-04  (52.7s)
+epoch  33/80  train_loss=1.4880  val_loss=1.6925  val_acc=0.6246  lr=7.13e-04  (53.5s)
+epoch  34/80  train_loss=1.4877  val_loss=1.9334  val_acc=0.6274  lr=6.94e-04  (55.1s)
+  -> saved new best checkpoint (val_acc=0.6274) to checkpoints/exp38_bcres112x6_s0.pt
+epoch  35/80  train_loss=1.4266  val_loss=1.8241  val_acc=0.6388  lr=6.74e-04  (54.2s)
+  -> saved new best checkpoint (val_acc=0.6388) to checkpoints/exp38_bcres112x6_s0.pt
+epoch  36/80  train_loss=1.4275  val_loss=1.6256  val_acc=0.6842  lr=6.55e-04  (54.7s)
+  -> saved new best checkpoint (val_acc=0.6842) to checkpoints/exp38_bcres112x6_s0.pt
+epoch  37/80  train_loss=1.3817  val_loss=1.6000  val_acc=0.7062  lr=6.34e-04  (54.4s)
+  -> saved new best checkpoint (val_acc=0.7062) to checkpoints/exp38_bcres112x6_s0.pt
+epoch  38/80  train_loss=1.3613  val_loss=1.7180  val_acc=0.6231  lr=6.14e-04  (40.7s)
+epoch  39/80  train_loss=1.3404  val_loss=1.6418  val_acc=0.6650  lr=5.94e-04  (53.5s)
+epoch  40/80  train_loss=1.3305  val_loss=1.6060  val_acc=0.6657  lr=5.73e-04  (54.2s)
+epoch  41/80  train_loss=1.3159  val_loss=1.7160  val_acc=0.6494  lr=5.52e-04  (50.6s)
+epoch  42/80  train_loss=1.2838  val_loss=1.7395  val_acc=0.6089  lr=5.31e-04  (54.7s)
+epoch  43/80  train_loss=1.2825  val_loss=1.4796  val_acc=0.7204  lr=5.10e-04  (52.3s)
+  -> saved new best checkpoint (val_acc=0.7204) to checkpoints/exp38_bcres112x6_s0.pt
+epoch  44/80  train_loss=1.2363  val_loss=2.0461  val_acc=0.6182  lr=4.90e-04  (50.8s)
+epoch  45/80  train_loss=1.2443  val_loss=1.5550  val_acc=0.7111  lr=4.69e-04  (47.6s)
+epoch  46/80  train_loss=1.1954  val_loss=1.5555  val_acc=0.7012  lr=4.48e-04  (49.9s)
+epoch  47/80  train_loss=1.2048  val_loss=1.4755  val_acc=0.7239  lr=4.27e-04  (49.2s)
+  -> saved new best checkpoint (val_acc=0.7239) to checkpoints/exp38_bcres112x6_s0.pt
+epoch  48/80  train_loss=1.1849  val_loss=1.7494  val_acc=0.6799  lr=4.06e-04  (48.6s)
+epoch  49/80  train_loss=1.1736  val_loss=1.5021  val_acc=0.7282  lr=3.86e-04  (50.5s)
+  -> saved new best checkpoint (val_acc=0.7282) to checkpoints/exp38_bcres112x6_s0.pt
+epoch  50/80  train_loss=1.1773  val_loss=1.4494  val_acc=0.7275  lr=3.66e-04  (45.3s)
+epoch  51/80  train_loss=1.1533  val_loss=1.5338  val_acc=0.7296  lr=3.45e-04  (32.3s)
+  -> saved new best checkpoint (val_acc=0.7296) to checkpoints/exp38_bcres112x6_s0.pt
+epoch  52/80  train_loss=1.1337  val_loss=1.3915  val_acc=0.7339  lr=3.26e-04  (33.1s)
+  -> saved new best checkpoint (val_acc=0.7339) to checkpoints/exp38_bcres112x6_s0.pt
+epoch  53/80  train_loss=1.1405  val_loss=1.4627  val_acc=0.7317  lr=3.06e-04  (22.9s)
+epoch  54/80  train_loss=1.1119  val_loss=1.4422  val_acc=0.7232  lr=2.87e-04  (15.2s)
+epoch  55/80  train_loss=1.1217  val_loss=1.4502  val_acc=0.7424  lr=2.68e-04  (15.6s)
+  -> saved new best checkpoint (val_acc=0.7424) to checkpoints/exp38_bcres112x6_s0.pt
+epoch  56/80  train_loss=1.0983  val_loss=1.4370  val_acc=0.7133  lr=2.50e-04  (15.9s)
+epoch  57/80  train_loss=1.0801  val_loss=1.3479  val_acc=0.7630  lr=2.32e-04  (15.2s)
+  -> saved new best checkpoint (val_acc=0.7630) to checkpoints/exp38_bcres112x6_s0.pt
+epoch  58/80  train_loss=1.0818  val_loss=1.3837  val_acc=0.7374  lr=2.15e-04  (15.1s)
+epoch  59/80  train_loss=1.0634  val_loss=1.3599  val_acc=0.7573  lr=1.98e-04  (15.8s)
+epoch  60/80  train_loss=1.0506  val_loss=1.3454  val_acc=0.7502  lr=1.81e-04  (47.3s)
+epoch  61/80  train_loss=1.0581  val_loss=1.4311  val_acc=0.7466  lr=1.65e-04  (47.0s)
+epoch  62/80  train_loss=1.0493  val_loss=1.3599  val_acc=0.7644  lr=1.50e-04  (45.1s)
+  -> saved new best checkpoint (val_acc=0.7644) to checkpoints/exp38_bcres112x6_s0.pt
+epoch  63/80  train_loss=1.0348  val_loss=1.3358  val_acc=0.7630  lr=1.36e-04  (45.4s)
+epoch  64/80  train_loss=1.0474  val_loss=1.3380  val_acc=0.7559  lr=1.22e-04  (44.5s)
+epoch  65/80  train_loss=1.0380  val_loss=1.3749  val_acc=0.7431  lr=1.08e-04  (46.0s)
+epoch  66/80  train_loss=1.0222  val_loss=1.3381  val_acc=0.7551  lr=9.55e-05  (49.0s)
+epoch  67/80  train_loss=1.0140  val_loss=1.3322  val_acc=0.7523  lr=8.35e-05  (40.0s)
+epoch  68/80  train_loss=1.0216  val_loss=1.3333  val_acc=0.7672  lr=7.23e-05  (40.3s)
+  -> saved new best checkpoint (val_acc=0.7672) to checkpoints/exp38_bcres112x6_s0.pt
+epoch  69/80  train_loss=1.0162  val_loss=1.3281  val_acc=0.7480  lr=6.18e-05  (43.1s)
+epoch  70/80  train_loss=1.0176  val_loss=1.3479  val_acc=0.7480  lr=5.21e-05  (45.7s)
+epoch  71/80  train_loss=1.0224  val_loss=1.3457  val_acc=0.7537  lr=4.32e-05  (48.2s)
+epoch  72/80  train_loss=1.0014  val_loss=1.3142  val_acc=0.7608  lr=3.51e-05  (47.3s)
+epoch  73/80  train_loss=0.9942  val_loss=1.3254  val_acc=0.7630  lr=2.78e-05  (49.0s)
+epoch  74/80  train_loss=0.9927  val_loss=1.3255  val_acc=0.7608  lr=2.13e-05  (48.4s)
+epoch  75/80  train_loss=0.9914  val_loss=1.3186  val_acc=0.7630  lr=1.57e-05  (37.8s)
+epoch  76/80  train_loss=0.9972  val_loss=1.3186  val_acc=0.7622  lr=1.09e-05  (47.4s)
+epoch  77/80  train_loss=0.9937  val_loss=1.3252  val_acc=0.7608  lr=7.00e-06  (48.5s)
+epoch  78/80  train_loss=0.9953  val_loss=1.3102  val_acc=0.7601  lr=3.94e-06  (49.1s)
+epoch  79/80  train_loss=0.9982  val_loss=1.3135  val_acc=0.7644  lr=1.75e-06  (43.9s)
+epoch  80/80  train_loss=1.0038  val_loss=1.3187  val_acc=0.7630  lr=4.39e-07  (45.9s)
+
+Done. Best val_acc=0.7672, checkpoint at checkpoints/exp38_bcres112x6_s0.pt
