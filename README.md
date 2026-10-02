@@ -63,8 +63,8 @@ Mic · 16 kHz → log-mel 40 × 501 (5.0 s, silence-trimmed) → CRNN encoder �
 |---|---|
 | Keyword / intent acc | Wake word: 95.9% of held-out "hey kiwi" clips caught (95.4% with 10 dB noise, 10/10 of the author's held-out takes) · Intent: **92.98%** on the class test set (73.48% real speech), **94.90%** on the Pi holdout set |
 | False-accept rate | Wake word: 11.2 false wake-ups per hour while streaming the master test split plus near-miss phrases, threshold 0.6 · Commands: 21.3% of out-of-scope test clips acted on (confidence ≥ 0.6), see [Out of scope](#out-of-scope) |
-| Latency p95 / RTF | Pi: run `scripts/benchmark_pi.py` on the device (not yet measured for this model). DGX, 1 CPU core: **8.8 ms / 0.008** end to end per command (features + model) |
-| Runtime | onnxruntime (CPU) · **1 thread** |
+| Latency p95 / RTF | **15.8 ms / 0.0063** end to end per command on the Raspberry Pi 5 (p50 13.9 ms: features 3.8 + model 10.0); wake word 1.9 ms per 100 ms hop, 1.9% of one core. `vcm_intent_small.onnx`: 12.1 ms / 0.0048 ([results/bench_pi5.md](results/bench_pi5.md)) |
+| Runtime | onnxruntime (CPU) · **1 thread** · Raspberry Pi 5 (8 GB): 100 MB peak RSS for the listener, 604 MB used system-wide with both services |
 
 ### To be submitted
 
@@ -82,7 +82,7 @@ Mic · 16 kHz → log-mel 40 × 501 (5.0 s, silence-trimmed) → CRNN encoder �
 | 1 | Repo public, one-command reproduction | `bash scripts/reproduce.sh` (data → train → evaluate → ONNX → benchmark) |
 | 2 | Dataset licensed and citable (DOI) | Licensed per source on the dataset card; DOI pending, to be minted by the dataset owner |
 | 3 | Training logs + final checkpoint committed | [`results/`](results/) (logs, evaluations, launchers for Experiments 37–41) and `models/vcm_intent.pt` |
-| 4 | Pi latency reproduced by the posted script | `python scripts/benchmark_pi.py --clips data/me2/holdout/audio --json bench_pi.json` |
+| 4 | Pi latency reproduced by the posted script | `python scripts/benchmark_pi.py --json bench_pi.json` on the Pi 5: 15.8 ms p95 ([results/bench_pi5.md](results/bench_pi5.md)) |
 | 5 | Held-out test set, unseen speakers | Class-fixed test split (4,418 clips, 121 speakers) and holdout (196); no speaker or synthetic voice in two splits |
 | 6 | Baseline of comparable size compared | DS-CNN 99.6K and BC-ResNet 89K params, same data and recipe ([Experiment 38](docs/EXPERIMENTS.md#experiment-38--comparable-size-baselines)) |
 
@@ -246,9 +246,11 @@ CREATE_REMINDER 78 / 78% (n = 18–118 each).
 **Reject threshold.** At 0.6 confidence the device rejects 22% of real
 commands ("please repeat") and is right on 84% of those it accepts.
 
-**Latency.** One CPU core of the DGX: 8.8 ms p95 per command, RTF 0.008
-(`scripts/benchmark_pi.py`). The Raspberry Pi numbers come from the same
-script on the Pi (the previous, smaller model took 9.9 ms on the Pi 5).
+**Latency on the Raspberry Pi 5** (`scripts/benchmark_pi.py`, 1 thread):
+13.9 ms p50 / 15.8 ms p95 per command end to end, RTF 0.0063 at p95; the
+wake word uses 1.9% of one core. The previous, smaller model took 9.9 ms;
+`vcm_intent_small.onnx` takes 12.1 ms p95. Details:
+[results/bench_pi5.md](results/bench_pi5.md).
 
 ### Out of scope
 

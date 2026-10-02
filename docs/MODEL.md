@@ -383,13 +383,14 @@ default is 0.6, and 0.4 while music is playing.
   this rejects ~11% of commands and raises accuracy on the accepted ones
   from 86% to 92%.
 
-Measured cost (`scripts/benchmark_pi.py`, 196 holdout clips, 1 thread): on
-one DGX CPU core the shipped model takes 8.2 ms mean / 8.8 ms p95 per
-command end to end (RTF 0.008 at p95); the small one 6.6 / 7.0 ms. The
-previous model (Experiment 36, 432 KB) took 9.9 ms on the Raspberry Pi 5
-(3.7 ms features + 6.2 ms model), with the wake word at 2% of one core and
-94 MB peak memory; run the same script on the Pi for this model's numbers.
-See [FOOTPRINT.md](FOOTPRINT.md).
+Measured cost on the Raspberry Pi 5 (`scripts/benchmark_pi.py`, 1 thread,
+both services running): **13.9 ms p50 / 15.8 ms p95 per command** end to
+end (3.8 ms features + 10.0 ms model), RTF 0.0063 at p95; the wake word
+takes 1.9 ms per 100 ms hop, 1.9% of one core; 100 MB peak memory. The
+small model takes 12.1 ms p95 (7.2 ms model), and the previous Experiment
+36 model took 9.9 ms (6.2 ms model). Details in
+[results/bench_pi5.md](../results/bench_pi5.md) and
+[FOOTPRINT.md](FOOTPRINT.md).
 
 ## 8. Alternative considered: ASR cascade
 

@@ -11,6 +11,7 @@ Everything behind the numbers in the docs, copied from the DGX by
 | `eval/final_onnx_eval_<split>.txt` | The shipped ONNX files (`models/vcm_intent.onnx`, `vcm_intent_small.onnx`) on test and holdout |
 | `eval/exp37_baseline_exp36onnx_*.txt`, `eval/exp37_eval_test_unseen_by_exp36.txt` | The previous (old-dataset) model on this test set, and on the test clips it never trained on |
 | `launchers/` | The exact shell scripts that launched each experiment on GPU 6 of `ai-n002` |
+| `bench_pi5.md` | The Raspberry Pi 5 measurements (latency p50/p95, RTF, memory) of the shipped models |
 | `bench_dgx_1core_*.json` | `scripts/benchmark_pi.py` on one DGX CPU core (latency p50/p95, RTF), for comparison with the Pi |
 
 The shipped wake word is Experiment 42 seed 1 (`train_logs/exp42_wake_me2_s1.log`, `eval/exp42_eval_wake_*.txt`, checkpoint `models/kiwi_wakeword.pt`).
