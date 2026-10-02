@@ -14,7 +14,7 @@ What runs on the Pi is two small ONNX files (fp32), with no torch:
 
 | Model | File | Size | Job |
 |---|---|---:|---|
-| Wake word | `models/kiwi_wakeword.onnx` | 107 KB | Always on: scores a 1.5 s window every 0.1 s |
+| Wake word | `models/kiwi_wakeword.onnx` | 107 KB | Always on: scores a 1.5 s window every 0.1 s (Experiment 42; same size as the Experiment 34 one) |
 | Intent + slots | `models/vcm_intent.onnx` | 1.46 MB | Runs once per command: 19 intents + OUT_OF_SCOPE, and the TIMER/ALARM/TEMPERATURE/BRIGHTNESS/COLOR/CREATE_REMINDER values (Experiment 41d). `vcm_intent_small.onnx` (722 KB) is the smaller alternative |
 
 **Why fp32, not the `.int8.onnx` files:** int8 quantization cost the intent

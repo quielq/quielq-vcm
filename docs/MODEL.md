@@ -157,7 +157,10 @@ parameters.
 
 **The wake word** uses the same design at a smaller size: 32 channels, 32
 GRU units each way, and a 1.5 s input (40 × 151 frames, which becomes 19
-steps). It has 25,475 parameters and 2 outputs: "hey kiwi" or not.
+steps). It has 25,475 parameters (107 KB as fp32 ONNX, 5.3M multiply-adds
+per window) and 2 outputs: "hey kiwi" or not. Retraining it in Experiment
+42 changed only its training data, so the size is the same as the
+Experiment 34 detector's.
 
 ### 3.3 Why a CRNN
 

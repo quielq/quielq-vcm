@@ -36,7 +36,7 @@ Mic · 16 kHz → log-mel 40 × 501 (5.0 s, silence-trimmed) → CRNN encoder �
 | Slot heads | 6 heads, each with its own attention pooling → 3 schema values (TIMER, ALARM, TEMPERATURE, BRIGHTNESS, COLOR, CREATE_REMINDER) |
 | Actuator | `vcm.home` server: lamp, thermostat, timers, alarms, reminders, Spotify/local music, volume, weather, calls/messages via phone bridge; spoken reply |
 | Parameters / weights | **0.372 M** parameters · **1.46 MB** fp32 ONNX (`models/vcm_intent.onnx`); the wake word adds 0.025 M · 0.11 MB (`models/kiwi_wakeword.onnx`) |
-| Wake word ("Hey Kiwi") | Small CRNN, 25K params, 1.5 s window scored every 100 ms. Retrained with the master dataset as its "not the wake word" examples (Experiment 42) |
+| Wake word ("Hey Kiwi") | Small CRNN: 32 channels, 1-layer GRU of 32, 25,475 params, 107 KB fp32, 5.3M multiply-adds per 1.5 s window, scored every 100 ms. Retrained with the master dataset as its "not the wake word" examples (Experiment 42); same architecture and size as before |
 
 ### Dataset
 
@@ -282,7 +282,9 @@ master test split streamed as one 3.05 h recording with near-miss phrases:
 | 0.85 | 7.9% | 11.3% | 0/10 | 4.3 |
 | 0.95 | 17.9% | 24.0% | 1/10 | 1.6 |
 
-The previous wake word (Experiment 34, `models/kiwi_wakeword_exp34.onnx`)
+Same architecture and size as the previous detector (25,475 parameters,
+107 KB); only the training data changed. The previous wake word
+(Experiment 34, `models/kiwi_wakeword_exp34.onnx`)
 fires 19.7 times per hour on the same stream at 0.6 and misses 3.1% / 6.6%.
 The device uses 0.6, and 0.4 while music plays.
 
