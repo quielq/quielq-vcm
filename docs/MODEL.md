@@ -337,7 +337,7 @@ the current test set (none of its clips were in that train split):
 **Figure 6. The training objective.** One forward pass of the student
 feeds four loss terms. The teacher is an ensemble of 9 CRNNs trained on
 the same split with the Experiment 36 recipe (Experiment 43t; 95.0% on
-val against 93.2% for one of them), whose averaged predictions are
+val against 93.2% for one of them on average; EXPERIMENTS.md), whose averaged predictions are
 computed once, before training, and stored as soft labels; it is not used on the device. Only the student
 (the shipped CRNN) is exported.
 
@@ -456,10 +456,11 @@ default is 0.6, and 0.4 while music is playing.
   from 86% to 92%.
 
 Measured cost on the Raspberry Pi 5 (`scripts/benchmark_pi.py`, 1 thread,
-both services running): **13.9 ms p50 / 15.8 ms p95 per command** end to
-end (3.8 ms features + 10.0 ms model), RTF 0.0063 at p95; the wake word
-takes 1.9 ms per 100 ms hop, 1.9% of one core; 100 MB peak memory. The
-small model takes 12.1 ms p95 (7.2 ms model), and the previous Experiment
+both services running, shipped Experiment 43b weights): **13.9 ms p50 /
+15.2 ms p95 per command** end to end (3.8 ms features + 10.1 ms model),
+RTF 0.0061 at p95; the wake word takes 2.0 ms per 100 ms hop at p95, 1.9%
+of one core; 99 MB peak memory. The small model takes 12.1 ms p95 (7.2 ms
+model, Experiment 40b weights), and the previous Experiment
 36 model took 9.9 ms (6.2 ms model). Details in
 [results/bench_pi5.md](../results/bench_pi5.md) and
 [FOOTPRINT.md](FOOTPRINT.md).

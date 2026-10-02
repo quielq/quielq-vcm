@@ -4,12 +4,11 @@
 > taken with the Experiment 36 models (intent 432 KB + wake word 107 KB =
 > 539 KB). The current intent model, trained on the class master dataset,
 > is 1.46 MB (1.57 MB with the wake word; `vcm_intent_small.onnx` keeps it
-> at 0.83 MB). Measured on the Pi 5 on 2026-10-02: 13.9 ms p50 / 15.8 ms p95
-> per command (3.8 ms features + 10.0 ms model; the Experiment 36 model took
-> 9.9 ms), wake word 1.9% of one core, listener 95 MB RSS, home server 47 MB,
-> 604 MB used system-wide with both services
-> ([results/bench_pi5.md](../results/bench_pi5.md); measured with the 41d weights,
-> the same architecture as the shipped 43b model). The SD-card and package
+> at 0.83 MB). Measured on the Pi 5 on 2026-10-02 with the shipped 43b
+> weights: 13.9 ms p50 / 15.2 ms p95 per command (3.8 ms features + 10.1 ms
+> model; the Experiment 36 model took 9.9 ms), wake word 1.9% of one core,
+> listener 99 MB RSS, 719 MB used system-wide with both services
+> ([results/bench_pi5.md](../results/bench_pi5.md)). The SD-card and package
 > numbers below are unchanged apart from the model files.
 
 How much SD card space and RAM this project needs, measured rather than
@@ -83,11 +82,11 @@ difference between the two home-server numbers.
 `scripts/benchmark_pi.py` on the device, 1 thread
 ([results/bench_pi5.md](../results/bench_pi5.md)):
 
-| | Shipped (Experiment 43b, 1.46 MB; measured with the 41d weights, same architecture) | Previous (Experiment 36, 432 KB) |
+| | Shipped (Experiment 43b, 1.46 MB) | Previous (Experiment 36, 432 KB) |
 |---|---:|---:|
-| Per command, p50 / p95 | **13.9 / 15.8 ms** (features 3.8 ms + model 10.0 ms), RTF 0.0063 | 9.9 ms (features 3.7 ms + model 6.2 ms) |
+| Per command, p50 / p95 | **13.9 / 15.2 ms** (features 3.8 ms + model 10.1 ms), RTF 0.0061 | 9.9 ms (features 3.7 ms + model 6.2 ms) |
 | Wake word, per 100 ms hop | 1.9 ms, so **1.9% of one core**, always on | 1.9 ms, 2% of one core |
-| Peak memory (listener) | 100 MB | 94 MB |
+| Peak memory (listener) | 99 MB | 94 MB |
 
 ## Part 2: our pipeline vs. an ASR cascade
 
@@ -109,7 +108,7 @@ extra accuracy of the ASR cascade (Experiment 26) would cost.
 | Minimum board RAM (with OS, ~60–100 MB) | **512 MB** | **1 GB+** | |
 | Memory for the models once loaded | ~8.5 MB | ~290–370 MB | ~40× |
 | Latency per command, laptop CPU | **3.1–3.4 ms** | **440–950 ms** | ~150–300× |
-| Latency per command, Pi 5 | **15.8 ms p95** (measured with the Experiment 41d weights, same architecture as 43b; Experiment 36: 9.9 ms) | ~1–2.5 s (projected) | |
+| Latency per command, Pi 5 | **15.2 ms p95** (Experiment 36: 9.9 ms) | ~1–2.5 s (projected) | |
 | Python packages to install | ~149 MB: numpy, onnxruntime, sounddevice | ~330 MB: adds faster-whisper, CTranslate2, PyAV, tokenizers, scikit-learn, scipy | ~2× |
 | Real-speech test accuracy | 84.8% (Experiment 36) | **90.6%** (Experiment 26) | ASR +5.8 points |
 | Works as the always-on wake word? | Yes, 2% of one Pi 5 core | **No.** Scoring a 1.5 s window every 0.1 s would need ~4.6 s of compute per second of audio | |
@@ -169,7 +168,7 @@ measured here, a Pi Zero 2 W core ~8–15× slower).
 
 | Board | Ours | ASR cascade |
 |---|---|---|
-| Pi 5, 8 GB | **15.8 ms p95 per command, 100 MB** (measured with the 41d weights, same architecture as the shipped 43b) | Works: ~1–2.5 s per command |
+| Pi 5, 8 GB | **15.2 ms p95 per command, 99 MB** | Works: ~1–2.5 s per command |
 | Pi 5 or Pi 4, 2 GB | Easy | Fits, but takes a quarter to a third of RAM, and each command takes seconds |
 | Pi Zero 2 W, 512 MB | Fits (~100 MB), ~80 ms per command | **Doesn't fit.** Its 478 MB+ peak leaves no room for the OS, and each command would take ~5–10 s even if it ran |
 
