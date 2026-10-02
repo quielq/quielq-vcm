@@ -206,11 +206,11 @@ confusable-group, slot and reject-threshold tables.
 **Speed and memory** (`scripts/benchmark_pi.py`, no microphone needed;
 `--clips` times real recordings, `--json` saves the numbers). It reports
 mean, p50 and p95 latency per command and the real-time factor, with ONNX
-Runtime on 1 thread. One DGX CPU core, 196 holdout clips: 8.2 ms mean,
-8.8 ms p95, RTF 0.008 at p95. The previous model took 9.9 ms per command
-on the Raspberry Pi 5, with the wake word at 2% of one core and 94 MB peak.
-Run the script on the Pi for this model. Details in
-[FOOTPRINT.md](FOOTPRINT.md).
+Runtime on 1 thread. On the Raspberry Pi 5 (8 GB): 13.9 ms p50 / 15.8 ms
+p95 per command, RTF 0.0063 at p95, wake word 1.9% of one core, 100 MB
+peak; 604 MB used system-wide with both services running
+([results/bench_pi5.md](../results/bench_pi5.md)). The previous model took
+9.9 ms. Details in [FOOTPRINT.md](FOOTPRINT.md).
 
 **Preflight check** before a demo: `scripts/kiwi_doctor.py --beep` checks
 power, microphone, speaker, services, the listener, the home server, the

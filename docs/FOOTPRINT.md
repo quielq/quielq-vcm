@@ -4,11 +4,12 @@
 > taken with the Experiment 36 models (intent 432 KB + wake word 107 KB =
 > 539 KB). The current intent model, trained on the class master dataset,
 > is 1.46 MB (1.57 MB with the wake word; `vcm_intent_small.onnx` keeps it
-> at 0.83 MB). It has 3.4× the parameters but needs about the same time per
-> command on one DGX core (8.8 ms p95, vs 10.8 ms for the Experiment 36 model;
-> features dominate). Re-run
-> `scripts/benchmark_pi.py` and `scripts/measure_footprint.py` on the Pi
-> for its own numbers.
+> at 0.83 MB). Measured on the Pi 5 on 2026-10-02: 13.9 ms p50 / 15.8 ms p95
+> per command (3.8 ms features + 10.0 ms model; the Experiment 36 model took
+> 9.9 ms), wake word 1.9% of one core, listener 95 MB RSS, home server 47 MB,
+> 604 MB used system-wide with both services
+> ([results/bench_pi5.md](../results/bench_pi5.md)). The SD-card and package
+> numbers below are unchanged apart from the model files.
 
 How much SD card space and RAM this project needs, measured rather than
 estimated. Part 1 is the device, Part 2 compares our pipeline with the ASR
