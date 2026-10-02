@@ -97,7 +97,7 @@ L = CE_w(intent) + α · p(confusable classes) + 0.3 · Σ CE(slot) + T² · KL(
 
 | Item | Value |
 |---|---|
-| Cluster | UP DGX `ai-n002`, **1 × A100-40GB** (GPU 6), shared node. Training the final model takes **~54 min** (80 epochs at ~30–40 s each, with 8 other runs and another user's job sharing the GPU) |
+| Cluster | UP DGX `ai-n002`, **1 × A100-40GB** (GPU 6), shared node. Training the final model takes **~54 min** (80 epochs at ~40 s each on average, with 8 other runs and another user's job sharing the GPU) |
 | Objective | Class-weighted cross-entropy + confusable-pair penalty (α 2.0) + slot cross-entropy (weight 0.3) + distillation (KL, T = 3, weight 1), as above |
 | Optimizer | Adam, lr 1e-3, batch 128. A 5-epoch linear warm-up keeps the first updates small while Adam's moment estimates and BatchNorm statistics settle, then cosine decay anneals the learning rate towards zero |
 | Regularization | Waveform augmentation (background noise at 5–25 dB SNR, speed 0.9–1.1×, room reverb, 0–0.3 s shift), **SpecAugment with frequency masks only** (time masks can erase the single word that decides the class), dropout 0.1 |
@@ -129,7 +129,7 @@ real time.
 |---|---|
 | GitHub repository | [github.com/quielq/quielq-vcm](https://github.com/quielq/quielq-vcm), public, MIT ([LICENSE](LICENSE)) |
 | Dataset location | Hugging Face `airimonda/ai231-me2-voice-commands`; each source keeps its own license (CC BY 4.0, CC0, FSC non-commercial academic, …, see the dataset card). DOI: not minted yet (the dataset owner can create one from the Hugging Face dataset settings or Zenodo) |
-| A100 cluster | `ai-n002`, 1 × A100-40GB; ~54 min to train the final model (seeds 0, 1, 2) |
+| A100 cluster | `ai-n002`, 1 × A100-40GB; ~54 min to train the final model |
 | Model weights | `models/vcm_intent.onnx`, `models/vcm_intent.pt` (this repo) · release to be created (GitHub release with the two files) · licence: MIT (code and weights); the training data's own terms apply to its use |
 
 ### Reviewer checklist
@@ -220,14 +220,15 @@ original model (Experiment 36, our own 70k-clip dataset,
 `models/vcm_intent_exp36.onnx`) had trained on most of the class test set,
 so it can't be compared fairly.
 
-What helped and what didn't (Experiment 39, one change at a time, on the
-first revision):
+What helped and what didn't (Experiments 39–41, one change at a time,
+on the first revision):
 
 - **Helped:** a 2-layer GRU; 4-head attention pooling; SpecAugment with
   frequency masks only; bare numbers from the numerals set as
-  out-of-scope examples; distillation from an ensemble of our own CRNNs;
-  a wider model; all of them together (+9.7 points of real speech on the
-  first revision's test set).
+  out-of-scope examples. All four together added 9.7 points of real
+  speech on the first revision's test set (Experiment 40a). Distillation
+  from an ensemble of our own CRNNs (40b) and a wider model (41d) then
+  raised real-speech accuracy on val further.
 - **Attention pooling is needed:** plain mean pooling loses 5.6 points of
   real speech.
 - **Hurt:** numerals as background talk, an EMA of the weights. Label
@@ -242,7 +243,7 @@ the assignment rules out ASR on the device.
 ## Dataset
 
 The class master dataset, as published, with its own train / test /
-holdout splits. We only add a validation split (12% of train, by speaker)
+holdout splits. We only add a validation split (1,448 clips, ~13% of train, by speaker)
 for choosing epochs and settings. Full description, statistics and build
 steps: [docs/DATASET.md](docs/DATASET.md).
 
@@ -389,7 +390,7 @@ The device uses 0.6, and 0.4 while music plays.
 | Optimization | Adam, warm-up and cosine decay, 3 seeds per setting. | `src/vcm/train/train.py` |
 | Regularization and augmentation | Waveform noise, speed, reverb and shift; frequency-only SpecAugment (time masks can erase the one word that matters); dropout 0.1. EMA and label smoothing tested, not kept. | [EXPERIMENTS.md](docs/EXPERIMENTS.md) Exp 39 |
 | Class imbalance | Inverse-frequency class weights; extra out-of-scope examples from the numerals set. | Exp 39d |
-| Knowledge distillation | An ensemble of our own CRNNs (same data) teaches a single CRNN. | Exp 40–41 |
+| Knowledge distillation | An ensemble of our own CRNNs (same data) teaches a single CRNN. | Exp 40–43 |
 | Evaluation | Overall, real-speech, per-class, per-accent and per-source accuracy; confusion pairs; slot accuracy; reject threshold. | `scripts/evaluate_checkpoint.py` |
 | Efficiency | Accuracy against parameters, file size, latency and memory; comparable-size baselines. | [FOOTPRINT.md](docs/FOOTPRINT.md), Exp 38 |
 | Model packaging | PyTorch → ONNX with labels and slot values in its metadata, then ONNX Runtime on the Pi's CPU. | `src/vcm/deploy/`, `scripts/export_onnx.py` |
@@ -411,7 +412,7 @@ The device uses 0.6, and 0.4 while music plays.
 │   ├── vcm_intent_small.onnx    smaller intent model (Experiment 43c, 722 KB)
 │   ├── vcm_intent_exp36.onnx, kiwi_wakeword_exp34.onnx   the previous models (old dataset), for comparison
 │   └── vcm_intent_frozen.onnx   older variant, not used
-├── results/                   training logs, evaluation outputs and launchers, Experiments 37–41
+├── results/                   training logs, evaluation outputs and launchers, Experiments 37–43
 ├── src/vcm/                   the Python package
 │   ├── audio/                 microphone capture, log-mel features, numpy DSP, resampling
 │   ├── wakeword/              "Hey Kiwi" streaming detector
@@ -542,7 +543,7 @@ Keep this running on the Mac:
 | [MODEL.md](docs/MODEL.md) | The shipped models: features, architecture, training recipe, wake word, export |
 | [DATASET.md](docs/DATASET.md) | The class master dataset and how we use it; the old dataset as history |
 | [TRAINING.md](docs/TRAINING.md) | Training on the shared DGX, and commands to reproduce the shipped models |
-| [EXPERIMENTS.md](docs/EXPERIMENTS.md) | All experiments: 1–36 on the old dataset, 37 on on the master dataset |
+| [EXPERIMENTS.md](docs/EXPERIMENTS.md) | All experiments: 1–36 on the old dataset, 37–43 on the master dataset |
 | [TESTING.md](docs/TESTING.md) | Final test results, evaluation method, the automated test suite |
 | [FOOTPRINT.md](docs/FOOTPRINT.md) | SD card and RAM use on the Pi, and our pipeline vs. the ASR cascade |
 | [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Setting up a Raspberry Pi from a blank SD card |

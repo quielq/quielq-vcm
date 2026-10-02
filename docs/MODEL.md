@@ -337,8 +337,8 @@ the current test set (none of its clips were in that train split):
 **Figure 6. The training objective.** One forward pass of the student
 feeds four loss terms. The teacher is an ensemble of 9 CRNNs trained on
 the same split with the Experiment 36 recipe (Experiment 43t; 95.0% on
-val against 93.2% for one of them), whose averaged predictions are computed once, before training, and
-stored as soft labels; it is not used on the device. Only the student
+val against 93.2% for one of them), whose averaged predictions are
+computed once, before training, and stored as soft labels; it is not used on the device. Only the student
 (the shipped CRNN) is exported.
 
 ```mermaid
@@ -373,7 +373,7 @@ below was made on our validation split, never on test.
 | Epochs, batch, optimizer | 80 epochs (8,960 steps), batch 128, Adam lr 1e-3, 5 warm-up epochs then cosine decay | 150 epochs didn't help (37b) |
 | Loss | Class-weighted cross-entropy + confusable-pair penalty (alpha 2.0) on VOLUME_UP/DOWN/TEMPERATURE and LIGHT_ON/OFF | Targets the one-word confusions (old Exp 14–16) |
 | Slot loss | Cross-entropy per slot head, weight 0.3, on clips with a schema slot value | (old Exp 32–34) |
-| Distillation | KL toward the averaged predictions of 9 of our own CRNNs (the Experiment 36 recipe on the same train split, Exp 43t), temperature 3 on both sides, weight 1 | The ensemble scores 92.0% on val against 89.3% for one model (40b, 41d) |
+| Distillation | KL toward the averaged predictions of 9 of our own CRNNs (the Experiment 36 recipe on the same train split, Exp 43t), temperature 3 on both sides, weight 1 | The ensemble scores 95.0% on val against 93.2% for one of its models (43t); distillation was first adopted in 40b and 41d |
 | Waveform augmentation | Background noise at 5–25 dB SNR, speed 0.9–1.1×, room reverb, 0–0.3 s start shift | (old Exp 29b) |
 | SpecAugment | 2 frequency masks (up to 8 bands), no time masks | Time masks can erase the one word that matters (39a) |
 | Architecture | 80 channels, 2-layer GRU of 96, 4 attention heads | 39f, 39g, 39j; mean pooling −5.6 (39h) |
