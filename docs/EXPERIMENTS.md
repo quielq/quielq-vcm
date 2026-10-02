@@ -2681,6 +2681,8 @@ the master test split (4,418 clips) and 300 near-miss phrases, 3.05 h.
 - Seeing the class's own speech (including Filipino speech and near-miss
   requests) as negatives cuts false wake-ups by 35–47%, at the cost of
   about 1–3 points more missed clean clips.
+- **Size unchanged:** same architecture as Experiment 34 (32 channels,
+  GRU of 32), 25,475 parameters, 107 KB fp32, 5.3M multiply-adds per window.
 - **Shipped: seed 1**, the best on validation: `models/kiwi_wakeword.onnx`
   (107 KB, identical to its checkpoint `models/kiwi_wakeword.pt`). The
   Experiment 34 file stays as `models/kiwi_wakeword_exp34.onnx`.
