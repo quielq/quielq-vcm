@@ -24,6 +24,11 @@ What it does:
   value is not in the schema have a blank slot_value and get no slot label.
 - Metadata (accent group, variation, transcript, ...) goes to a side CSV
   for scripts/evaluate_checkpoint.py --metadata breakdowns.
+- With --supplemental, also the dataset's supplemental_synth clips (from
+  its 2026-10-02 revision on) whose voice is in our train split, as split
+  "supplemental" (train.py --include-supplemental). Clips of val, test or
+  holdout voices are dropped, so every split stays voice-disjoint and val
+  is the same with or without them.
 - With --numerals, also the numerals set (66,390 number-only clips, labeled
   OUT_OF_SCOPE by the dataset) as split "numerals", source prefixed
   "numerals_" so it is never taken for the train split's noise clips.
@@ -33,10 +38,9 @@ What it does:
 Usage:
     python -c "from huggingface_hub import snapshot_download; snapshot_download(
         'airimonda/ai231-me2-voice-commands', repo_type='dataset', local_dir='data/me2/hf',
-        allow_patterns=['data/train-*', 'data/test-*', 'data/holdout-*', 'README.md', 'variations.csv'])"
-    python scripts/build_me2_manifest.py
-    # optional, 2 GB more: add 'data/numerals-*' to allow_patterns, then
-    python scripts/build_me2_manifest.py --numerals
+        revision='da92a79ffde3031d5bb2a25138d9dd7d9f7ed006',
+        allow_patterns=['data/*', 'supplemental_synth/*', 'README.md', 'variations.csv'])"
+    python scripts/build_me2_manifest.py --numerals --supplemental
 """
 
 from __future__ import annotations
@@ -100,14 +104,32 @@ def main() -> None:
     parser.add_argument("--min-speakers", type=int, default=5)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--numerals", action="store_true", help="Also write the numerals set (split 'numerals').")
+    parser.add_argument(
+        "--supplemental",
+        action="store_true",
+        help="Also write supplemental_synth clips of train voices (split 'supplemental').",
+    )
     args = parser.parse_args()
 
     manifest_rows: list[ManifestRow] = []
     slot_rows: list[dict] = []
     meta_rows: list[dict] = []
-    for split in SPLITS + (("numerals",) if args.numerals else ()):
-        rows = read_split(args.hf_dir, split)
-        val_speakers = choose_val_speakers(rows, args.val_fraction, args.min_speakers, args.seed) if split == "train" else set()
+    train_voices: set[tuple[str, str]] = set()
+    val_speakers: set[tuple[str, str]] = set()
+    dropped_supplemental = 0
+    for split in SPLITS + (("numerals",) if args.numerals else ()) + (("supplemental",) if args.supplemental else ()):
+        if split == "supplemental":
+            rows = []
+            for path in sorted(args.hf_dir.glob("supplemental_synth/*.parquet")):
+                rows.extend(pq.read_table(path).to_pylist())
+            keep = [r for r in rows if r["voice_split"] == "train" and (r["source"], r["speaker_id"] or "") in train_voices]
+            dropped_supplemental = len(rows) - len(keep)
+            rows = keep
+        else:
+            rows = read_split(args.hf_dir, split)
+        if split == "train":
+            val_speakers = choose_val_speakers(rows, args.val_fraction, args.min_speakers, args.seed)
+            train_voices = {(r["source"], r["speaker_id"] or "") for r in rows} - val_speakers
         for r in rows:
             label = r["command"]
             if label not in (*INTENT_LABELS, OUT_OF_SCOPE):
@@ -117,7 +139,7 @@ def main() -> None:
                 audio_path.parent.mkdir(parents=True, exist_ok=True)
                 audio_path.write_bytes(r["audio"]["bytes"])
             speaker = r["speaker_id"] or ""
-            row_split = "val" if (r["source"], speaker) in val_speakers else split
+            row_split = "val" if split == "train" and (r["source"], speaker) in val_speakers else split
             manifest_rows.append(
                 ManifestRow(
                     audio_path=str(audio_path),
@@ -150,7 +172,9 @@ def main() -> None:
 
     print(f"wrote {args.out_dir / 'manifest.csv'}, slot_labels.csv ({len(slot_rows)} rows), metadata.csv")
     by_split = Counter(r.split for r in manifest_rows)
-    for split in ("train", "val", "test", "holdout", "numerals"):
+    if args.supplemental:
+        print(f"  supplemental: dropped {dropped_supplemental} clips whose voice is in val, test or holdout")
+    for split in ("train", "val", "test", "holdout", "numerals", "supplemental"):
         rows = [r for r in manifest_rows if r.split == split]
         real = sum(not r.is_synthetic for r in rows)
         speakers = len({(r.source, r.speaker_id) for r in rows})

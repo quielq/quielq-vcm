@@ -1,0 +1,111 @@
+Using device: cuda, model: crnn, augment: True, seed: 2
+Feature config: {'window_s': 5.0, 'trim': True}
+Waveform augmentation on, noise bank: 11 train-split clips
+--extra-oos-clips: 1500 numerals clips added as OUT_OF_SCOPE
+train: 10785 examples (train_fraction=1.0), val: 1448 examples
+Using knowledge distillation (weight=1.0, temperature=3.0) from data/me2/ensemble43_labels.csv
+Slot heads on: 5196 labeled train clips, weight 0.3
+Using ConfusablePairLoss (alpha=2.0, gamma=0.0, label_smoothing=0.0)
+Model params: 372,096
+epoch   1/80  train_loss=19.0167  val_slot_acc=0.3471  val_loss=3.5669  val_acc=0.0967  lr=1.00e-05  (33.6s)
+  -> saved new best checkpoint (val_acc=0.0967) to checkpoints/exp43a_shipped_recipe_s2.pt
+epoch   2/80  train_loss=17.6751  val_slot_acc=0.3534  val_loss=3.5259  val_acc=0.1450  lr=2.08e-04  (30.0s)
+  -> saved new best checkpoint (val_acc=0.1450) to checkpoints/exp43a_shipped_recipe_s2.pt
+epoch   3/80  train_loss=15.9690  val_slot_acc=0.3822  val_loss=3.1662  val_acc=0.2314  lr=4.06e-04  (26.0s)
+  -> saved new best checkpoint (val_acc=0.2314) to checkpoints/exp43a_shipped_recipe_s2.pt
+epoch   4/80  train_loss=14.3657  val_slot_acc=0.4060  val_loss=2.6356  val_acc=0.4365  lr=6.04e-04  (27.7s)
+  -> saved new best checkpoint (val_acc=0.4365) to checkpoints/exp43a_shipped_recipe_s2.pt
+epoch   5/80  train_loss=10.1314  val_slot_acc=0.5414  val_loss=1.8649  val_acc=0.6858  lr=8.02e-04  (29.2s)
+  -> saved new best checkpoint (val_acc=0.6858) to checkpoints/exp43a_shipped_recipe_s2.pt
+epoch   6/80  train_loss=6.4311  val_slot_acc=0.6867  val_loss=1.3725  val_acc=0.7825  lr=1.00e-03  (28.8s)
+  -> saved new best checkpoint (val_acc=0.7825) to checkpoints/exp43a_shipped_recipe_s2.pt
+epoch   7/80  train_loss=4.5294  val_slot_acc=0.7707  val_loss=1.0515  val_acc=0.8419  lr=1.00e-03  (27.1s)
+  -> saved new best checkpoint (val_acc=0.8419) to checkpoints/exp43a_shipped_recipe_s2.pt
+epoch   8/80  train_loss=3.5570  val_slot_acc=0.8484  val_loss=0.8663  val_acc=0.8757  lr=9.98e-04  (26.3s)
+  -> saved new best checkpoint (val_acc=0.8757) to checkpoints/exp43a_shipped_recipe_s2.pt
+epoch   9/80  train_loss=2.8638  val_slot_acc=0.8459  val_loss=0.7913  val_acc=0.8764  lr=9.96e-04  (29.2s)
+  -> saved new best checkpoint (val_acc=0.8764) to checkpoints/exp43a_shipped_recipe_s2.pt
+epoch  10/80  train_loss=2.5017  val_slot_acc=0.8647  val_loss=0.7442  val_acc=0.8860  lr=9.93e-04  (30.7s)
+  -> saved new best checkpoint (val_acc=0.8860) to checkpoints/exp43a_shipped_recipe_s2.pt
+epoch  11/80  train_loss=2.1853  val_slot_acc=0.8997  val_loss=0.6988  val_acc=0.8999  lr=9.89e-04  (27.5s)
+  -> saved new best checkpoint (val_acc=0.8999) to checkpoints/exp43a_shipped_recipe_s2.pt
+epoch  12/80  train_loss=2.0306  val_slot_acc=0.9223  val_loss=0.7134  val_acc=0.8999  lr=9.84e-04  (27.7s)
+epoch  13/80  train_loss=1.8623  val_slot_acc=0.9373  val_loss=0.5530  val_acc=0.9095  lr=9.79e-04  (29.6s)
+  -> saved new best checkpoint (val_acc=0.9095) to checkpoints/exp43a_shipped_recipe_s2.pt
+epoch  14/80  train_loss=1.7344  val_slot_acc=0.9449  val_loss=0.5737  val_acc=0.9137  lr=9.72e-04  (31.3s)
+  -> saved new best checkpoint (val_acc=0.9137) to checkpoints/exp43a_shipped_recipe_s2.pt
+epoch  15/80  train_loss=1.6274  val_slot_acc=0.9311  val_loss=0.5476  val_acc=0.9109  lr=9.65e-04  (29.0s)
+epoch  16/80  train_loss=1.5329  val_slot_acc=0.9561  val_loss=0.5124  val_acc=0.9088  lr=9.57e-04  (26.2s)
+epoch  17/80  train_loss=1.4628  val_slot_acc=0.9474  val_loss=0.5565  val_acc=0.9123  lr=9.48e-04  (28.2s)
+epoch  18/80  train_loss=1.4002  val_slot_acc=0.9599  val_loss=0.5710  val_acc=0.9061  lr=9.38e-04  (29.1s)
+epoch  19/80  train_loss=1.3396  val_slot_acc=0.9549  val_loss=0.4692  val_acc=0.9233  lr=9.28e-04  (23.9s)
+  -> saved new best checkpoint (val_acc=0.9233) to checkpoints/exp43a_shipped_recipe_s2.pt
+epoch  20/80  train_loss=1.3065  val_slot_acc=0.9536  val_loss=0.4791  val_acc=0.9171  lr=9.16e-04  (27.0s)
+epoch  21/80  train_loss=1.2575  val_slot_acc=0.9662  val_loss=0.4641  val_acc=0.9178  lr=9.05e-04  (29.0s)
+epoch  22/80  train_loss=1.2313  val_slot_acc=0.9712  val_loss=0.4335  val_acc=0.9254  lr=8.92e-04  (30.8s)
+  -> saved new best checkpoint (val_acc=0.9254) to checkpoints/exp43a_shipped_recipe_s2.pt
+epoch  23/80  train_loss=1.1856  val_slot_acc=0.9687  val_loss=0.4699  val_acc=0.9213  lr=8.78e-04  (24.7s)
+epoch  24/80  train_loss=1.1522  val_slot_acc=0.9662  val_loss=0.4415  val_acc=0.9282  lr=8.64e-04  (26.7s)
+  -> saved new best checkpoint (val_acc=0.9282) to checkpoints/exp43a_shipped_recipe_s2.pt
+epoch  25/80  train_loss=1.1083  val_slot_acc=0.9549  val_loss=0.4452  val_acc=0.9227  lr=8.50e-04  (27.0s)
+epoch  26/80  train_loss=1.0770  val_slot_acc=0.9662  val_loss=0.4272  val_acc=0.9275  lr=8.35e-04  (24.3s)
+epoch  27/80  train_loss=1.0256  val_slot_acc=0.9586  val_loss=0.4086  val_acc=0.9233  lr=8.19e-04  (26.9s)
+epoch  28/80  train_loss=1.0591  val_slot_acc=0.9699  val_loss=0.4034  val_acc=0.9275  lr=8.02e-04  (30.5s)
+epoch  29/80  train_loss=1.0073  val_slot_acc=0.9637  val_loss=0.3983  val_acc=0.9309  lr=7.85e-04  (30.6s)
+  -> saved new best checkpoint (val_acc=0.9309) to checkpoints/exp43a_shipped_recipe_s2.pt
+epoch  30/80  train_loss=0.9708  val_slot_acc=0.9662  val_loss=0.3887  val_acc=0.9309  lr=7.68e-04  (26.9s)
+epoch  31/80  train_loss=0.9728  val_slot_acc=0.9624  val_loss=0.3996  val_acc=0.9316  lr=7.50e-04  (32.3s)
+  -> saved new best checkpoint (val_acc=0.9316) to checkpoints/exp43a_shipped_recipe_s2.pt
+epoch  32/80  train_loss=0.9368  val_slot_acc=0.9724  val_loss=0.3900  val_acc=0.9289  lr=7.32e-04  (33.8s)
+epoch  33/80  train_loss=0.9552  val_slot_acc=0.9599  val_loss=0.4240  val_acc=0.9289  lr=7.13e-04  (33.0s)
+epoch  34/80  train_loss=0.9040  val_slot_acc=0.9624  val_loss=0.4070  val_acc=0.9302  lr=6.94e-04  (44.2s)
+epoch  35/80  train_loss=0.8905  val_slot_acc=0.9737  val_loss=0.3750  val_acc=0.9330  lr=6.74e-04  (25.7s)
+  -> saved new best checkpoint (val_acc=0.9330) to checkpoints/exp43a_shipped_recipe_s2.pt
+epoch  36/80  train_loss=0.9009  val_slot_acc=0.9637  val_loss=0.3914  val_acc=0.9316  lr=6.55e-04  (29.1s)
+epoch  37/80  train_loss=0.8650  val_slot_acc=0.9649  val_loss=0.4043  val_acc=0.9289  lr=6.34e-04  (30.1s)
+epoch  38/80  train_loss=0.8631  val_slot_acc=0.9749  val_loss=0.3694  val_acc=0.9372  lr=6.14e-04  (27.8s)
+  -> saved new best checkpoint (val_acc=0.9372) to checkpoints/exp43a_shipped_recipe_s2.pt
+epoch  39/80  train_loss=0.8456  val_slot_acc=0.9599  val_loss=0.3973  val_acc=0.9337  lr=5.94e-04  (28.7s)
+epoch  40/80  train_loss=0.7986  val_slot_acc=0.9649  val_loss=0.3667  val_acc=0.9337  lr=5.73e-04  (36.1s)
+epoch  41/80  train_loss=0.7987  val_slot_acc=0.9724  val_loss=0.3787  val_acc=0.9323  lr=5.52e-04  (30.8s)
+epoch  42/80  train_loss=0.7899  val_slot_acc=0.9712  val_loss=0.3887  val_acc=0.9323  lr=5.31e-04  (28.8s)
+epoch  43/80  train_loss=0.8109  val_slot_acc=0.9737  val_loss=0.3927  val_acc=0.9344  lr=5.10e-04  (29.7s)
+epoch  44/80  train_loss=0.7874  val_slot_acc=0.9787  val_loss=0.3620  val_acc=0.9316  lr=4.90e-04  (29.0s)
+epoch  45/80  train_loss=0.7692  val_slot_acc=0.9737  val_loss=0.3580  val_acc=0.9365  lr=4.69e-04  (28.8s)
+epoch  46/80  train_loss=0.7500  val_slot_acc=0.9774  val_loss=0.3539  val_acc=0.9351  lr=4.48e-04  (30.1s)
+epoch  47/80  train_loss=0.7443  val_slot_acc=0.9712  val_loss=0.3981  val_acc=0.9296  lr=4.27e-04  (28.1s)
+epoch  48/80  train_loss=0.7240  val_slot_acc=0.9724  val_loss=0.3911  val_acc=0.9323  lr=4.06e-04  (30.8s)
+epoch  49/80  train_loss=0.7314  val_slot_acc=0.9712  val_loss=0.3978  val_acc=0.9337  lr=3.86e-04  (46.7s)
+epoch  50/80  train_loss=0.7285  val_slot_acc=0.9749  val_loss=0.3534  val_acc=0.9365  lr=3.66e-04  (29.1s)
+epoch  51/80  train_loss=0.7138  val_slot_acc=0.9762  val_loss=0.3683  val_acc=0.9351  lr=3.45e-04  (39.1s)
+epoch  52/80  train_loss=0.6936  val_slot_acc=0.9749  val_loss=0.3544  val_acc=0.9351  lr=3.26e-04  (29.5s)
+epoch  53/80  train_loss=0.6759  val_slot_acc=0.9687  val_loss=0.3832  val_acc=0.9289  lr=3.06e-04  (34.8s)
+epoch  54/80  train_loss=0.6962  val_slot_acc=0.9699  val_loss=0.3717  val_acc=0.9337  lr=2.87e-04  (27.3s)
+epoch  55/80  train_loss=0.6863  val_slot_acc=0.9749  val_loss=0.3655  val_acc=0.9316  lr=2.68e-04  (37.9s)
+epoch  56/80  train_loss=0.6613  val_slot_acc=0.9737  val_loss=0.3633  val_acc=0.9337  lr=2.50e-04  (29.7s)
+epoch  57/80  train_loss=0.6447  val_slot_acc=0.9687  val_loss=0.3689  val_acc=0.9323  lr=2.32e-04  (40.0s)
+epoch  58/80  train_loss=0.6581  val_slot_acc=0.9737  val_loss=0.3681  val_acc=0.9358  lr=2.15e-04  (26.1s)
+epoch  59/80  train_loss=0.6631  val_slot_acc=0.9749  val_loss=0.3452  val_acc=0.9358  lr=1.98e-04  (39.6s)
+epoch  60/80  train_loss=0.6262  val_slot_acc=0.9737  val_loss=0.3747  val_acc=0.9337  lr=1.81e-04  (27.3s)
+epoch  61/80  train_loss=0.6443  val_slot_acc=0.9774  val_loss=0.3735  val_acc=0.9302  lr=1.65e-04  (39.3s)
+epoch  62/80  train_loss=0.6485  val_slot_acc=0.9762  val_loss=0.3624  val_acc=0.9372  lr=1.50e-04  (29.0s)
+epoch  63/80  train_loss=0.6163  val_slot_acc=0.9737  val_loss=0.3632  val_acc=0.9351  lr=1.36e-04  (37.0s)
+epoch  64/80  train_loss=0.6367  val_slot_acc=0.9724  val_loss=0.3586  val_acc=0.9337  lr=1.22e-04  (31.4s)
+epoch  65/80  train_loss=0.6205  val_slot_acc=0.9749  val_loss=0.3693  val_acc=0.9316  lr=1.08e-04  (45.4s)
+epoch  66/80  train_loss=0.6294  val_slot_acc=0.9724  val_loss=0.3580  val_acc=0.9337  lr=9.55e-05  (31.2s)
+epoch  67/80  train_loss=0.6207  val_slot_acc=0.9749  val_loss=0.3610  val_acc=0.9365  lr=8.35e-05  (40.1s)
+epoch  68/80  train_loss=0.6309  val_slot_acc=0.9762  val_loss=0.3605  val_acc=0.9358  lr=7.23e-05  (31.1s)
+epoch  69/80  train_loss=0.6082  val_slot_acc=0.9737  val_loss=0.3603  val_acc=0.9337  lr=6.18e-05  (40.8s)
+epoch  70/80  train_loss=0.6168  val_slot_acc=0.9737  val_loss=0.3594  val_acc=0.9337  lr=5.21e-05  (30.3s)
+epoch  71/80  train_loss=0.6076  val_slot_acc=0.9737  val_loss=0.3536  val_acc=0.9358  lr=4.32e-05  (41.4s)
+epoch  72/80  train_loss=0.5833  val_slot_acc=0.9749  val_loss=0.3604  val_acc=0.9323  lr=3.51e-05  (29.8s)
+epoch  73/80  train_loss=0.6131  val_slot_acc=0.9749  val_loss=0.3526  val_acc=0.9351  lr=2.78e-05  (46.2s)
+epoch  74/80  train_loss=0.6082  val_slot_acc=0.9737  val_loss=0.3535  val_acc=0.9337  lr=2.13e-05  (44.6s)
+epoch  75/80  train_loss=0.5985  val_slot_acc=0.9724  val_loss=0.3566  val_acc=0.9323  lr=1.57e-05  (27.6s)
+epoch  76/80  train_loss=0.6053  val_slot_acc=0.9737  val_loss=0.3556  val_acc=0.9337  lr=1.09e-05  (43.6s)
+epoch  77/80  train_loss=0.6001  val_slot_acc=0.9737  val_loss=0.3533  val_acc=0.9337  lr=7.00e-06  (29.3s)
+epoch  78/80  train_loss=0.5997  val_slot_acc=0.9749  val_loss=0.3551  val_acc=0.9344  lr=3.94e-06  (40.4s)
+epoch  79/80  train_loss=0.5809  val_slot_acc=0.9737  val_loss=0.3545  val_acc=0.9337  lr=1.75e-06  (28.5s)
+epoch  80/80  train_loss=0.5893  val_slot_acc=0.9737  val_loss=0.3549  val_acc=0.9344  lr=4.39e-07  (40.9s)
+
+Done. Best val_acc=0.9372, checkpoint at checkpoints/exp43a_shipped_recipe_s2.pt

@@ -108,8 +108,8 @@ real speech); slot accuracy on its real speech.
 
 | File | Size | Intent | Slot values, real speech (timer / alarm / temperature / brightness / color / reminder) |
 |---|---:|---:|---|
-| `models/vcm_intent.onnx` (default: Experiment 41d seed 0, master dataset) | 1.46 MB | 92.98% / 73.48% | 89 / 80 / 93 / 100 / 87 / 78% |
-| `models/vcm_intent_small.onnx` (Experiment 40b seed 1, master dataset) | 722 KB | 92.21% / 70.99% | |
+| `models/vcm_intent.onnx` (default: Experiment 43b seed 1, master dataset) | 1.46 MB | 95.50% / 78.64% | 100 / 90 / 79 / 96 / 82 / 89% |
+| `models/vcm_intent_small.onnx` (Experiment 43c seed 0, master dataset) | 722 KB | 94.53% / 76.06% | |
 | `models/vcm_intent_exp36.onnx` (Experiment 36, old dataset, old slot values) | 432 KB | 84.8% real on the old test set | |
 
 Slot values are the schema's three per command: 10 s / 30 s / 1 min,

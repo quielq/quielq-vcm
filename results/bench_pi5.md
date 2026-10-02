@@ -15,5 +15,10 @@ Repo at master `11fc1d5`, deployed with `scripts/deploy_pi.sh raspberrypi.local 
 Memory with both services running: 604 MB used of 8,063 MB (7,458 MB available, no swap);
 `vcm_listen.py` 95.3 MB RSS, `vcm.home.server` 47.0 MB RSS.
 
+These were measured with the Experiment 41d and 40b weights. The shipped
+Experiment 43b and 43c models have exactly the same architectures and
+operations (only the trained weights differ), so the timing and memory
+carry over; re-run `scripts/benchmark_pi.py` on the Pi to confirm.
+
 For comparison, the previous intent model (Exp 36, 432 KB) took 9.9 ms per command
 (3.7 ms features + 6.2 ms model) on the same Pi.

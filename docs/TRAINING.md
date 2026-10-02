@@ -150,54 +150,61 @@ one idle GPU (GPU 6 at the time).
 # Data (once): download the master dataset and build data/me2/
 python -c "from huggingface_hub import snapshot_download; snapshot_download(
   'airimonda/ai231-me2-voice-commands', repo_type='dataset', local_dir='data/me2/hf',
-  allow_patterns=['data/*', 'README.md', 'variations.csv'])"
-python scripts/build_me2_manifest.py --numerals
+  revision='da92a79ffde3031d5bb2a25138d9dd7d9f7ed006', allow_patterns=['data/*', 'supplemental_synth/*', 'README.md', 'variations.csv'])"
+python scripts/build_me2_manifest.py --numerals --supplemental
 
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 NUMBA_NUM_THREADS=1
 export CUDA_VISIBLE_DEVICES=<an idle GPU>
 
-# Distillation teacher: 9 CRNNs with the Experiment 37 recipe (logs/launch_exp37.sh:
-# 37a 80 epochs, 37b 150 epochs, 37c --real-oversample 3; seeds 0-2), then their soft labels
-python scripts/generate_ensemble_labels.py checkpoints/exp37*_s*.pt \
-  --manifest data/me2/manifest.csv --out data/me2/ensemble37_labels.csv
+# Distillation teacher: 9 CRNNs with the Experiment 36 recipe on the same train split
+# (logs/run_queue_exp43.sh: 80 epochs, 150 epochs, 80 epochs --real-oversample 3; seeds 0-2),
+# then their soft labels
+python scripts/generate_ensemble_labels.py checkpoints/exp43t_{e80,e150,real3}_s{0,1,2}.pt \
+  --manifest data/me2/manifest.csv --out data/me2/ensemble43_labels.csv
 
-# Intent + slot model (Experiment 41d; seed 0 shipped, seeds 1 and 2 for comparison)
-python -m vcm.train.train --model crnn --seed 0 \
+# Intent + slot model (Experiment 43b; seed 1 shipped, seeds 0 and 2 for comparison)
+python -m vcm.train.train --model crnn --seed 1 \
   --manifest data/me2/manifest.csv --slot-labels data/me2/slot_labels.csv --slot-weight 0.3 \
   --epochs 80 --batch-size 128 --lr 1e-3 --warmup-epochs 5 --confusable-alpha 2.0 \
   --window-s 5.0 --trim-silence --wave-augment --num-workers 6 \
   --rnn-layers 2 --pool-heads 4 --width 80 --rnn-hidden 96 --augment --freq-mask-only \
   --babble-manifest data/me2/manifest.csv --babble-clips 0 --extra-oos-clips 1500 \
+  --include-supplemental \
   --distill-weight 1.0 --distill-temperature 3 --distill-soften-teacher \
-  --distill-labels data/me2/ensemble37_labels.csv \
-  --out checkpoints/exp41d_combo_wide_distill_s0.pt
+  --distill-labels data/me2/ensemble43_labels.csv \
+  --out checkpoints/exp43b_supplemental_s1.pt
 
 # Evaluate on the class-fixed test set and the Pi holdout set, then export
-python scripts/evaluate_checkpoint.py checkpoints/exp41d_combo_wide_distill_s*.pt \
+python scripts/evaluate_checkpoint.py checkpoints/exp43b_supplemental_s*.pt \
   --manifest data/me2/manifest.csv --slot-labels data/me2/slot_labels.csv \
   --metadata data/me2/metadata.csv --split test        # and --split holdout
-python scripts/export_onnx.py checkpoints/exp41d_combo_wide_distill_s0.pt --out models/vcm_intent
+python scripts/export_onnx.py checkpoints/exp43b_supplemental_s1.pt --out models/vcm_intent
+# The small model (Experiment 43c seed 0): the same command without --width 80 --rnn-hidden 96
+# and --include-supplemental, exported to models/vcm_intent_small
 
-# "Hey Kiwi" wake word (Experiment 42, seed 1 shipped): master dataset speech and noise
+# "Hey Kiwi" wake word (Experiment 43, seed 1 shipped): master dataset speech and noise
 # as negatives; positives from the synthetic wakeword batch (data/external/wakeword_synth,
 # published in the quielq-vcm-dataset v1.0 release) and data/wakeword_real
 python scripts/train_wakeword.py --seed 1 --intent-manifest data/me2/manifest.csv \
   --numerals-clips 3000 --extra-wake-manifest data/wakeword_real/manifest.csv \
-  --out checkpoints/exp42_wake_me2_s1.pt
-python scripts/evaluate_wakeword.py checkpoints/exp42_wake_me2_s1.pt --intent-manifest data/me2/manifest.csv \
+  --out checkpoints/exp43w_wake_s1.pt
+python scripts/evaluate_wakeword.py checkpoints/exp43w_wake_s1.pt --intent-manifest data/me2/manifest.csv \
   --extra-wake-manifest data/wakeword_real/manifest.csv
-python scripts/export_onnx.py checkpoints/exp42_wake_me2_s1.pt --out models/kiwi_wakeword
+python scripts/export_onnx.py checkpoints/exp43w_wake_s1.pt --out models/kiwi_wakeword
 ```
 
 `bash scripts/reproduce.sh` does all of the above in one command.
 
 Timing on `ai-n002`, everything on one A100 (GPU 6): ~18 s per epoch for
 the Experiment 37 model with 6 runs sharing the GPU (~25 min a run), and
-~25 s per epoch for the final 372K model (~34 min a seed). Results vary by
+~25 s per epoch for the 372K model (~34 min a seed). In Experiment 43, with
+9 runs and another user's job on the GPU, the shipped recipe took ~54 min
+a seed; the whole retrain (9 teachers, 3 wake words, 9 final runs and
+their evaluations) took about 2.5 hours. Results vary by
 0.1–2 points between seeds (real speech varies most), so every
 configuration ran 3 seeds and was compared on val. The full-resolution
 baselines (DS-CNN, BC-ResNet) need 7–12 GB each; the CRNN needs ~2.5 GB.
-All Experiment 37–41 logs, evaluations and launchers are in
+All Experiment 37–43 logs, evaluations and launchers are in
 [`results/`](../results/).
 
 The Experiment 36 commands (old dataset) are on the

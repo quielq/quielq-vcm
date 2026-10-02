@@ -36,34 +36,34 @@ Mic · 16 kHz → log-mel 40 × 501 (5.0 s, silence-trimmed) → CRNN encoder �
 | Slot heads | 6 heads, each with its own attention pooling → 3 schema values (TIMER, ALARM, TEMPERATURE, BRIGHTNESS, COLOR, CREATE_REMINDER) |
 | Actuator | `vcm.home` server: lamp, thermostat, timers, alarms, reminders, Spotify/local music, volume, weather, calls/messages via phone bridge; spoken reply |
 | Parameters / weights | **0.372 M** parameters · **1.46 MB** fp32 ONNX (`models/vcm_intent.onnx`); the wake word adds 0.025 M · 0.11 MB (`models/kiwi_wakeword.onnx`) |
-| Wake word ("Hey Kiwi") | Small CRNN: 32 channels, 1-layer GRU of 32, 25,475 params, 107 KB fp32, 5.3M multiply-adds per 1.5 s window, scored every 100 ms. Retrained with the master dataset as its "not the wake word" examples (Experiment 42); same architecture and size as before |
+| Wake word ("Hey Kiwi") | Small CRNN: 32 channels, 1-layer GRU of 32, 25,475 params, 107 KB fp32, 5.3M multiply-adds per 1.5 s window, scored every 100 ms. Trained with the master dataset as its "not the wake word" examples (Experiment 43); same architecture and size as the earlier detectors |
 
 ### Dataset
 
 | Item | Value |
 |---|---|
-| Source | Class master dataset: [huggingface.co/datasets/airimonda/ai231-me2-voice-commands](https://huggingface.co/datasets/airimonda/ai231-me2-voice-commands) (group recordings, Xela's recordings, SLURP, FSC, SNIPS, Timers and Such, Common Voice, Speech Commands, group synthetic set) |
-| Hours / utterances | train 6.34 h / 10,682 · test 2.57 h / 4,418 · holdout 0.17 h / 196 · numerals 21.8 h / 66,390 |
-| Speakers (incl. synthetic voices) | train 315 · test 121 · holdout 5 · numerals 2,547. No speaker in two splits |
+| Source | Class master dataset, revision `da92a79` (2026-10-02): [huggingface.co/datasets/airimonda/ai231-me2-voice-commands](https://huggingface.co/datasets/airimonda/ai231-me2-voice-commands) (group recordings, Xela's recordings, SLURP, FSC, SNIPS, Timers and Such, Common Voice, Speech Commands, group synthetic set) |
+| Hours / utterances | train 6.10 h / 10,733 · test 2.45 h / 4,443 · holdout 0.18 h / 202 · numerals 21.8 h / 66,390 · supplemental synthetic 2.73 h / 5,856 |
+| Speakers (incl. synthetic voices) | train 377 · test 144 · holdout 7 · numerals 2,547. No speaker in two splits |
 | Labels | **19 intents + OUT_OF_SCOPE · 6 slots** (3 values each, 18 in all), from the final Dataset Schema (Option B, 93 phrases) |
 
 ### Training on the A100 cluster
 
 | Item | Value |
 |---|---|
-| Cluster | UP DGX `ai-n002`, **1 × A100-40GB** (GPU 6), shared node. ~34 min per seed with 6 runs sharing the GPU |
-| Objective | Class-weighted cross-entropy on the intent + confusable-pair penalty (alpha 2.0) + slot cross-entropy (weight 0.3) + distillation (KL, T=3) toward an ensemble of 9 of our own CRNNs. No CTC |
+| Cluster | UP DGX `ai-n002`, **1 × A100-40GB** (GPU 6), shared node. ~54 min per seed with 9 runs (and another user's job) sharing the GPU |
+| Objective | Class-weighted cross-entropy on the intent + confusable-pair penalty (alpha 2.0) + slot cross-entropy (weight 0.3) + distillation (KL, T=3) toward an ensemble of 9 of our own CRNNs trained on the same split. No CTC |
 | Optimizer | Adam, lr 1e-3, 5 warm-up epochs then cosine decay, batch 128 |
-| Steps / loss | 80 epochs × 85 steps = **6,800 steps**; final train loss 0.64 (incl. distillation term), best val loss 0.50 at epoch 62 (seed 0) |
-| Seeds | 3 (0, 1, 2); shipped seed 0 |
+| Steps / loss | 80 epochs × 112 steps = **8,960 steps** (14,246 training clips); final train loss 0.52 (incl. distillation term), val loss 0.29 at the chosen epoch 65 (seed 1) |
+| Seeds | 3 (0, 1, 2); shipped seed 1, the best on val |
 
 ### Validation on the Raspberry Pi
 
 | Item | Value |
 |---|---|
-| Keyword / intent acc | Wake word: 95.9% of held-out "hey kiwi" clips caught (95.4% with 10 dB noise, 10/10 of the author's held-out takes) · Intent: **92.98%** on the class test set (73.48% real speech), **94.90%** on the Pi holdout set |
-| False-accept rate | Wake word: 11.2 false wake-ups per hour while streaming the master test split plus near-miss phrases, threshold 0.6 · Commands: 21.3% of out-of-scope test clips acted on (confidence ≥ 0.6), see [Out of scope](#out-of-scope) |
-| Latency p95 / RTF | **15.8 ms / 0.0063** end to end per command on the Raspberry Pi 5 (p50 13.9 ms: features 3.8 + model 10.0); wake word 1.9 ms per 100 ms hop, 1.9% of one core. `vcm_intent_small.onnx`: 12.1 ms / 0.0048 ([results/bench_pi5.md](results/bench_pi5.md)) |
+| Keyword / intent acc | Wake word: 96.2% of held-out "hey kiwi" clips caught (92.8% with 10 dB noise, 10/10 of the author's held-out takes) · Intent: **95.50%** on the class test set (78.64% real speech), **96.04%** on the Pi holdout set |
+| False-accept rate | Wake word: 12.9 false wake-ups per hour while streaming the master test split plus near-miss phrases, threshold 0.6 · Commands: 17.1% of out-of-scope test clips acted on (confidence ≥ 0.6), see [Out of scope](#out-of-scope) |
+| Latency p95 / RTF | **15.8 ms / 0.0063** end to end per command on the Raspberry Pi 5 (p50 13.9 ms: features 3.8 + model 10.0); wake word 1.9 ms per 100 ms hop, 1.9% of one core. `vcm_intent_small.onnx`: 12.1 ms / 0.0048. Measured with the Experiment 41d weights; the shipped model has the identical architecture and operations ([results/bench_pi5.md](results/bench_pi5.md)) |
 | Runtime | onnxruntime (CPU) · **1 thread** · Raspberry Pi 5 (8 GB): 100 MB peak RSS for the listener, 604 MB used system-wide with both services |
 
 ### To be submitted
@@ -72,7 +72,7 @@ Mic · 16 kHz → log-mel 40 × 501 (5.0 s, silence-trimmed) → CRNN encoder �
 |---|---|
 | GitHub repository | [github.com/quielq/quielq-vcm](https://github.com/quielq/quielq-vcm), public, MIT ([LICENSE](LICENSE)) |
 | Dataset location | Hugging Face `airimonda/ai231-me2-voice-commands`; each source keeps its own license (CC BY 4.0, CC0, FSC non-commercial academic, …, see the dataset card). DOI: not minted yet (the dataset owner can create one from the Hugging Face dataset settings or Zenodo) |
-| A100 cluster | `ai-n002`, 1 × A100-40GB, ~34 min per seed, seeds 0/1/2 |
+| A100 cluster | `ai-n002`, 1 × A100-40GB, ~54 min per seed, seeds 0/1/2 |
 | Model weights | `models/vcm_intent.onnx`, `models/vcm_intent.pt` (this repo) · release to be created (GitHub release with the two files) · licence: MIT (code and weights); the training data's own terms apply to its use |
 
 ### Reviewer checklist
@@ -81,10 +81,10 @@ Mic · 16 kHz → log-mel 40 × 501 (5.0 s, silence-trimmed) → CRNN encoder �
 |---|---|---|
 | 1 | Repo public, one-command reproduction | `bash scripts/reproduce.sh` (data → train → evaluate → ONNX → benchmark) |
 | 2 | Dataset licensed and citable (DOI) | Licensed per source on the dataset card; DOI pending, to be minted by the dataset owner |
-| 3 | Training logs + final checkpoint committed | [`results/`](results/) (logs, evaluations, launchers for Experiments 37–41) and `models/vcm_intent.pt` |
+| 3 | Training logs + final checkpoint committed | [`results/`](results/) (logs, evaluations, launchers for Experiments 37–43) and `models/vcm_intent.pt` |
 | 4 | Pi latency reproduced by the posted script | `python scripts/benchmark_pi.py --json bench_pi.json` on the Pi 5: 15.8 ms p95 ([results/bench_pi5.md](results/bench_pi5.md)) |
-| 5 | Held-out test set, unseen speakers | Class-fixed test split (4,418 clips, 121 speakers) and holdout (196); no speaker or synthetic voice in two splits |
-| 6 | Baseline of comparable size compared | DS-CNN 99.6K and BC-ResNet 89K params, same data and recipe ([Experiment 38](docs/EXPERIMENTS.md#experiment-38--comparable-size-baselines)) |
+| 5 | Held-out test set, unseen speakers | Class-fixed test split (4,443 clips, 144 speakers) and holdout (202); no speaker or synthetic voice in two splits |
+| 6 | Baseline of comparable size compared | DS-CNN 99.6K and BC-ResNet 89K params, same data and recipe, on the current test set: 89.5% / 81.3% against 93.1% for the CRNN of the same size ([Experiment 38](docs/EXPERIMENTS.md#experiment-38--comparable-size-baselines)) |
 
 ## What the percentages mean
 
@@ -92,15 +92,15 @@ All accuracy numbers measure **intent recognition**: did the model pick the
 right command? The model never produces text, so there is no word error
 rate.
 
-- **Test set** = the class's fixed test split of the master dataset:
-  4,418 clips, 47 per Option B variation plus 47 out-of-scope clips. 76% of
-  it is the group's synthetic voices and 24% real people. No test speaker
-  is in training.
-- **Real speech** = the 1,003 test clips spoken by real people (group
-  recordings, SLURP, FSC, SNIPS, …). It is the harder, more honest number:
-  synthetic voices score ~99%.
-- **Holdout** = 196 clips the class set aside for the live test on the
-  Raspberry Pi (2 per variation).
+- **Test set** = the class's fixed test split of the master dataset
+  (revision `da92a79`): 4,443 clips, 47 per Option B variation plus 76
+  out-of-scope clips. 81% of it is the group's synthetic voices. No test
+  speaker is in training.
+- **Real speech** = the 777 test clips of real people saying a command
+  (group recordings, SLURP, FSC, SNIPS, …). It is the harder, more honest
+  number: synthetic voices score ~99%.
+- **Holdout** = 202 clips the class set aside for the live test on the
+  Raspberry Pi.
 - **Slot accuracy** is separate: for commands with a value, is the value
   right?
 - We chose every setting on our **validation** split (carved from train,
@@ -124,49 +124,57 @@ The full design is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 ## The final model, and how we chose it
 
 **The shipped model is a CRNN** (convolutional recurrent neural network),
-checkpoint `exp41d_combo_wide_distill_s0.pt` (Experiment 41d, seed 0), exported as
-`models/vcm_intent.onnx`. Details are in [docs/MODEL.md](docs/MODEL.md).
+checkpoint `exp43b_supplemental_s1.pt` (Experiment 43b, seed 1), exported
+as `models/vcm_intent.onnx`. Details are in [docs/MODEL.md](docs/MODEL.md).
 
-**How we got there on the master dataset** (3 seeds each, mean; every
-experiment is in [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md)):
+**How we got there.** We developed the recipe on the dataset's first
+revision (Experiments 37–42) and retrained it on the current revision
+(Experiment 43). Every setting was chosen on our val split. All numbers
+below are on the **current** test set (mean of 3 seeds; every experiment is
+in [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md)):
 
-| Step | Params | val real | test all | test real | holdout |
-|---|---:|---:|---:|---:|---:|
-| Experiment 36 recipe retrained on the master dataset (37a) | 99K | 64.0% | 90.1% | 63.6% | 92.4% |
-| DS-CNN baseline, same size (38) | 100K | 51.5% | 86.9% | 52.2% | 82.7% |
-| + 2-layer GRU, 4-head attention pooling, frequency-only SpecAugment, numerals as out-of-scope (40a) | 182K | 69.7% | 92.7% | 73.2% | 93.2% |
-| + distillation from an ensemble of our own CRNNs (40b) | 182K | 70.4% | 92.4% | 71.7% | 94.6% |
-| + wider: 80 channels, GRU 96 (**41d, shipped**) | 372K | **72.3%** | **92.9%** | **73.2%** | **93.9%** |
+| Model | Params | test all | test real | holdout |
+|---|---:|---:|---:|---:|
+| BC-ResNet baseline, same size (38)\* | 89K | 81.3% | 41.6% | — |
+| DS-CNN baseline, same size (38)\* | 100K | 89.5% | 57.1% | — |
+| CRNN, the Experiment 36 recipe (43t, 80 epochs) | 99K | 93.1% | 70.3% | 92.9% |
+| + 2-layer GRU, 4-head attention pooling, frequency-only SpecAugment, numerals as out-of-scope, distillation (43c) | 182K | 94.6% | 75.9% | 94.2% |
+| + wider: 80 channels, GRU 96 (43a) | 372K | 95.0% | 77.5% | 94.9% |
+| + the dataset's supplemental synthetic clips (**43b, shipped**) | 372K | **95.3%** | **77.6%** | **95.4%** |
 
-The shipped file is seed 0 of 41d, the best seed on val: **92.98%** on the
-class test set, **73.48%** on its real speech, **94.90%** on the holdout
-set. `models/vcm_intent_small.onnx` (40b seed 1, 722 KB) is the smaller
-alternative: 92.21% / 70.99% / 95.41%.
+\*Trained on the first revision; none of the current test clips were in
+it.
+
+The shipped file is seed 1 of 43b, the best seed on val: **95.50%** on the
+class test set, **78.64%** on its real speech, **96.04%** on the holdout
+set. `models/vcm_intent_small.onnx` (43c seed 0, 722 KB) is the smaller
+alternative: 94.53% / 76.06% / 93.07%.
 
 **Size.** The shipped model is 1.46 MB fp32, above the 1 MB that the
-earlier models kept to. It is still 0.37 M parameters and its latency is
-within a millisecond of the small one (features dominate). Pick
+earlier models kept to. It is still 0.37 M parameters, and on the Pi it is
+3.7 ms slower than the small one. Pick
 `--intent-model models/vcm_intent_small.onnx` to stay under 1 MB.
 
-**Compared with the old model.** The previous model (Experiment 36, old
-70k-clip dataset, `models/vcm_intent_exp36.onnx`) trained on 2,439 of the
-4,418 test clips, so its 92.4% on this test set is inflated. On the 1,979
-test clips it never saw it scores 86.7% (65.8% real speech); our first
-retrain on the master dataset already scored 89.2% there.
+**Compared with the previous models.** The model we shipped before the
+dataset update (Experiment 41d, trained on the first revision) scores
+94.80% / 79.15% real / 93.07% holdout on the current test set, but gets
+only 31.6% of the out-of-scope clips right against 69.7% now. The
+original model (Experiment 36, our own 70k-clip dataset,
+`models/vcm_intent_exp36.onnx`) had trained on most of the class test set,
+so it can't be compared fairly.
 
-What helped and what didn't (Experiment 39, one change at a time):
+What helped and what didn't (Experiment 39, one change at a time, on the
+first revision):
 
 - **Helped:** a 2-layer GRU; 4-head attention pooling; SpecAugment with
   frequency masks only; bare numbers from the numerals set as
-  out-of-scope examples; and all of them together (+9.7 points on real
-  speech).
+  out-of-scope examples; distillation from an ensemble of our own CRNNs;
+  a wider model; all of them together (+9.7 points of real speech on the
+  first revision's test set).
 - **Attention pooling is needed:** plain mean pooling loses 5.6 points of
   real speech.
 - **Hurt:** numerals as background talk, an EMA of the weights. Label
   smoothing, a wider speed range and more epochs did nothing.
-- **Comparable-size baselines:** DS-CNN (99.6K params) reaches 86.9% /
-  52.2% real speech and BC-ResNet (89K) 78.8% / 37.9%, against 90.1% /
-  63.6% for the CRNN of the same size (Experiment 38).
 
 **Before the master dataset** we ran 36 experiments on our own data: the
 CRNN beat DS-CNN and BC-ResNet by 11 points, and waveform augmentation
@@ -181,13 +189,22 @@ holdout splits. We only add a validation split (12% of train, by speaker)
 for choosing epochs and settings. Full description, statistics and build
 steps: [docs/DATASET.md](docs/DATASET.md).
 
-| Split | Clips | Real | Synthetic | Filipino voices | Speakers | Used for |
-|---|---:|---:|---:|---:|---:|---|
-| train | 9,273 | 2,494 | 6,779 | 737 | 271 | Training |
-| val (ours) | 1,409 | 382 | 1,027 | 5 | 44 | Choosing epochs and settings |
-| **test** | **4,418** | 1,050 | 3,368 | 203 | 121 | **Reported results** |
-| holdout | 196 | 96 | 100 | 76 | 5 | Raspberry Pi live test; also scored offline |
-| numerals | 66,390 | all | — | — | 2,547 | Bare numbers as out-of-scope examples (1,500 sampled) |
+| Split | Clips | Real | Synthetic | Filipino voices | Out of scope | Speakers | Used for |
+|---|---:|---:|---:|---:|---:|---:|---|
+| train | 9,285 | 2,019 | 7,266 | 708 | 251 | 331 | Training |
+| val (ours) | 1,448 | 340 | 1,108 | 5 | 19 | 46 | Choosing epochs and settings |
+| **test** | **4,443** | 824 | 3,619 | 203 | 76 | 144 | **Reported results** |
+| holdout | 202 | 96 | 106 | 87 | 16 | 7 | Raspberry Pi live test; also scored offline |
+| numerals | 66,390 | all | — | — | all | 2,547 | Bare numbers as out-of-scope examples (1,500 sampled) |
+| supplemental | 3,461 | — | 3,461 | — | — | 60 | Extra synthetic clips of train voices (tested in Experiment 43b) |
+
+**Dataset revision.** Everything from Experiment 43 on uses the
+2026-10-02 revision (`da92a79`, pinned in every download command). It
+replaced 743 free-form real clips (fixed commands that also named a song,
+room or contact) with synthetic ones, added synthetic out-of-scope clips,
+and added the `supplemental_synth` set. Experiments 37–42 used the
+2026-10-01 revision; their numbers are on the older test set. Details:
+[docs/DATASET.md](docs/DATASET.md#revisions).
 
 Slot values are exactly the schema's: 10 s / 30 s / 1 min, 6:00 AM /
 8:00 AM / 9:00 PM, 18 / 22 / 26 degrees, 20 / 60 / 100 percent, red /
@@ -198,16 +215,19 @@ blue / green, drink water / study / exercise.
 PyTorch on one A100 of UP's shared DGX. The final recipe:
 
 - CRNN as above, 372K parameters, dropout 0.1.
-- 80 epochs, batch size 128 (85 steps per epoch, 6,800 steps); Adam, learning
-  rate 1e-3, 5 warm-up epochs, then cosine decay. Best epoch on val: 62.
+- Training data: the train split (9,285 clips), the dataset's
+  supplemental synthetic clips of train voices (3,461) and 1,500 bare
+  numbers from the numerals set as OUT_OF_SCOPE: 14,246 clips.
+- 80 epochs, batch size 128 (112 steps per epoch, 8,960 steps); Adam,
+  learning rate 1e-3, 5 warm-up epochs, then cosine decay. Best epoch on
+  val: 65.
 - Loss: class-weighted cross-entropy, plus an extra penalty for confusing
   VOLUME_UP/VOLUME_DOWN/TEMPERATURE and LIGHT_ON/LIGHT_OFF, plus slot
   cross-entropy at weight 0.3, plus distillation (KL at temperature 3,
-  weight 1) toward the averaged predictions of 9 CRNNs from Experiment 37,
-  trained on the same split.
+  weight 1) toward the averaged predictions of 9 CRNNs trained on the same
+  split with the Experiment 36 recipe (43t).
 - Augmentation: background noise, speed 0.9–1.1×, reverb and start shift
   on the waveform; 2 frequency masks on the log-mel (no time masks).
-- 1,500 bare-number clips from the numerals set added as OUT_OF_SCOPE.
 - 3 seeds, all on one A100; checkpoints and settings chosen on val.
 
 [docs/TRAINING.md](docs/TRAINING.md) explains how we ran on the shared
@@ -216,40 +236,41 @@ it from a fresh clone.
 
 ## Test results
 
-Final numbers for the shipped model. Tables for every seed and split are
-in [docs/TESTING.md](docs/TESTING.md).
+Final numbers for the shipped models, on the current test set (revision
+`da92a79`). Tables for every seed and split are in
+[docs/TESTING.md](docs/TESTING.md).
 
 **Intent** (`models/vcm_intent.onnx`, identical to its checkpoint):
 
 | | Accuracy | n |
 |---|---:|---:|
-| **Class test set, all clips** | **92.98%** | 4,418 |
-| Real speech | 73.48% | 1,003 |
-| Synthetic voices | 99.50% | 3,368 |
-| Exact Option B wording (the demo phrases) | 99.06% | 3,601 |
-| Same command in other words | 67.66% | 770 |
-| Filipino group recordings | 87.30% | 189 |
-| Macro average over 20 classes | 88.06% | |
-| **Holdout (Pi live-test set)** | **94.90%** (real 94.19%) | 196 |
+| **Class test set, all clips** | **95.50%** | 4,443 |
+| Real speech | 78.64% | 777 |
+| Synthetic voices | 99.45% | 3,619 |
+| Exact Option B wording (the demo phrases) | 99.22% | 3,823 |
+| Same command in other words | 72.98% | 544 |
+| Filipino group recordings | 86.77% | 189 |
+| Macro average over 20 classes | 92.94% | |
+| **Holdout (Pi live-test set)** | **96.04%** (real 96.51%) | 202 |
 
 Strongest classes on real speech: TEMPERATURE and CREATE_REMINDER (100%),
-ALARM 90%, TIMER 89%. Weakest: LIGHT_ON 47%, PLAY_MUSIC 49%, MESSAGE 56%,
-most of them SLURP's free-form phrasings. OUT_OF_SCOPE is right 43% of
-the time; only 21% of out-of-scope test clips would make the device act
-(confidence ≥ 0.6), and in use the wake word filters most of them first.
+STOP 94%, ALARM 94%, BRIGHTNESS 92%. Weakest: CALL 38%, PLAY_MUSIC 38%,
+WEATHER 46%, MESSAGE 50% (12–26 real clips each, mostly SLURP's free-form
+phrasings).
 
 **Slot values** (test, slot head right / intent and slot both right):
-97.9% over all 2,538 slotted clips. Real speech: TIMER 89 / 79%, ALARM
-80 / 75%, BRIGHTNESS 100 / 88%, COLOR 87 / 72%, TEMPERATURE 93 / 93%,
-CREATE_REMINDER 78 / 78% (n = 18–118 each).
+98.2% over all 2,538 slotted clips. Real speech: TIMER 100 / 79%, ALARM
+90 / 88%, BRIGHTNESS 96 / 88%, COLOR 82 / 69%, TEMPERATURE 79 / 79%,
+CREATE_REMINDER 89 / 89% (n = 18–118 each).
 
-**Reject threshold.** At 0.6 confidence the device rejects 22% of real
-commands ("please repeat") and is right on 84% of those it accepts.
+**Reject threshold.** At 0.6 confidence the device rejects 16% of real
+commands ("please repeat") and is right on 87% of those it accepts.
 
 **Latency on the Raspberry Pi 5** (`scripts/benchmark_pi.py`, 1 thread):
 13.9 ms p50 / 15.8 ms p95 per command end to end, RTF 0.0063 at p95; the
-wake word uses 1.9% of one core. The previous, smaller model took 9.9 ms;
-`vcm_intent_small.onnx` takes 12.1 ms p95. Details:
+wake word uses 1.9% of one core. `vcm_intent_small.onnx` takes 12.1 ms p95.
+Measured with the Experiment 41d weights, which have the same
+architecture as the shipped model. Details:
 [results/bench_pi5.md](results/bench_pi5.md).
 
 ### Out of scope
@@ -261,33 +282,38 @@ only when the model says OUT_OF_SCOPE. Reported separately on test:
 
 | | Result | n |
 |---|---:|---:|
-| Commands only (out-of-scope clips excluded) | 93.53% (real speech 73.48%) | 4,371 |
-| Out-of-scope clips the device ignores (OUT_OF_SCOPE or confidence < 0.6) | 78.7% | 47 |
-| Out-of-scope clips it would act on (false accept) | 21.3% | 47 |
-| Commands it ignores (false reject, same rule) | 5.5% | 4,371 |
+| Commands only (out-of-scope clips excluded) | 95.95% (real speech 78.64%) | 4,367 |
+| Out-of-scope clips labeled OUT_OF_SCOPE | 69.7% | 76 |
+| Out-of-scope clips the device ignores (OUT_OF_SCOPE or confidence < 0.6) | 82.9% | 76 |
+| Out-of-scope clips it would act on (false accept) | 17.1% | 76 |
+| Commands it ignores (false reject, same rule) | 3.7% | 4,367 |
 
-The wake word filters most non-command speech before the intent model
-hears it. Details: [TESTING.md](docs/TESTING.md#out-of-scope-how-it-is-handled-and-tested).
+On the holdout set the device ignores 93.8% of out-of-scope clips (n=16)
+and 0.5% of commands. The wake word filters most non-command speech
+before the intent model hears it. Details:
+[TESTING.md](docs/TESTING.md#out-of-scope-how-it-is-handled-and-tested).
 
 ### Wake word
 
-Retrained in Experiment 42 with the master dataset as its negatives (its
-train split's commands, out-of-scope speech and noise, plus 3,000 numerals
-clips). The "hey kiwi" positives are not in any class dataset: they are
-~3,000 synthetic clips and the author's own recordings, as before. On the
-master test split streamed as one 3.05 h recording with near-miss phrases:
+Trained with the master dataset as its negatives (its train split's
+commands, out-of-scope speech and noise, plus 3,000 numerals clips;
+Experiment 43, seed 1, the best on val). The "hey kiwi" positives are not
+in any class dataset: they are ~3,000 synthetic clips and the author's own
+recordings. On the master test split streamed as one 2.94 h recording with
+near-miss phrases:
 
 | Threshold | Missed, clean | Missed, 10 dB noise | Author's real takes missed | False wake-ups per hour |
 |---:|---:|---:|---:|---:|
-| **0.6 (default)** | 4.1% | 4.6% | 0/10 | 11.2 |
-| 0.7 | 4.1% | 6.6% | 0/10 | 8.5 |
-| 0.85 | 7.9% | 11.3% | 0/10 | 4.3 |
-| 0.95 | 17.9% | 24.0% | 1/10 | 1.6 |
+| **0.6 (default)** | 3.8% | 7.2% | 0/10 | 12.9 |
+| 0.7 | 4.6% | 8.4% | 0/10 | 9.5 |
+| 0.85 | 8.2% | 12.5% | 0/10 | 7.2 |
+| 0.95 | 13.8% | 23.3% | 0/10 | 2.0 |
 
-Same architecture and size as the previous detector (25,475 parameters,
-107 KB); only the training data changed. The previous wake word
-(Experiment 34, `models/kiwi_wakeword_exp34.onnx`)
-fires 19.7 times per hour on the same stream at 0.6 and misses 3.1% / 6.6%.
+Same architecture and size as the earlier detectors (25,475 parameters,
+107 KB); only the training data changed. On the same stream the
+Experiment 42 detector (first revision) misses 4.1% / 4.9% with 12.3
+false wake-ups per hour, and the Experiment 34 one (our old dataset,
+`models/kiwi_wakeword_exp34.onnx`) is in [docs/TESTING.md](docs/TESTING.md).
 The device uses 0.6, and 0.4 while music plays.
 
 **Automated tests.** 244 unit tests run without any hardware
@@ -324,8 +350,8 @@ The device uses 0.6, and 0.4 while music plays.
 ├── models/                    the trained models
 │   ├── vcm_intent.onnx          ★ shipped intent + slot model (ONNX, runs on the Pi)
 │   ├── vcm_intent.pt            ★ its PyTorch checkpoint
-│   ├── kiwi_wakeword.onnx       ★ shipped wake word (Experiment 42), and kiwi_wakeword.pt
-│   ├── vcm_intent_small.onnx    smaller intent model (Experiment 40b, 722 KB)
+│   ├── kiwi_wakeword.onnx       ★ shipped wake word (Experiment 43), and kiwi_wakeword.pt
+│   ├── vcm_intent_small.onnx    smaller intent model (Experiment 43c, 722 KB)
 │   ├── vcm_intent_exp36.onnx, kiwi_wakeword_exp34.onnx   the previous models (old dataset), for comparison
 │   └── vcm_intent_frozen.onnx   older variant, not used
 ├── results/                   training logs, evaluation outputs and launchers, Experiments 37–41
@@ -469,11 +495,11 @@ Keep this running on the Mac:
 
 ## Future enhancements
 
-- **More real speech.** Real clips are 27% of train; synthetic voices
-  score ~99% and real speakers 73.48%. Commands phrased in the
+- **More real speech.** Real clips are 22% of train; synthetic voices
+  score ~99% and real speakers 78.64%. Commands phrased in the
   speaker's own words are the main source of errors.
 - **Out-of-scope rejection.** OUT_OF_SCOPE has the fewest train clips
-  (187); the device also rejects low-confidence commands.
+  (251); 17% of out-of-scope test clips would still be acted on.
 - Measure on a Pi Zero 2 W (512 MB), the smallest board that should fit.
 - Add a login or token to the home server and dashboard.
 - Run the test suite in CI on every pull request.

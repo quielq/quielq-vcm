@@ -1,0 +1,12 @@
+wrote data/me2/manifest.csv, slot_labels.csv (10425 rows), metadata.csv
+  supplemental: dropped 2395 clips whose voice is in val, test or holdout
+  train      9285 clips   2019 real   331 speakers
+  val        1448 clips    340 real    46 speakers
+  test       4443 clips    824 real   144 speakers
+  holdout     202 clips     96 real     7 speakers
+  numerals  66390 clips  66390 real  2547 speakers
+  supplemental   3461 clips      0 real    60 speakers
+
+real	11m33.583s
+user	0m31.766s
+sys	0m55.373s
