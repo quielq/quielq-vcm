@@ -29,6 +29,12 @@ What it does:
   "supplemental" (train.py --include-supplemental). Clips of val, test or
   holdout voices are dropped, so every split stays voice-disjoint and val
   is the same with or without them.
+- With --shared-cache, train/test/holdout/numerals are read from the
+  class's shared copy on the DGX (/data/ai231, a Hugging Face `datasets`
+  cache) instead of --hf-dir. It holds no supplemental_synth, so
+  --supplemental still reads that from --hf-dir. Check the shared copy
+  with scripts/verify_shared_dataset.py first: on 2026-10-02 it was
+  identical, clip for clip, to revision da92a79.
 - With --numerals, also the numerals set (66,390 number-only clips, labeled
   OUT_OF_SCOPE by the dataset) as split "numerals", source prefixed
   "numerals_" so it is never taken for the train split's noise clips.
@@ -41,6 +47,8 @@ Usage:
         revision='da92a79ffde3031d5bb2a25138d9dd7d9f7ed006',
         allow_patterns=['data/*', 'supplemental_synth/*', 'README.md', 'variations.csv'])"
     python scripts/build_me2_manifest.py --numerals --supplemental
+    # or, on the DGX, from the class's shared copy (supplemental_synth still from data/me2/hf):
+    python scripts/build_me2_manifest.py --shared-cache /data/ai231 --numerals --supplemental
 """
 
 from __future__ import annotations
@@ -51,6 +59,7 @@ import random
 from collections import Counter, defaultdict
 from pathlib import Path
 
+import pyarrow as pa
 import pyarrow.parquet as pq
 
 from vcm.dataset.manifest import ManifestRow, write_manifest
@@ -64,12 +73,32 @@ METADATA_FIELDS = (
 )  # fmt: skip
 
 
-def read_split(hf_dir: Path, split: str) -> list[dict]:
+def shared_cache_dir(cache: Path) -> Path:
+    """The Arrow folder that load_dataset("airimonda/ai231-me2-voice-commands",
+    cache_dir=cache) wrote (its last component is a config hash)."""
+    dirs = sorted(p.parent for p in cache.glob("airimonda___ai231-me2-voice-commands/default/*/*/dataset_info.json"))
+    if len(dirs) != 1:
+        raise SystemExit(f"expected one dataset cache under {cache}, found {len(dirs)}")
+    return dirs[0]
+
+
+def read_arrow(path: Path) -> pa.Table:
+    with pa.memory_map(str(path)) as source:
+        return pa.ipc.open_stream(source).read_all()
+
+
+def read_split(hf_dir: Path, split: str, shared: Path | None = None) -> list[dict]:
+    """A split's rows from the downloaded parquet files, or from the shared
+    Arrow cache when `shared` is given (same columns, same row order)."""
     rows = []
-    for path in sorted(hf_dir.glob(f"data/{split}-*.parquet")):
-        rows.extend(pq.read_table(path).to_pylist())
+    if shared is not None:
+        for path in sorted(shared.glob(f"ai231-me2-voice-commands-{split}*.arrow")):
+            rows.extend(read_arrow(path).to_pylist())
+    else:
+        for path in sorted(hf_dir.glob(f"data/{split}-*.parquet")):
+            rows.extend(pq.read_table(path).to_pylist())
     if not rows:
-        raise SystemExit(f"no parquet files for split {split!r} under {hf_dir}/data")
+        raise SystemExit(f"no files for split {split!r} under {shared or hf_dir / 'data'}")
     return rows
 
 
@@ -99,6 +128,13 @@ def choose_val_speakers(rows: list[dict], fraction: float, min_speakers: int, se
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--hf-dir", type=Path, default=Path("data/me2/hf"))
+    parser.add_argument(
+        "--shared-cache",
+        type=Path,
+        default=None,
+        help="Read train/test/holdout/numerals from this shared datasets cache (e.g. /data/ai231) "
+        "instead of --hf-dir.",
+    )
     parser.add_argument("--out-dir", type=Path, default=Path("data/me2"))
     parser.add_argument("--val-fraction", type=float, default=0.12)
     parser.add_argument("--min-speakers", type=int, default=5)
@@ -110,6 +146,9 @@ def main() -> None:
         help="Also write supplemental_synth clips of train voices (split 'supplemental').",
     )
     args = parser.parse_args()
+    shared = shared_cache_dir(args.shared_cache) if args.shared_cache else None
+    if shared:
+        print(f"reading train/test/holdout/numerals from {shared}")
 
     manifest_rows: list[ManifestRow] = []
     slot_rows: list[dict] = []
@@ -126,7 +165,7 @@ def main() -> None:
             dropped_supplemental = len(rows) - len(keep)
             rows = keep
         else:
-            rows = read_split(args.hf_dir, split)
+            rows = read_split(args.hf_dir, split, shared)
         if split == "train":
             val_speakers = choose_val_speakers(rows, args.val_fraction, args.min_speakers, args.seed)
             train_voices = {(r["source"], r["speaker_id"] or "") for r in rows} - val_speakers

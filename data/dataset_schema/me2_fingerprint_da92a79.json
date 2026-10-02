@@ -1,0 +1,19 @@
+{
+  "revision": "da92a79ffde3031d5bb2a25138d9dd7d9f7ed006",
+  "train": {
+    "clips": 10733,
+    "sha1": "dadf68455f39caf87ecc98277502966f073ef474"
+  },
+  "test": {
+    "clips": 4443,
+    "sha1": "962ec5dcba7c1b0232287792603a996de549dc71"
+  },
+  "holdout": {
+    "clips": 202,
+    "sha1": "85981fe12e15b863d2ee76df2e7a926c2a15b811"
+  },
+  "numerals": {
+    "clips": 66390,
+    "sha1": "54026aff0420ebd3fafd59eb689dda52cc5068b7"
+  }
+}
