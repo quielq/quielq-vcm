@@ -112,7 +112,7 @@ stages: wake-word triggers per hour on a long stream that contains no
 "hey kiwi", and the share of out-of-scope clips the command model would
 act on. **Latency** is reported at the 95th percentile, which bounds the
 delay a user actually notices better than the mean. The **real-time
-factor** (RTF) is processing time divided by audio duration: 0.0063 on the
+factor** (RTF) is processing time divided by audio duration: 0.0061 on the
 Raspberry Pi 5 means a command is processed about 160 times faster than
 real time.
 
@@ -120,7 +120,7 @@ real time.
 |---|---|
 | Keyword / intent acc | Wake word: 96.2% of held-out "hey kiwi" clips caught (92.8% with 10 dB noise, 10/10 of the author's held-out takes) · Intent: **95.50%** on the class test set (78.64% real speech), **96.04%** on the Pi holdout set |
 | False-accept rate | Wake word: 12.9 false wake-ups per hour while streaming the master test split plus near-miss phrases, threshold 0.6 · Commands: 17.1% of out-of-scope test clips acted on (confidence ≥ 0.6), see [Out of scope](#out-of-scope) |
-| Latency p95 / RTF | **15.8 ms / 0.0063** end to end per command on the Raspberry Pi 5 (p50 13.9 ms: features 3.8 + model 10.0); wake word 1.9 ms per 100 ms hop, 1.9% of one core. `vcm_intent_small.onnx`: 12.1 ms / 0.0048. Measured with the Experiment 41d weights; the shipped model has the identical architecture and operations ([results/bench_pi5.md](results/bench_pi5.md)) |
+| Latency p95 / RTF | **15.2 ms / 0.0061** end to end per command on the Raspberry Pi 5 (p50 13.9 ms: features 3.8 + model 10.1); wake word 2.0 ms per 100 ms hop at p95, 1.9% of one core. Measured with the shipped Experiment 43b weights. `vcm_intent_small.onnx`: 12.1 ms / 0.0048 (Experiment 40b weights, same architecture as 43c) ([results/bench_pi5.md](results/bench_pi5.md)) |
 | Runtime | onnxruntime (CPU) · **1 thread** · Raspberry Pi 5 (8 GB): 100 MB peak RSS for the listener, 604 MB used system-wide with both services |
 
 ### To be submitted
@@ -139,7 +139,7 @@ real time.
 | 1 | Repo public, one-command reproduction | `bash scripts/reproduce.sh` (data → train → evaluate → ONNX → benchmark); on the DGX it reads the class's shared copy `/data/ai231` after checking it against the committed dataset fingerprint |
 | 2 | Dataset licensed and citable (DOI) | Licensed per source on the dataset card; DOI pending, to be minted by the dataset owner |
 | 3 | Training logs + final checkpoint committed | [`results/`](results/) (logs, evaluations, launchers for Experiments 37–43) and `models/vcm_intent.pt` |
-| 4 | Pi latency reproduced by the posted script | `python scripts/benchmark_pi.py --json bench_pi.json` on the Pi 5: 15.8 ms p95 ([results/bench_pi5.md](results/bench_pi5.md)) |
+| 4 | Pi latency reproduced by the posted script | `python scripts/benchmark_pi.py --json bench_pi.json` on the Pi 5: 15.2 ms p95 with the shipped weights ([results/bench_pi5.md](results/bench_pi5.md)) |
 | 5 | Held-out test set, unseen speakers | Class-fixed test split (4,443 clips, 144 speakers) and holdout (202); no speaker or synthetic voice in two splits |
 | 6 | Baseline of comparable size compared | DS-CNN 99.6K and BC-ResNet 89K params, same data and recipe, on the current test set: 89.5% / 81.3% against 93.1% for the CRNN of the same size ([Experiment 38](docs/EXPERIMENTS.md#experiment-38--comparable-size-baselines)) |
 
@@ -325,10 +325,10 @@ CREATE_REMINDER 89 / 89% (n = 18–118 each).
 commands ("please repeat") and is right on 87% of those it accepts.
 
 **Latency on the Raspberry Pi 5** (`scripts/benchmark_pi.py`, 1 thread):
-13.9 ms p50 / 15.8 ms p95 per command end to end, RTF 0.0063 at p95; the
-wake word uses 1.9% of one core. `vcm_intent_small.onnx` takes 12.1 ms p95.
-Measured with the Experiment 41d weights, which have the same
-architecture as the shipped model. Details:
+13.9 ms p50 / 15.2 ms p95 per command end to end, RTF 0.0061 at p95; the
+wake word uses 1.9% of one core. Measured with the shipped Experiment 43b
+weights. `vcm_intent_small.onnx` takes 12.1 ms p95 (Experiment 40b weights,
+same architecture as 43c). Details:
 [results/bench_pi5.md](results/bench_pi5.md).
 
 ### Out of scope

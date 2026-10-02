@@ -269,11 +269,11 @@ What the live run needs from us, and its risks:
 **Speed and memory** (`scripts/benchmark_pi.py`, no microphone needed;
 `--clips` times real recordings, `--json` saves the numbers). It reports
 mean, p50 and p95 latency per command and the real-time factor, with ONNX
-Runtime on 1 thread. On the Raspberry Pi 5 (8 GB): 13.9 ms p50 / 15.8 ms
-p95 per command, RTF 0.0063 at p95, wake word 1.9% of one core, 100 MB
-peak; 604 MB used system-wide with both services running
-([results/bench_pi5.md](../results/bench_pi5.md); measured with the
-Experiment 41d weights, the same architecture as the shipped model). The previous model took
+Runtime on 1 thread. On the Raspberry Pi 5 (8 GB), with the shipped
+Experiment 43b weights: 13.9 ms p50 / 15.2 ms p95 per command, RTF 0.0061
+at p95, wake word 1.9% of one core, 99 MB peak; 719 MB used system-wide
+with both services running
+([results/bench_pi5.md](../results/bench_pi5.md)). The previous model took
 9.9 ms. Details in [FOOTPRINT.md](FOOTPRINT.md).
 
 **Preflight check** before a demo: `scripts/kiwi_doctor.py --beep` checks

@@ -2721,6 +2721,11 @@ on GPU 6 (shared with one other user's small job). Launcher:
 | 43a = 41d recipe: combo, wider, distillation (372K) | 93.99 ± 0.32 | 74.95 ± 1.36 | 95.03 ± 0.27 | 77.52 ± 1.12 | 94.88 ± 1.25 | 94.96 ± 1.78 |
 | **43b = 43a + supplemental clips (372K)** | 94.34 ± 0.36 | 77.07 ± 1.97 | 95.27 ± 0.25 | 77.57 ± 0.98 | 95.38 ± 1.14 | 95.74 ± 0.67 |
 
+- **The 43t ensemble** (the averaged predictions of all 9 teachers, the
+  distillation target) scores **95.03%** on val (79.41% real speech,
+  n = 1,448 / 340), against 93.21% for one teacher on average. Measured
+  2026-10-02 with `scripts/generate_ensemble_labels.py checkpoints/exp43t_*_s?.pt
+  --split val` and the arg-max of its soft labels.
 - **43b is the best on val** (94.34% / 77.07% real), +2.1 real speech over
   43a from the supplemental clips. **Shipped: 43b seed 1**, the best seed
   on val (94.75% / 79.09%): **95.50%** on test, **78.64%** real speech,
