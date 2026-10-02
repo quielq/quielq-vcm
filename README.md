@@ -35,8 +35,8 @@ Mic · 16 kHz → log-mel 40 × 501 (5.0 s, silence-trimmed) → CRNN encoder �
 | Intent head | Linear → 20 classes (19 intents + `OUT_OF_SCOPE`) |
 | Slot heads | 6 heads, each with its own attention pooling → 3 schema values (TIMER, ALARM, TEMPERATURE, BRIGHTNESS, COLOR, CREATE_REMINDER) |
 | Actuator | `vcm.home` server: lamp, thermostat, timers, alarms, reminders, Spotify/local music, volume, weather, calls/messages via phone bridge; spoken reply |
-| Parameters / weights | **0.372 M** parameters · **1.46 MB** fp32 ONNX (`models/vcm_intent.onnx`); wake word adds 0.025 M · 0.11 MB |
-| Wake word ("Hey Kiwi") | Small CRNN, 25K params, 1.5 s window scored every 100 ms (Experiment 34, unchanged) |
+| Parameters / weights | **0.372 M** parameters · **1.46 MB** fp32 ONNX (`models/vcm_intent.onnx`); the wake word adds 0.025 M · 0.11 MB (`models/kiwi_wakeword.onnx`) |
+| Wake word ("Hey Kiwi") | Small CRNN, 25K params, 1.5 s window scored every 100 ms. Retrained with the master dataset as its "not the wake word" examples (Experiment 42) |
 
 ### Dataset
 
@@ -61,8 +61,8 @@ Mic · 16 kHz → log-mel 40 × 501 (5.0 s, silence-trimmed) → CRNN encoder �
 
 | Item | Value |
 |---|---|
-| Keyword / intent acc | Wake word: 96.9% of held-out "hey kiwi" clips caught (3.1% missed, Exp 34) · Intent: **92.98%** on the class test set (73.48% real speech), **94.90%** on the Pi holdout set |
-| False-accept rate | Wake word: 12.7 false wake-ups per hour of non-wake speech at threshold 0.6 · Commands: 21.3% of out-of-scope test clips acted on as a command (confidence ≥ 0.6; 57.4% at any confidence) |
+| Keyword / intent acc | Wake word: 95.9% of held-out "hey kiwi" clips caught (95.4% with 10 dB noise, 10/10 of the author's held-out takes) · Intent: **92.98%** on the class test set (73.48% real speech), **94.90%** on the Pi holdout set |
+| False-accept rate | Wake word: 11.2 false wake-ups per hour while streaming the master test split plus near-miss phrases, threshold 0.6 · Commands: 21.3% of out-of-scope test clips acted on (confidence ≥ 0.6), see [Out of scope](#out-of-scope) |
 | Latency p95 / RTF | Pi: run `scripts/benchmark_pi.py` on the device (not yet measured for this model). DGX, 1 CPU core: **8.8 ms / 0.008** end to end per command (features + model) |
 | Runtime | onnxruntime (CPU) · **1 thread** |
 
@@ -250,11 +250,41 @@ commands ("please repeat") and is right on 84% of those it accepts.
 (`scripts/benchmark_pi.py`). The Raspberry Pi numbers come from the same
 script on the Pi (the previous, smaller model took 9.9 ms on the Pi 5).
 
-**Wake word.** At the default threshold of 0.6, it misses 3.1% of held-out
-"hey kiwi" clips and 5.6% with background noise. It caught all 10 of the
-author's held-out recordings. It fires 12.7 times per hour on a test stream
-full of deliberately confusing phrases. (Experiment 34; the wake word is
-not part of the master dataset.)
+### Out of scope
+
+The dataset's `OUT_OF_SCOPE` clips (noise, Filipino speech, near-miss
+requests, general speech) are kept as the dataset defines them: a 20th
+class in training, never acted on by the device, and scored as correct
+only when the model says OUT_OF_SCOPE. Reported separately on test:
+
+| | Result | n |
+|---|---:|---:|
+| Commands only (out-of-scope clips excluded) | 93.53% (real speech 73.48%) | 4,371 |
+| Out-of-scope clips the device ignores (OUT_OF_SCOPE or confidence < 0.6) | 78.7% | 47 |
+| Out-of-scope clips it would act on (false accept) | 21.3% | 47 |
+| Commands it ignores (false reject, same rule) | 5.5% | 4,371 |
+
+The wake word filters most non-command speech before the intent model
+hears it. Details: [TESTING.md](docs/TESTING.md#out-of-scope-how-it-is-handled-and-tested).
+
+### Wake word
+
+Retrained in Experiment 42 with the master dataset as its negatives (its
+train split's commands, out-of-scope speech and noise, plus 3,000 numerals
+clips). The "hey kiwi" positives are not in any class dataset: they are
+~3,000 synthetic clips and the author's own recordings, as before. On the
+master test split streamed as one 3.05 h recording with near-miss phrases:
+
+| Threshold | Missed, clean | Missed, 10 dB noise | Author's real takes missed | False wake-ups per hour |
+|---:|---:|---:|---:|---:|
+| **0.6 (default)** | 4.1% | 4.6% | 0/10 | 11.2 |
+| 0.7 | 4.1% | 6.6% | 0/10 | 8.5 |
+| 0.85 | 7.9% | 11.3% | 0/10 | 4.3 |
+| 0.95 | 17.9% | 24.0% | 1/10 | 1.6 |
+
+The previous wake word (Experiment 34, `models/kiwi_wakeword_exp34.onnx`)
+fires 19.7 times per hour on the same stream at 0.6 and misses 3.1% / 6.6%.
+The device uses 0.6, and 0.4 while music plays.
 
 **Automated tests.** 244 unit tests run without any hardware
 (`python -m pytest`).
@@ -290,9 +320,10 @@ not part of the master dataset.)
 ├── models/                    the trained models
 │   ├── vcm_intent.onnx          ★ shipped intent + slot model (ONNX, runs on the Pi)
 │   ├── vcm_intent.pt            ★ its PyTorch checkpoint
-│   ├── kiwi_wakeword.onnx       ★ shipped wake word
-│   ├── vcm_intent_exp36.onnx    the previous model (old dataset), for comparison
-│   └── vcm_intent_frozen.onnx, kiwi_wakeword.int8.onnx   older variants, not used
+│   ├── kiwi_wakeword.onnx       ★ shipped wake word (Experiment 42), and kiwi_wakeword.pt
+│   ├── vcm_intent_small.onnx    smaller intent model (Experiment 40b, 722 KB)
+│   ├── vcm_intent_exp36.onnx, kiwi_wakeword_exp34.onnx   the previous models (old dataset), for comparison
+│   └── vcm_intent_frozen.onnx   older variant, not used
 ├── results/                   training logs, evaluation outputs and launchers, Experiments 37–41
 ├── src/vcm/                   the Python package
 │   ├── audio/                 microphone capture, log-mel features, numpy DSP, resampling

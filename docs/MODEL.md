@@ -12,8 +12,8 @@ exported to fp32 ONNX and run with ONNX Runtime (no PyTorch on the device).
 | Input | 40 log-mel bands × 501 frames (5.0 s, silence-trimmed) | 40 × 151 frames (1.5 s window) |
 | Output | 20 classes (19 intents + `OUT_OF_SCOPE`) and 6 slot-value heads, 3 values each | wake / not wake |
 | When it runs | Once per command, after the wake word | Every 100 ms, always on |
-| Source checkpoint | `exp41d_combo_wide_distill_s0.pt` (Experiment 41d, seed 0; also `models/vcm_intent.pt`) | `kiwi_wakeword_v2_s0.pt` (Experiment 34) |
-| Headline result | **92.98%** on the class test set (n=4,418), 73.48% on its real speech, 94.90% on the Pi holdout set | 3.1% missed wake words (clean), 0/10 of the author's real takes missed, at threshold 0.6 |
+| Source checkpoint | `exp41d_combo_wide_distill_s0.pt` (Experiment 41d, seed 0; also `models/vcm_intent.pt`) | `exp42_wake_me2_s1.pt` (Experiment 42, seed 1; also `models/kiwi_wakeword.pt`) |
+| Headline result | **92.98%** on the class test set (n=4,418), 73.48% on its real speech, 94.90% on the Pi holdout set | 4.1% missed (4.6% in noise), 0/10 of the author's real takes missed, 11.2 false wake-ups/hour, at threshold 0.6 |
 
 The label list, slot vocabulary and feature settings are stored in each ONNX
 file's metadata, so the runtime reads them from the model instead of keeping
@@ -338,7 +338,11 @@ design at a quarter of the size (32 channels, 32 GRU units each way),
 trained on 1.5 s windows:
 ~3,000 synthetic "hey kiwi" clips in 145 cloned voices, the author's own 20
 training takes, near-miss phrases ("hey kitty", "every week") as hard
-negatives, command speech and noise.
+negatives, and ordinary speech and noise. Since Experiment 42 the ordinary
+speech and noise come only from the class master dataset (its train split,
+including out-of-scope speech, plus 3,000 numerals clips); the earlier
+Experiment 34 detector used the project's old dataset for them. The "hey
+kiwi" positives can't come from the class dataset, which has none.
 
 `vcm/wakeword/detector.py` scores the last 1.5 s every 100 ms. When the score
 passes the threshold, `scripts/vcm_listen.py` records until 0.6 s of quiet
@@ -346,12 +350,14 @@ passes the threshold, `scripts/vcm_listen.py` records until 0.6 s of quiet
 
 | Threshold | Missed, clean | Missed, 10 dB noise | Author's real takes missed | False wake-ups per hour* |
 |---:|---:|---:|---:|---:|
-| **0.6 (default)** | 3.1% | 5.6% | 0/10 | 12.7 |
-| 0.7 | 3.6% | 8.2% | 0/10 | 9.2 |
-| 0.95 | 14.1% | 21.5% | 0/10 | 1.3 |
+| **0.6 (default)** | 4.1% | 4.6% | 0/10 | 11.2 |
+| 0.7 | 4.1% | 6.6% | 0/10 | 8.5 |
+| 0.85 | 7.9% | 11.3% | 0/10 | 4.3 |
+| 0.95 | 17.9% | 24.0% | 1/10 | 1.6 |
 
-\*On a 7.48 h test stream that deliberately includes near-miss phrases, so a
-real room sees fewer. The offline choice was 0.95; live testing on the Pi
+\*Streaming the master dataset's test split (4,418 clips) and 300 near-miss
+phrases back to back, 3.05 h, so a real room sees fewer. The Experiment 34
+detector gives 3.1% / 6.6% / 0/10 / 19.7 per hour on the same stream at 0.6. The offline choice was 0.95; live testing on the Pi
 showed it missed too many real attempts from across the room, so the
 default is 0.6, and 0.4 while music is playing.
 

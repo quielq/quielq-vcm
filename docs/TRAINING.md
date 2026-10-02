@@ -178,12 +178,15 @@ python scripts/evaluate_checkpoint.py checkpoints/exp41d_combo_wide_distill_s*.p
   --metadata data/me2/metadata.csv --split test        # and --split holdout
 python scripts/export_onnx.py checkpoints/exp41d_combo_wide_distill_s0.pt --out models/vcm_intent
 
-# "Hey Kiwi" wake word: unchanged (Experiment 34, seed 0), not part of the
-# master dataset
-python scripts/train_wakeword.py --seed 0 \
-  --extra-wake-manifest data/wakeword_real/manifest.csv \
-  --out checkpoints/kiwi_wakeword_v2_s0.pt
-python scripts/export_onnx.py checkpoints/kiwi_wakeword_v2_s0.pt --out models/kiwi_wakeword
+# "Hey Kiwi" wake word (Experiment 42, seed 1 shipped): master dataset speech and noise
+# as negatives; positives from the synthetic wakeword batch (data/external/wakeword_synth,
+# published in the quielq-vcm-dataset v1.0 release) and data/wakeword_real
+python scripts/train_wakeword.py --seed 1 --intent-manifest data/me2/manifest.csv \
+  --numerals-clips 3000 --extra-wake-manifest data/wakeword_real/manifest.csv \
+  --out checkpoints/exp42_wake_me2_s1.pt
+python scripts/evaluate_wakeword.py checkpoints/exp42_wake_me2_s1.pt --intent-manifest data/me2/manifest.csv \
+  --extra-wake-manifest data/wakeword_real/manifest.csv
+python scripts/export_onnx.py checkpoints/exp42_wake_me2_s1.pt --out models/kiwi_wakeword
 ```
 
 `bash scripts/reproduce.sh` does all of the above in one command.

@@ -3,7 +3,11 @@
 
 Inputs: the wakeword batch from scripts/generate_targeted_synthetic.py
 (positives + near-miss negatives) and an intent manifest (ordinary command
-speech and background noise as negatives). See vcm.wakeword.data for the
+speech and background noise as negatives). From Experiment 42 the intent
+manifest is the class master dataset (data/me2/manifest.csv): its train
+split (commands and out-of-scope speech) and, with --numerals-clips, bare
+numbers from its numerals set are the negatives; its val split is
+validation. See vcm.wakeword.data for the
 example kinds. Each epoch draws --samples-per-epoch examples with fixed
 kind proportions, since the negatives vastly outnumber the positives.
 
@@ -12,7 +16,8 @@ are held out here as validation for checkpoint selection, so the 20
 test-split voices stay untouched for scripts/evaluate_wakeword.py.
 
 Usage:
-    python scripts/train_wakeword.py --intent-manifest data/dataset_manifest_exp32.csv --out checkpoints/kiwi_wakeword_s0.pt
+    python scripts/train_wakeword.py --intent-manifest data/me2/manifest.csv --numerals-clips 3000 \
+        --extra-wake-manifest data/wakeword_real/manifest.csv --out checkpoints/kiwi_wakeword_me2_s0.pt
 """
 
 from __future__ import annotations
@@ -31,7 +36,7 @@ from torch.utils.data import DataLoader, WeightedRandomSampler
 
 from vcm.dataset.manifest import read_manifest
 from vcm.train.architectures import CRNN
-from vcm.train.dataset import load_noise_bank
+from vcm.train.dataset import is_noise, load_noise_bank
 from vcm.wakeword import LABELS, WAKE_PHRASE, WINDOW_S
 from vcm.wakeword.data import WakeWordDataset
 
@@ -49,7 +54,12 @@ REAL_REPEAT = 10
 
 
 def load_items(
-    wake_manifest: Path, intent_manifest: Path, speech_val_cap: int = 3000, seed: int = 0, extra: list[Path] | None = None
+    wake_manifest: Path,
+    intent_manifest: Path,
+    speech_val_cap: int = 3000,
+    seed: int = 0,
+    extra: list[Path] | None = None,
+    numerals_clips: int = 0,
 ):
     train, val = [], []
     for manifest in extra or []:
@@ -72,8 +82,10 @@ def load_items(
                 dest.append((r["audio_path"], "hard"))
     rows = read_manifest(intent_manifest)
     speech_val = []
+    numerals = [r.audio_path for r in rows if r.split == "numerals"]
+    train += [(p, "speech") for p in random.Random(seed).sample(numerals, min(numerals_clips, len(numerals)))]
     for r in rows:
-        kind = "noise" if r.label == "unknown_background" else "speech"
+        kind = "noise" if is_noise(r) else "speech"
         if r.split == "train":
             train.append((r.audio_path, kind))
         elif r.split == "val":
@@ -115,6 +127,12 @@ def main() -> None:
         default=[],
         help="real recordings from scripts/record_wakeword.py (data/wakeword_real/manifest.csv); train split only",
     )
+    parser.add_argument(
+        "--numerals-clips",
+        type=int,
+        default=0,
+        help="Add this many clips from the intent manifest's numerals split as speech negatives.",
+    )
     parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--samples-per-epoch", type=int, default=24000)
     parser.add_argument("--batch-size", type=int, default=256)
@@ -134,7 +152,11 @@ def main() -> None:
     device = torch.device(args.device)
 
     train_items, val_items, intent_train_rows = load_items(
-        args.wake_manifest, args.intent_manifest, seed=args.seed, extra=args.extra_wake_manifest
+        args.wake_manifest,
+        args.intent_manifest,
+        seed=args.seed,
+        extra=args.extra_wake_manifest,
+        numerals_clips=args.numerals_clips,
     )
     noise_bank = load_noise_bank(intent_train_rows)
     counts = {k: sum(kind == k for _, kind in train_items) for k in KIND_WEIGHTS}
@@ -192,6 +214,8 @@ def main() -> None:
                     "val_acc": balanced,
                     "val_per_kind": per_kind,
                     "seed": args.seed,
+                    "intent_manifest": str(args.intent_manifest),
+                    "numerals_clips": args.numerals_clips,
                 },
                 args.out,
             )
