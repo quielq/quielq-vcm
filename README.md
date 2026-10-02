@@ -112,8 +112,9 @@ stages: wake-word triggers per hour on a long stream that contains no
 "hey kiwi", and the share of out-of-scope clips the command model would
 act on. **Latency** is reported at the 95th percentile, which bounds the
 delay a user actually notices better than the mean. The **real-time
-factor** (RTF) is processing time divided by audio duration: 0.008 means a
-5 s command is processed about 125 times faster than real time.
+factor** (RTF) is processing time divided by audio duration: 0.0063 on the
+Raspberry Pi 5 means a command is processed about 160 times faster than
+real time.
 
 | Item | Value |
 |---|---|
