@@ -80,13 +80,14 @@ difference between the two home-server numbers.
 
 ### Speed on the Pi 5
 
-`scripts/benchmark_pi.py` on the device:
+`scripts/benchmark_pi.py` on the device, 1 thread
+([results/bench_pi5.md](../results/bench_pi5.md)):
 
-| | Measured |
-|---|---:|
-| Per command | **9.9 ms** (features 3.7 ms + model 6.2 ms) |
-| Wake word, per 100 ms hop | 1.9 ms, so **2% of one core**, always on |
-| Peak memory | 94 MB |
+| | Shipped (Experiment 43b, 1.46 MB; measured with the 41d weights, same architecture) | Previous (Experiment 36, 432 KB) |
+|---|---:|---:|
+| Per command, p50 / p95 | **13.9 / 15.8 ms** (features 3.8 ms + model 10.0 ms), RTF 0.0063 | 9.9 ms (features 3.7 ms + model 6.2 ms) |
+| Wake word, per 100 ms hop | 1.9 ms, so **1.9% of one core**, always on | 1.9 ms, 2% of one core |
+| Peak memory (listener) | 100 MB | 94 MB |
 
 ## Part 2: our pipeline vs. an ASR cascade
 
@@ -108,7 +109,7 @@ extra accuracy of the ASR cascade (Experiment 26) would cost.
 | Minimum board RAM (with OS, ~60–100 MB) | **512 MB** | **1 GB+** | |
 | Memory for the models once loaded | ~8.5 MB | ~290–370 MB | ~40× |
 | Latency per command, laptop CPU | **3.1–3.4 ms** | **440–950 ms** | ~150–300× |
-| Latency per command, Pi 5 | **9.9 ms** (measured) | ~1–2.5 s (projected) | |
+| Latency per command, Pi 5 | **15.8 ms p95** (measured with the Experiment 41d weights, same architecture as 43b; Experiment 36: 9.9 ms) | ~1–2.5 s (projected) | |
 | Python packages to install | ~149 MB: numpy, onnxruntime, sounddevice | ~330 MB: adds faster-whisper, CTranslate2, PyAV, tokenizers, scikit-learn, scipy | ~2× |
 | Real-speech test accuracy | 84.8% (Experiment 36) | **90.6%** (Experiment 26) | ASR +5.8 points |
 | Works as the always-on wake word? | Yes, 2% of one Pi 5 core | **No.** Scoring a 1.5 s window every 0.1 s would need ~4.6 s of compute per second of audio | |
@@ -168,9 +169,9 @@ measured here, a Pi Zero 2 W core ~8–15× slower).
 
 | Board | Ours | ASR cascade |
 |---|---|---|
-| Pi 5, 8 GB | **9.9 ms per command, 103 MB** (measured) | Works: ~1–2.5 s per command |
+| Pi 5, 8 GB | **15.8 ms p95 per command, 100 MB** (measured with the 41d weights, same architecture as the shipped 43b) | Works: ~1–2.5 s per command |
 | Pi 5 or Pi 4, 2 GB | Easy | Fits, but takes a quarter to a third of RAM, and each command takes seconds |
-| Pi Zero 2 W, 512 MB | Fits (~100 MB), ~50 ms per command | **Doesn't fit.** Its 478 MB+ peak leaves no room for the OS, and each command would take ~5–10 s even if it ran |
+| Pi Zero 2 W, 512 MB | Fits (~100 MB), ~80 ms per command | **Doesn't fit.** Its 478 MB+ peak leaves no room for the OS, and each command would take ~5–10 s even if it ran |
 
 ### How Part 2 was measured
 

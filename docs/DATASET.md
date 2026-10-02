@@ -53,8 +53,8 @@ hash; no kept clip changed label or slot value):
 | | Train | Test | Holdout |
 |---|---:|---:|---:|
 | Clips (old → new) | 10,682 → 10,733 | 4,418 → 4,443 | 196 → 202 |
-| Removed | 517: fixed commands that also carried a value ("play purple haze", "turn on the kitchen lights", "is it sunny today"); 371 SLURP, 80 SNIPS, 37 FSC, 29 group recordings | 226 of the same kind (171 SLURP, 46 SNIPS, 9 FSC) | 57 (45 group recordings, 11 FSC, 1 Common Voice) |
-| Added | 499 synthetic commands of train voices, 69 synthetic out-of-scope | 222 synthetic commands of test voices, 29 synthetic out-of-scope | 56 group recordings, 6 synthetic out-of-scope |
+| Removed | 517: fixed commands that also carried a value ("play purple haze", "turn on the kitchen lights", "is it sunny today"); 371 SLURP, 80 SNIPS, 37 FSC, 29 class recordings | 226 of the same kind (171 SLURP, 46 SNIPS, 9 FSC) | 57 (45 class recordings, 11 FSC, 1 Common Voice) |
+| Added | 499 synthetic commands of train voices, 69 synthetic out-of-scope | 222 synthetic commands of test voices, 29 synthetic out-of-scope | 56 class recordings, 6 synthetic out-of-scope |
 | Out of scope | 201 → 270 | 47 → 76 | 10 → 16 |
 
 - **Why it matters:** the removed clips were real people phrasing commands
@@ -89,7 +89,7 @@ looks at test.
   are real people saying a command.
 - **Validation** takes about 12% of each source's train clips, as whole
   speakers. Sources with fewer than 5 speakers stay in train, so all
-  group recordings (Filipino speakers) and the noise clips are used for
+  class recordings (Filipino speakers) and the noise clips are used for
   training. Seed 0, `scripts/build_me2_manifest.py`.
 - **Supplemental** keeps only `supplemental_synth` clips whose voice is in
   our train split; the 2,395 others (voices in our val, test or holdout)
@@ -98,9 +98,9 @@ looks at test.
   supplemental_synth 2.73 h.
 
 Train by source (train + val): group synthetic set 8,305 (+69 synthetic
-out-of-scope), SLURP 1,010, group recordings 620, SNIPS 331, Fluent
-Speech Commands 256, Xela's recordings 64, Common Voice 36, Timers and
-Such 31, Speech Commands noise 11. 78% of train is synthetic.
+out-of-scope), SLURP 1,010, class recordings 684, SNIPS 331, Fluent Speech
+Commands 256, Common Voice 36, Timers and Such 31, Speech Commands noise 11.
+78% of train is synthetic.
 
 ### Build it
 
@@ -131,8 +131,8 @@ Step 2 writes, all under `data/me2/` (gitignored):
 | Test set | Each source's own split; real speech only (6,577 clips) | Class-fixed, 4,443 clips, real and synthetic, balanced per variation |
 | Non-command class | `unknown_background`, 600 noise clips | `OUT_OF_SCOPE`, mostly speech |
 | Slot values | 24 timers, 28 alarm times, 12 brightness levels, 14 colors, 3 + 3 | 3 per slot, the schema's |
-| Filipino voices | Only in 16 of Option B's cloned reference speakers | Group recordings (5 ME2 speakers and Xela's S1–S5) in every split |
-| CALL, NEXT, LIST_REMINDERS | Synthetic only | Group recordings too |
+| Filipino voices | Only in 16 of Option B's cloned reference speakers | Class recordings (Filipino speakers) in every split |
+| CALL, NEXT, LIST_REMINDERS | Synthetic only | Class recordings too |
 
 ## Before Experiment 37: the project's own dataset
 

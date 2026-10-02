@@ -19,7 +19,7 @@ Three kinds of testing, from most to least formal:
   synthetic voices that are in no other split. This is the headline
   number, the same set every group in the class reports on.
 - **Real speech** is reported next to it: the 777 test clips of real
-  people saying a command (group recordings, SLURP, FSC, SNIPS, Common
+  people saying a command (class recordings, SLURP, FSC, SNIPS, Common
   Voice, …). Synthetic voices score ~99.5% and make up 81% of the test set,
   so the real-speech number is the honest one.
 - **Holdout**: the 202 clips the class kept for the live test on the
@@ -46,19 +46,19 @@ seed 1) give identical results.
 | Macro average over 20 classes | 92.94% |
 | Exact Option B wording (the demo benchmark phrases) | 99.22% (n = 3,823) |
 | Same command and value in other words | 72.98% (n = 544) |
-| Filipino group recordings | 86.77% (n = 189) |
+| Filipino speakers (class recordings) | 86.77% (n = 189) |
 | **Holdout (Pi live-test set)** | **96.04%** (real speech 96.51%, n = 202) |
 | Seeds of the same recipe (0 / 1 / 2), test all | 95.00 / **95.50** / 95.32% |
 | Seeds, test real speech | 76.71 / **78.64** / 77.35% |
 | Small alternative, `vcm_intent_small.onnx` (722 KB, Exp 43c seed 0) | 94.53% all, 76.06% real, 93.07% holdout |
 
-**By accent** (test): Filipino group recordings 86.8% (n=189), Filipino
+**By accent** (test): Filipino class recordings 86.8% (n=189), Filipino
 open-source 100% (n=14), native English 83.9% (n=224), other non-native
 69.0% (n=384), synthetic 99.5%.
 
-**By source** (test): group recordings 86.0% (n=179), Xela's recordings
-100% (n=21), FSC 87.5% (n=144), Common Voice 100% (n=14), SLURP 69.7%
-(n=403), SNIPS 75.4% (n=61), synthetic out-of-scope sentences 69.0% (n=29).
+**By source** (test): class recordings 87.5% (n=200), FSC 87.5% (n=144),
+Common Voice 100% (n=14), SLURP 69.7% (n=403), SNIPS 75.4% (n=61),
+synthetic out-of-scope sentences 69.0% (n=29).
 
 **Per class** (test, all / real speech):
 
