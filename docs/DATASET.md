@@ -28,7 +28,12 @@ at the end of this document.
   is its export. A test checks all 93 phrases match.
 - **Classes:** the 19 schema commands plus `OUT_OF_SCOPE` (noise,
   Filipino speech, near-miss requests and general speech). Our old
-  non-command class, `unknown_background`, was noise only.
+  non-command class, `unknown_background`, was noise only. We keep
+  OUT_OF_SCOPE as the dataset defines it: a class the model learns and the
+  device never acts on ([TESTING.md](TESTING.md#out-of-scope-how-it-is-handled-and-tested)).
+- **Wake word:** the dataset has no "hey kiwi" clips. The wake word's
+  positives stay our own (synthetic voices and the author's recordings);
+  since Experiment 42 all of its other examples come from this dataset.
 - **Slot values:** exactly the schema's 3 per slotted command (10 s / 30 s
   / 1 min; 6:00 AM / 8:00 AM / 9:00 PM; 18 / 22 / 26 degrees; 20 / 60 /
   100 percent; red / blue / green; drink water / study / exercise). The

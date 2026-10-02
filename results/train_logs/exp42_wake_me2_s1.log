@@ -1,0 +1,47 @@
+train items by kind: {'wake': 2877, 'partial': 2877, 'hard': 1840, 'speech': 12262, 'noise': 11}; val items: 2135; noise bank: 11
+Model params: 25,475
+epoch   1/30  train_loss=0.7002  val_balanced=0.5788  wake=0.940  partial=0.072  hard=0.092  speech=0.490  (28s)
+  -> saved new best checkpoint (val_balanced=0.5788) to checkpoints/exp42_wake_me2_s1.pt
+epoch   2/30  train_loss=0.4849  val_balanced=0.7895  wake=0.838  partial=0.811  hard=0.439  speech=0.974  (12s)
+  -> saved new best checkpoint (val_balanced=0.7895) to checkpoints/exp42_wake_me2_s1.pt
+epoch   3/30  train_loss=0.3295  val_balanced=0.8289  wake=0.755  partial=0.947  hard=0.770  speech=0.991  (10s)
+  -> saved new best checkpoint (val_balanced=0.8289) to checkpoints/exp42_wake_me2_s1.pt
+epoch   4/30  train_loss=0.2534  val_balanced=0.9244  wake=0.921  partial=0.974  hard=0.821  speech=0.989  (11s)
+  -> saved new best checkpoint (val_balanced=0.9244) to checkpoints/exp42_wake_me2_s1.pt
+epoch   5/30  train_loss=0.1950  val_balanced=0.9247  wake=0.902  partial=0.977  hard=0.867  speech=0.998  (11s)
+  -> saved new best checkpoint (val_balanced=0.9247) to checkpoints/exp42_wake_me2_s1.pt
+epoch   6/30  train_loss=0.1733  val_balanced=0.9259  wake=0.887  partial=0.977  hard=0.918  speech=0.999  (11s)
+  -> saved new best checkpoint (val_balanced=0.9259) to checkpoints/exp42_wake_me2_s1.pt
+epoch   7/30  train_loss=0.1600  val_balanced=0.9496  wake=0.962  partial=0.970  hard=0.842  speech=0.999  (11s)
+  -> saved new best checkpoint (val_balanced=0.9496) to checkpoints/exp42_wake_me2_s1.pt
+epoch   8/30  train_loss=0.1478  val_balanced=0.9314  wake=0.906  partial=0.974  hard=0.898  speech=1.000  (11s)
+epoch   9/30  train_loss=0.1345  val_balanced=0.9466  wake=0.940  partial=0.974  hard=0.888  speech=0.999  (11s)
+epoch  10/30  train_loss=0.1380  val_balanced=0.9499  wake=0.951  partial=0.970  hard=0.878  speech=0.999  (10s)
+  -> saved new best checkpoint (val_balanced=0.9499) to checkpoints/exp42_wake_me2_s1.pt
+epoch  11/30  train_loss=0.1262  val_balanced=0.9572  wake=0.966  partial=0.974  hard=0.872  speech=0.999  (10s)
+  -> saved new best checkpoint (val_balanced=0.9572) to checkpoints/exp42_wake_me2_s1.pt
+epoch  12/30  train_loss=0.1215  val_balanced=0.9558  wake=0.966  partial=0.970  hard=0.867  speech=0.999  (9s)
+epoch  13/30  train_loss=0.1231  val_balanced=0.9448  wake=0.932  partial=0.970  hard=0.903  speech=1.000  (10s)
+epoch  14/30  train_loss=0.1195  val_balanced=0.9545  wake=0.958  partial=0.970  hard=0.883  speech=0.999  (9s)
+epoch  15/30  train_loss=0.1068  val_balanced=0.9516  wake=0.951  partial=0.970  hard=0.888  speech=0.999  (10s)
+epoch  16/30  train_loss=0.1099  val_balanced=0.9537  wake=0.943  partial=0.974  hard=0.918  speech=1.000  (10s)
+epoch  17/30  train_loss=0.1048  val_balanced=0.9553  wake=0.955  partial=0.970  hard=0.898  speech=1.000  (10s)
+epoch  18/30  train_loss=0.1087  val_balanced=0.9557  wake=0.962  partial=0.970  hard=0.878  speech=1.000  (10s)
+epoch  19/30  train_loss=0.1102  val_balanced=0.9531  wake=0.943  partial=0.970  hard=0.918  speech=1.000  (10s)
+epoch  20/30  train_loss=0.1061  val_balanced=0.9590  wake=0.962  partial=0.970  hard=0.898  speech=0.999  (11s)
+  -> saved new best checkpoint (val_balanced=0.9590) to checkpoints/exp42_wake_me2_s1.pt
+epoch  21/30  train_loss=0.0995  val_balanced=0.9554  wake=0.958  partial=0.970  hard=0.888  speech=0.999  (10s)
+epoch  22/30  train_loss=0.1014  val_balanced=0.9529  wake=0.940  partial=0.970  hard=0.929  speech=1.000  (11s)
+epoch  23/30  train_loss=0.1015  val_balanced=0.9503  wake=0.940  partial=0.970  hard=0.913  speech=1.000  (10s)
+epoch  24/30  train_loss=0.0972  val_balanced=0.9548  wake=0.943  partial=0.970  hard=0.929  speech=1.000  (9s)
+epoch  25/30  train_loss=0.0993  val_balanced=0.9587  wake=0.955  partial=0.970  hard=0.918  speech=1.000  (10s)
+epoch  26/30  train_loss=0.0937  val_balanced=0.9577  wake=0.951  partial=0.970  hard=0.923  speech=1.000  (10s)
+epoch  27/30  train_loss=0.0967  val_balanced=0.9596  wake=0.955  partial=0.970  hard=0.923  speech=1.000  (10s)
+  -> saved new best checkpoint (val_balanced=0.9596) to checkpoints/exp42_wake_me2_s1.pt
+epoch  28/30  train_loss=0.0953  val_balanced=0.9598  wake=0.958  partial=0.970  hard=0.913  speech=1.000  (10s)
+  -> saved new best checkpoint (val_balanced=0.9598) to checkpoints/exp42_wake_me2_s1.pt
+epoch  29/30  train_loss=0.0940  val_balanced=0.9606  wake=0.958  partial=0.970  hard=0.918  speech=1.000  (9s)
+  -> saved new best checkpoint (val_balanced=0.9606) to checkpoints/exp42_wake_me2_s1.pt
+epoch  30/30  train_loss=0.0993  val_balanced=0.9606  wake=0.958  partial=0.970  hard=0.918  speech=1.000  (9s)
+
+Done. Best val_balanced=0.9606, checkpoint at checkpoints/exp42_wake_me2_s1.pt

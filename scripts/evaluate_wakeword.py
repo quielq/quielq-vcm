@@ -31,6 +31,7 @@ import torch
 
 from vcm.audio.capture import SAMPLE_RATE
 from vcm.dataset.manifest import read_manifest
+from vcm.train.dataset import is_noise
 from vcm.train.wave_augment import add_noise
 from vcm.wakeword import HOP_S
 from vcm.wakeword.data import _read
@@ -89,8 +90,14 @@ def main() -> None:
     for manifest in args.extra_wake_manifest:
         with manifest.open(newline="") as f:
             real_positives += [r["audio_path"] for r in csv.DictReader(f) if r["label"] == "WAKE" and r["split"] == "test"]
-    intent_rows = [r for r in read_manifest(args.intent_manifest) if r.split == args.split]
-    background = [_read(r.audio_path) for r in intent_rows if r.label == "unknown_background"]
+    all_intent_rows = read_manifest(args.intent_manifest)
+    intent_rows = [r for r in all_intent_rows if r.split == args.split]
+    background = [_read(r.audio_path) for r in intent_rows if is_noise(r)]
+    if not background:
+        # The master dataset's test split has no pure-noise clips; use the train
+        # split's for the 10 dB mixing (they are background, not what is scored).
+        background = [_read(r.audio_path) for r in all_intent_rows if r.split == "train" and is_noise(r)]
+        print(f"no {args.split}-split noise clips: mixing train-split noise ({len(background)} clips) for the noisy check")
 
     # False rejects: best (max) streaming score per clip, clean and in noise.
     quiet = np.zeros(SAMPLE_RATE, dtype="float32")

@@ -1,4 +1,4 @@
-# Results: Experiments 37–41 (class master dataset)
+# Results: Experiments 37–42 (class master dataset)
 
 Everything behind the numbers in the docs, copied from the DGX by
 `scripts/collect_results.sh` (`logs/` and `checkpoints/` stay out of git).
@@ -13,6 +13,7 @@ Everything behind the numbers in the docs, copied from the DGX by
 | `launchers/` | The exact shell scripts that launched each experiment on GPU 6 of `ai-n002` |
 | `bench_dgx_1core_*.json` | `scripts/benchmark_pi.py` on one DGX CPU core (latency p50/p95, RTF), for comparison with the Pi |
 
-The shipped model is Experiment 41d seed 0 (`train_logs/exp41d_combo_wide_distill_s0.log`);
+The shipped wake word is Experiment 42 seed 1 (`train_logs/exp42_wake_me2_s1.log`, `eval/exp42_eval_wake_*.txt`, checkpoint `models/kiwi_wakeword.pt`).
+The shipped intent model is Experiment 41d seed 0 (`train_logs/exp41d_combo_wide_distill_s0.log`);
 its checkpoint is `models/vcm_intent.pt`. What each config changes is in
 [docs/EXPERIMENTS.md](../docs/EXPERIMENTS.md), Part 2.

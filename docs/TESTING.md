@@ -118,22 +118,58 @@ right, which is what the device needs.
 
 Over all 2,538 slotted test clips the slot head is right 97.9% of the time.
 
+### Out of scope (how it is handled and tested)
+
+The class dataset labels speech that asks for none of the 19 commands
+`OUT_OF_SCOPE`: noise, Filipino speech, near-miss requests and general
+speech (187 train, 47 test and 10 holdout clips). We keep it exactly as
+the dataset defines it:
+
+- **In training** it is the model's 20th class, "not a command". Bare
+  numbers from the numerals set (also labeled OUT_OF_SCOPE by the dataset)
+  add 1,500 examples. A model without this class would have to map every
+  sound to one of the 19 commands.
+- **On the device** nothing happens for it: an OUT_OF_SCOPE answer, or any
+  answer below 0.6 confidence ("didn't catch that"), is never acted on.
+  Before that, the wake word must hear "Hey Kiwi", which filters most
+  non-command speech.
+- **In testing** an out-of-scope clip is correct only if the model says
+  OUT_OF_SCOPE. The headline 92.98% includes the 47 such test clips.
+  Separately:
+
+| Shipped model, test split | Result | n |
+|---|---:|---:|
+| Command accuracy, out-of-scope clips excluded | 93.53% (real speech 73.48%) | 4,371 |
+| Out-of-scope clips labeled OUT_OF_SCOPE | 42.6% | 47 |
+| **Out-of-scope clips the device ignores** (OUT_OF_SCOPE or confidence < 0.6) | **78.7%** | 47 |
+| Out-of-scope clips the device would act on (false accept) | 21.3% | 47 |
+| Commands the device ignores (false reject, same rule) | 5.5% | 4,371 |
+| Holdout: commands 97.31% (n=186); out-of-scope ignored 60.0% (n=10) | | |
+
+Out of scope is the weakest class: it has the fewest training clips, and
+"near-miss requests" (commands outside the schema) sound like commands.
+
 ### Wake word (`models/kiwi_wakeword.onnx`)
 
 Evaluated the way the device runs it, streaming 1.5 s windows every 0.1 s:
 missed wake words on 391 held-out clips in 20 unseen voices (clean and with
 10 dB noise), the author's 10 held-out real recordings, and false wake-ups
-over 7.48 hours of test-split command speech.
+while streaming the master dataset's whole test split plus 300 near-miss
+phrases (3.05 hours). Experiment 42, seed 1 (best of 3 on validation):
 
 | Threshold | Missed, clean | Missed, 10 dB noise | Author's real takes missed | False wake-ups per hour |
 |---:|---:|---:|---:|---:|
-| **0.6 (default)** | 3.1% | 5.6% | 0/10 | 12.7 |
-| 0.7 | 3.6% | 8.2% | 0/10 | 9.2 |
-| 0.85 | 6.9% | 11.5% | 0/10 | 4.3 |
-| 0.95 | 14.1% | 21.5% | 0/10 | 1.3 |
+| **0.6 (default)** | 4.1% | 4.6% | 0/10 | 11.2 |
+| 0.7 | 4.1% | 6.6% | 0/10 | 8.5 |
+| 0.85 | 7.9% | 11.3% | 0/10 | 4.3 |
+| 0.95 | 17.9% | 24.0% | 1/10 | 1.6 |
 
 The false-wake stream deliberately includes near-miss phrases ("hey kitty",
-"every week"), so a real room sees fewer.
+"every week"), so a real room sees fewer. On the same evaluation the
+previous detector (Experiment 34, trained with the old dataset's speech as
+negatives) misses 3.1% / 6.6% and fires 19.7 times per hour at 0.6. The
+master test split has no pure-noise clips, so the 10 dB check mixes in the
+train split's 11 noise clips.
 
 ### Known limits of the test set
 
@@ -143,8 +179,11 @@ The false-wake stream deliberately includes near-miss phrases ("hey kitty",
 - **Small real-speech counts for some classes.** MESSAGE, TIMER and
   CREATE_REMINDER have 18–19 real test clips each; OUT_OF_SCOPE has 47
   clips in all.
-- **The wake word is not in the master dataset**; its numbers are from
-  Experiment 34's own held-out voices.
+- **The master dataset has no "hey kiwi" recordings.** Wake-word misses
+  are measured on our own held-out synthetic voices and recordings; its
+  false wake-ups on the master test split.
+- **Only 47 out-of-scope test clips** (10 in holdout), so out-of-scope
+  rates move by ~2 points per clip.
 
 ### Reproduce
 
@@ -155,7 +194,7 @@ python scripts/evaluate_checkpoint.py models/vcm_intent.onnx \
   --manifest data/me2/manifest.csv --slot-labels data/me2/slot_labels.csv \
   --metadata data/me2/metadata.csv --split test        # or --split holdout
 python scripts/summarize_experiments.py --logs results/eval --glob '4*'
-python scripts/evaluate_wakeword.py checkpoints/kiwi_wakeword_v2_s0.pt \
+python scripts/evaluate_wakeword.py models/kiwi_wakeword.onnx --intent-manifest data/me2/manifest.csv \
   --extra-wake-manifest data/wakeword_real/manifest.csv
 ```
 `evaluate_checkpoint.py` accepts `.pt` checkpoints or `.onnx` files and

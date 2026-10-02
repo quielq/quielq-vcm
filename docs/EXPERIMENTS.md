@@ -2651,3 +2651,36 @@ file gives identical results to the checkpoint. **Also kept: 40b seed 1**
 92.21% / 70.99% / 95.41%, for when the intent and wake-word files must
 stay under 1 MB together. On one DGX CPU core the two take 8.8 ms and
 7.0 ms per command at p95, end to end.
+
+## Experiment 42 — wake word with the master dataset as negatives
+
+The Experiment 34 wake word learned "not the wake word" from the project's
+old dataset (its command speech and noise). Retrained with the same recipe
+(`scripts/train_wakeword.py`: 30 epochs, 24,000 samples per epoch, kind
+mix wake 30% / partial 10% / near-miss 15% / speech 35% / noise 10%), but
+with every negative from the class master dataset: its train split
+(12,262 speech clips including out-of-scope speech, 3,000 of them bare
+numbers from the numerals set, and its 11 noise clips), with its val
+split for checkpoint selection. Positives and near-miss phrases are
+unchanged: the synthetic wakeword batch and the author's own takes (the
+class dataset has no "hey kiwi"). 3 seeds, GPU 6, ~5 min each. Launcher:
+`logs/launch_exp42_wakeword.sh`.
+
+Streaming evaluation (`scripts/evaluate_wakeword.py`) at the device's
+threshold 0.6: misses on 391 held-out synthetic clips (clean / 10 dB
+noise) and the author's 10 held-out takes; false wake-ups while streaming
+the master test split (4,418 clips) and 300 near-miss phrases, 3.05 h.
+
+| Model | val balanced | Missed, clean | Missed, noise | Real takes missed | False wake-ups/hour |
+|---|---:|---:|---:|---:|---:|
+| Experiment 34 (old negatives) | — | 3.1% | 6.6% | 0/10 | 19.7 |
+| Seed 0 | 0.958 | 5.9% | 7.9% | 0/10 | 10.5 |
+| **Seed 1 (shipped)** | **0.961** | 4.1% | **4.6%** | 0/10 | 11.2 |
+| Seed 2 | 0.953 | 4.9% | 8.7% | 0/10 | 12.8 |
+
+- Seeing the class's own speech (including Filipino speech and near-miss
+  requests) as negatives cuts false wake-ups by 35–47%, at the cost of
+  about 1–3 points more missed clean clips.
+- **Shipped: seed 1**, the best on validation: `models/kiwi_wakeword.onnx`
+  (107 KB, identical to its checkpoint `models/kiwi_wakeword.pt`). The
+  Experiment 34 file stays as `models/kiwi_wakeword_exp34.onnx`.

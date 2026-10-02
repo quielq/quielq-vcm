@@ -78,6 +78,13 @@ def _read_mono(path: str) -> tuple[np.ndarray, int]:
 NOISE_SOURCES = ("gsc_background", "SpeechCommands_v2")
 
 
+def is_noise(row: ManifestRow) -> bool:
+    """A pure background-noise clip (no speech): non-command label from a
+    noise source. Works for the old manifests (unknown_background) and the
+    master dataset (OUT_OF_SCOPE from Speech Commands' noise)."""
+    return row.label == "unknown_background" or (row.label in NON_COMMAND_LABELS and row.source in NOISE_SOURCES)
+
+
 def load_babble_bank(rows: list[ManifestRow], n_clips: int) -> list[np.ndarray]:
     """n_clips random speech clips from `rows` (e.g. the master dataset's
     numerals set, which no test or holdout speaker is in) to mix under
@@ -98,7 +105,7 @@ def load_noise_bank(rows: list[ManifestRow]) -> list[np.ndarray]:
     vcm.train.wave_augment's noise mixing."""
     bank = []
     for row in rows:
-        if row.label not in NON_COMMAND_LABELS or row.source not in NOISE_SOURCES:
+        if not is_noise(row):
             continue
         audio, sample_rate = _read_mono(row.audio_path)
         if sample_rate != SAMPLE_RATE:
