@@ -78,44 +78,53 @@ Shapes are written as channels × mel bands × time frames. One time frame is
 
 ```mermaid
 ---
-title: Figure 1. The shipped CRNN (372,096 parameters, 1.46 MB)
+title: Figure 1. The shipped CRNN (372,096 parameters, 1.46 MB, 91.7M multiply-adds)
 ---
 flowchart TB
-    IN["<b>Input: log-mel spectrogram</b><br/>1 × 40 × 501<br/>5 seconds of audio, 10 ms per frame"]
+    IN["<b>Input: log-mel spectrogram</b><br/>1 × 40 × 501<br/>5.0 s after silence trim, 10 ms per frame"]
 
-    subgraph CNN["① Convolutional front end: finds short sound patterns (34K)"]
+    subgraph CNN["① Convolutional front end: local time–frequency patterns (34K)"]
         direction TB
-        C1["Conv 10×4, stride 2, 80 filters, BatchNorm, ReLU<br/>→ 80 × 20 × 250 (3.4K)"]
-        D1["Depthwise-separable block 1<br/>3×3 depthwise + 1×1 pointwise<br/>→ 80 × 20 × 250 (7.6K)"]
-        D2["Block 2, stride 2<br/>→ 80 × 10 × 125 (7.6K)"]
-        D3["Block 3<br/>→ 80 × 10 × 125 (7.6K)"]
-        D4["Block 4, stride 2<br/>→ 80 × 5 × 63 (7.6K)"]
+        C1["Conv 10×4, stride 2, 80 filters + BatchNorm + ReLU<br/>→ 80 × 20 × 250 (3.4K)"]
+        D1["DS block 1: 3×3 depthwise + 1×1 pointwise, BN + ReLU each<br/>→ 80 × 20 × 250 (7.6K)"]
+        D2["DS block 2, stride 2<br/>→ 80 × 10 × 125 (7.6K)"]
+        D3["DS block 3<br/>→ 80 × 10 × 125 (7.6K)"]
+        D4["DS block 4, stride 2<br/>→ 80 × 5 × 63 (7.6K)"]
         C1 --> D1 --> D2 --> D3 --> D4
     end
 
-    P["<b>② Frequency projection</b> (39K)<br/>1×1 conv folds 80 channels × 5 bands into 96 features<br/>→ a sequence of 63 steps × 96, one step ≈ 80 ms"]
+    P["<b>② Frequency projection</b> (39K)<br/>reshape 80 ch × 5 bands = 400, then 1×1 conv + BN + ReLU<br/>→ sequence of 63 steps × 96, one step ≈ 80 ms"]
 
-    subgraph RNN["③ 2-layer bidirectional GRU: reads the command in order (279K)"]
-        direction LR
-        F["Forward GRU, 96 units × 2 layers<br/>start → end"]
-        B["Backward GRU, 96 units × 2 layers<br/>end → start"]
+    subgraph RNN["③ Bidirectional GRU, 2 layers × 96 units per direction (279K, 75% of the model)"]
+        direction TB
+        G1["Layer 1: forward GRU (start → end) ‖ backward GRU (end → start)<br/>→ 63 × 192"]
+        G2["Layer 2: same, reading layer 1's output (dropout 0.1 between layers)<br/>→ 63 × 192"]
+        G1 --> G2
     end
 
-    S["63 steps × 192 features<br/>each step now knows what came before and after it"]
+    S["<b>Per-step features H</b>: 63 × 192<br/>each step carries context from the whole command"]
 
-    A["<b>④ Attention pooling, 4 heads</b> (772)<br/>each head scores every step, softmax over time;<br/>4 weighted averages joined → 768 features"]
-    I["<b>Intent classifier</b> (15K)<br/>dropout 0.1, linear<br/>→ 20 classes"]
+    subgraph INTENT["④ Intent branch (16K)"]
+        direction TB
+        A["Attention pooling, 4 heads (772)<br/>scores = Linear(H) → softmax over time<br/>4 weighted means of H joined → 768"]
+        I["Dropout 0.1 + Linear → 20 logits (15K)<br/>19 intents + OUT_OF_SCOPE"]
+        A --> I
+    end
 
-    subgraph SLOTS["⑤ Six slot heads (4.6K)"]
-        direction LR
-        SA["Own attention pooling<br/>finds where the value is said"]
-        SC["Linear → value, 3 each<br/>TIMER · ALARM · TEMPERATURE<br/>BRIGHTNESS · COLOR · REMINDER"]
+    subgraph SLOTS["⑤ Six slot heads, one per slotted intent (4.6K)"]
+        direction TB
+        SA["Own 1-head attention pooling over H<br/>learns where the value is said → 192"]
+        SC["Linear → 3 values<br/>TIMER · ALARM · TEMPERATURE<br/>BRIGHTNESS · COLOR · CREATE_REMINDER"]
         SA --> SC
     end
 
+    OUT["<b>Decision</b><br/>intent = argmax; act only if confidence ≥ 0.6 and not OUT_OF_SCOPE<br/>slot value read only from the head matching the predicted intent"]
+
     IN --> CNN --> P --> RNN --> S
-    S --> A --> I
+    S --> INTENT
     S --> SLOTS
+    INTENT --> OUT
+    SLOTS --> OUT
 ```
 
 Total: **372,096 parameters**, 1.46 MB as fp32 ONNX, 91.7M multiply-adds per
@@ -175,10 +184,21 @@ command into short pieces and averages them, so it cannot tell which word
 came first. The CRNN keeps every step in order, so the last word ("up")
 can decide the answer.
 
-```
-command:   "turn    the    volume    up"
-DS-CNN:     [··]   [··]    [··][··]   [··]    240 ms pieces, averaged, order lost
-CRNN:       ───────────────────────────▶     every step in order, attention picks "up"
+```mermaid
+---
+title: Figure 2. How DS-CNN and the CRNN summarize "turn the volume up"
+---
+flowchart TB
+    subgraph DS["DS-CNN: a bag of short windows"]
+        direction TB
+        W["[turn] [the] [vol] [ume] [up]<br/>each output sees ~240 ms"] --> GAP["Global average pooling<br/>every position weighted equally,<br/>word order discarded"]
+        GAP --> Y1["'up' vs 'down' is a small share<br/>of the average → often confused"]
+    end
+    subgraph CR["CRNN: an ordered sequence"]
+        direction TB
+        SEQ["turn → the → volume → up<br/>bidirectional GRU: each step sees<br/>the whole command, in order"] --> ATT["Attention pooling<br/>learned weights, highest on 'up'"]
+        ATT --> Y2["the deciding word<br/>dominates the summary"]
+    end
 ```
 
 That is why DS-CNN kept confusing commands that differ by one word, like
@@ -209,7 +229,7 @@ positions into one summary, and word order is lost.
 
 ```mermaid
 ---
-title: Figure 3. DS-CNN (26,300 parameters)
+title: Figure 3. DS-CNN (26,300 parameters; old dataset, Experiments 1–27)
 ---
 flowchart LR
     IN["Log-mel<br/>1 × 40 × 301<br/>(3 s)"] --> C1["Conv 10×4, stride 2<br/>60 filters<br/>→ 60 × 20 × 150"]
@@ -238,7 +258,7 @@ DS-CNN.
 
 ```mermaid
 ---
-title: Figure 4. One BC-ResNet block (the model stacks 8)
+title: Figure 4. One BC-ResNet block (the model stacks 8; old dataset, Experiments 3–10)
 ---
 flowchart TB
     X["Block input<br/>48 × 20 × 301"] --> FP["Frequency path<br/>depthwise conv 3×1 over mel bands<br/>+ BatchNorm"]
@@ -266,7 +286,7 @@ Whisper alone is about 145 MB.
 
 ```mermaid
 ---
-title: Figure 5. ASR cascade (about 74M parameters, 149 MB)
+title: Figure 5. ASR cascade (about 74M parameters, 149 MB; Experiment 26)
 ---
 flowchart LR
     AU["Audio"] --> W["Whisper base<br/>speech-to-text<br/>74M parameters, 145 MB"]
@@ -286,7 +306,7 @@ count and takes 440 to 950 ms per command on a laptop, so it was not shipped
 On the old dataset (Experiments 1–36; the cascade was never rebuilt for the
 master dataset):
 
-| | DS-CNN | BC-ResNet | **CRNN (shipped)** | ASR cascade |
+| | DS-CNN | BC-ResNet | **CRNN (Exp 36, shipped then)** | ASR cascade |
 |---|---|---|---|---|
 | Parameters | 26,300 | 25,748 | **107,887** | ~74M + classifier |
 | Weights (fp32) | ~105 KB | ~103 KB | **432 KB** | ~149 MB |
@@ -298,7 +318,7 @@ master dataset):
 | Best result | 75.5% val, 70.6% real-speech test | 67.5% val | **84.8% real-speech test** | 90.6% real-speech test |
 | Runs on the Pi in real time? | Yes | Yes | **Yes, 9.9 ms** | Too slow to listen always |
 
-The CRNN is about 4 times bigger than DS-CNN. That is still tiny: it fits
+The Experiment 36 CRNN was about 4 times bigger than DS-CNN. That is still tiny: it fit
 the 1 MB budget twice over and runs in under 10 ms on the Pi. The extra
 parameters went where DS-CNN was weak: reading the command in order.
 
@@ -312,6 +332,34 @@ recipe, Experiment 38), mean of 3 seeds:
 | Test, real speech | 52.21% | 37.88% | 63.58% | **73.21%** |
 
 ## 5. Training recipe (final model)
+
+**Figure 6. The training objective.** One forward pass of the student
+feeds four loss terms. The teacher is an ensemble of 9 Experiment 37
+CRNNs whose averaged predictions are computed once, before training, and
+stored as soft labels; it is not used on the device. Only the student
+(the shipped CRNN) is exported.
+
+```mermaid
+---
+title: Figure 6. Training objective of the shipped model (Experiment 41d)
+---
+flowchart LR
+    X["Training clip<br/>+ waveform augmentation<br/>(noise, speed, reverb, shift)"] --> F["Log-mel<br/>+ 2 frequency masks"]
+    F --> STU["Student CRNN<br/>(Figure 1)"]
+    TEA["Teacher: mean of 9 CRNNs<br/>(Exp 37, same train split)<br/>soft labels precomputed"]
+
+    STU -->|"intent logits"| L1["Class-weighted<br/>cross-entropy"]
+    STU -->|"intent probabilities"| L2["Confusable-pair penalty<br/>α = 2.0 × probability on<br/>VOLUME_UP/DOWN/TEMPERATURE,<br/>LIGHT_ON/OFF confusions"]
+    STU -->|"slot logits<br/>(slotted clips only)"| L3["Slot cross-entropy<br/>weight 0.3"]
+    STU -->|"logits / T"| L4["KL divergence, T = 3<br/>scaled by T², weight 1"]
+    TEA -->|"probabilities, softened by T"| L4
+
+    L1 --> SUM(("Σ"))
+    L2 --> SUM
+    L3 --> SUM
+    L4 --> SUM
+    SUM --> OPT["Adam, lr 1e-3, batch 128<br/>5 warm-up epochs, cosine decay<br/>80 epochs = 6,800 steps"]
+```
 
 Full commands are in [TRAINING.md](TRAINING.md#reproducing-the-final-model);
 results for every run are in [EXPERIMENTS.md](EXPERIMENTS.md). Every choice
@@ -350,6 +398,28 @@ kiwi" positives can't come from the class dataset, which has none.
 `vcm/wakeword/detector.py` scores the last 1.5 s every 100 ms. When the score
 passes the threshold, `scripts/vcm_listen.py` records until 0.6 s of quiet
 (max 5 s) and passes the command to the intent model.
+
+**Figure 7. The two-stage pipeline on the device.** The wake word runs
+on every 100 ms hop; the intent model runs once per command. The
+confidence threshold and the OUT_OF_SCOPE class are two separate ways the
+device declines to act.
+
+```mermaid
+---
+title: Figure 7. Recognition on the Raspberry Pi
+---
+flowchart LR
+    MIC["Microphone<br/>16 kHz"] --> BUF["Ring buffer<br/>last 1.5 s"]
+    BUF -->|"every 100 ms"| WW["Wake word CRNN<br/>40 × 151 log-mel<br/>25K params"]
+    WW -->|"score < 0.6<br/>(0.4 while music plays)"| BUF
+    WW -->|"score ≥ threshold"| REC["Record the command<br/>until 0.6 s of quiet, max 5 s"]
+    REC --> FEAT["Silence trim, pad to 5 s<br/>numpy log-mel 40 × 501"]
+    FEAT --> INT["Intent + slot CRNN<br/>ONNX Runtime, 1 thread"]
+    INT -->|"confidence < 0.6"| REP["'Didn't catch that,<br/>please repeat'"]
+    INT -->|"confidence ≥ 0.6"| HOME["Home server"]
+    HOME -->|"OUT_OF_SCOPE"| IGN["Ignored, no action"]
+    HOME -->|"one of 19 intents<br/>+ slot value"| ACT["Action + spoken reply<br/>+ dashboard"]
+```
 
 | Threshold | Missed, clean | Missed, 10 dB noise | Author's real takes missed | False wake-ups per hour* |
 |---:|---:|---:|---:|---:|

@@ -53,8 +53,7 @@ seed 0) give identical results.
 open-source 71.4% (n=14), native English 72.8% (n=254), other non-native
 67.3% (n=560), other Asian English 35.0% (n=20), synthetic 99.5%.
 
-**By source** (test): group recordings 86.6%, Xela's recordings 100%
-(n=21), FSC 78.4%, Common Voice 71.4%, SLURP 67.8%, SNIPS 56.1%.
+**By source** (test): class recordings 88.0% (n=200), FSC 78.4%, Common Voice 71.4%, SLURP 67.8%, SNIPS 56.1%.
 
 **Per class** (test, all / real speech):
 

@@ -59,16 +59,15 @@ test.
   group's synthetic voices.
 - **Validation** takes about 12% of each source's train clips, as whole
   speakers. Sources with fewer than 5 speakers stay in train, so all
-  group recordings (Filipino speakers) and the noise clips are used for
+  class recordings (Filipino speakers) and the noise clips are used for
   training. Seed 0, `scripts/build_me2_manifest.py`.
 - **Not used:** the dataset's `numerals` set (66,390 number-only clips
   from MLEnd and Speech Commands). It sits outside the splits and has no
   command labels.
 
 Train by source (train + val): group synthetic set 7,806, SLURP 1,381,
-group recordings 649, SNIPS 411, Fluent Speech Commands 293, Xela's
-recordings 64, Common Voice 36, Timers and Such 31, Speech Commands noise
-11. 73% of train is synthetic.
+class recordings 713, SNIPS 411, Fluent Speech Commands 293, Common Voice
+36, Timers and Such 31, Speech Commands noise 11. 73% of train is synthetic.
 
 ### Build it
 
@@ -99,8 +98,8 @@ Step 2 writes, all under `data/me2/` (gitignored):
 | Test set | Each source's own split; real speech only (6,577 clips) | Class-fixed, 4,418 clips, real and synthetic, balanced per variation |
 | Non-command class | `unknown_background`, 600 noise clips | `OUT_OF_SCOPE`, mostly speech |
 | Slot values | 24 timers, 28 alarm times, 12 brightness levels, 14 colors, 3 + 3 | 3 per slot, the schema's |
-| Filipino voices | Only in 16 of Option B's cloned reference speakers | Group recordings (5 ME2 speakers and Xela's S1–S5) in every split |
-| CALL, NEXT, LIST_REMINDERS | Synthetic only | Group recordings too |
+| Filipino voices | Only in 16 of Option B's cloned reference speakers | Class recordings (Filipino speakers) in every split |
+| CALL, NEXT, LIST_REMINDERS | Synthetic only | Class recordings too |
 
 ## Before Experiment 37: the project's own dataset
 
