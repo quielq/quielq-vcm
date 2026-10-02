@@ -18,7 +18,8 @@ at the end of this document.
 ## The class master dataset (Experiment 37 on)
 
 - **Where:** [huggingface.co/datasets/airimonda/ai231-me2-voice-commands](https://huggingface.co/datasets/airimonda/ai231-me2-voice-commands)
-  (also on the class Google Drive as `ai231-me2-gold-dataset`). Collated
+  (also on the class Google Drive as `ai231-me2-gold-dataset`, and on the
+  DGX as a shared `datasets` cache at **`/data/ai231`**, see below). Collated
   by Ailene (`airimonda` on Hugging Face). Audit and documentation:
   [claude.ai/artifact/PPNHMWd5rx9qcXTdcukV7s](https://claude.ai/artifact/PPNHMWd5rx9qcXTdcukV7s).
 - **Schema:** [`data/dataset_schema/final_dataset_schema.csv`](../data/dataset_schema/final_dataset_schema.csv) (the class sheet,
@@ -102,6 +103,39 @@ out-of-scope), SLURP 1,010, class recordings 684, SNIPS 331, Fluent Speech
 Commands 256, Common Voice 36, Timers and Such 31, Speech Commands noise 11.
 78% of train is synthetic.
 
+### The shared copy on the DGX (`/data/ai231`)
+
+The class uploaded the dataset to the DGX at `/data/ai231`, as a Hugging
+Face `datasets` cache (`load_dataset("airimonda/ai231-me2-voice-commands",
+cache_dir="/data/ai231")`, the loader in `/data/ai231/gold_dataset.py`). We
+compared it clip by clip with our pinned download on 2026-10-02:
+
+| Split | Clips | Audio bytes | Order | Labels and metadata (all 18 columns) |
+|---|---:|---|---|---|
+| train | 10,733 | identical | identical | identical |
+| test | 4,443 | identical | identical | identical |
+| holdout | 202 | identical | identical | identical |
+| numerals | 66,390 | identical | identical | identical |
+
+It **is** revision `da92a79`, so building from it gives the same manifest,
+slot labels, metadata and audio files as the download (checked), and every
+result in this repo holds for it. One difference: it has only the default
+splits, **not `supplemental_synth`**, which the shipped model's training
+uses (3,461 clips). The pipeline therefore reads train/test/holdout/numerals
+from `/data/ai231` and only `supplemental_synth` from Hugging Face. Without
+those clips you get Experiment 43a instead of 43b (about 2 points less real
+speech on val, EXPERIMENTS.md).
+
+`scripts/verify_shared_dataset.py` checks any copy against
+`data/dataset_schema/me2_fingerprint_da92a79.json` (clip count and a hash
+over every clip's audio and labels, per split) in about 10 seconds. If the
+shared copy is ever refreshed to a different revision, the check fails and
+`scripts/reproduce.sh` falls back to the pinned download.
+
+```bash
+python scripts/verify_shared_dataset.py --shared-cache /data/ai231   # expect "identical to the revision every result is on"
+```
+
 ### Build it
 
 ```bash
@@ -112,6 +146,14 @@ python -c "from huggingface_hub import snapshot_download; snapshot_download(
 
 # 2. Write the audio and this repo's manifest, slot labels and metadata
 python scripts/build_me2_manifest.py --numerals --supplemental
+```
+
+On the DGX, step 1 only needs `supplemental_synth/*`, `README.md` and
+`variations.csv`; the rest comes from the shared copy:
+
+```bash
+python scripts/verify_shared_dataset.py --shared-cache /data/ai231
+python scripts/build_me2_manifest.py --shared-cache /data/ai231 --numerals --supplemental
 ```
 
 Step 2 writes, all under `data/me2/` (gitignored):

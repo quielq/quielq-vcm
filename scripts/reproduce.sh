@@ -19,14 +19,27 @@ SEEDS=${SEEDS:-1}
 export CUDA_VISIBLE_DEVICES=${GPU:-0}
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 NUMBA_NUM_THREADS=1
 
-# 1. Data: train/test/holdout, numerals and supplemental_synth (about 3.6 GB), then this repo's manifests.
-$PY - <<'EOF'
+# 1. Data, then this repo's manifests. On the DGX the class's shared copy (/data/ai231)
+#    provides train/test/holdout/numerals; it is checked against the committed fingerprint
+#    of revision da92a79 first. Elsewhere (or with SHARED=none) everything is downloaded,
+#    about 3.6 GB. supplemental_synth is not in the shared copy, so it is always downloaded.
+SHARED=${SHARED:-/data/ai231}
+PATTERNS='["supplemental_synth/*", "README.md", "variations.csv"]'
+if [ -d "$SHARED" ] && $PY scripts/verify_shared_dataset.py --shared-cache "$SHARED"; then
+  BUILD_FROM="--shared-cache $SHARED"
+else
+  PATTERNS='["data/*", "supplemental_synth/*", "README.md", "variations.csv"]'
+  BUILD_FROM=""
+fi
+$PY - "$PATTERNS" <<'EOF'
+import json, sys
 from huggingface_hub import snapshot_download
 snapshot_download("airimonda/ai231-me2-voice-commands", repo_type="dataset", local_dir="data/me2/hf",
                   revision="da92a79ffde3031d5bb2a25138d9dd7d9f7ed006",  # the 2026-10-02 revision every result is on
-                  allow_patterns=["data/*", "supplemental_synth/*", "README.md", "variations.csv"])
+                  allow_patterns=json.loads(sys.argv[1]))
 EOF
-$PY scripts/build_me2_manifest.py --numerals --supplemental
+[ -n "$BUILD_FROM" ] || $PY scripts/verify_shared_dataset.py --hf-dir data/me2/hf
+$PY scripts/build_me2_manifest.py $BUILD_FROM --numerals --supplemental
 M=data/me2/manifest.csv
 
 # 2. Train (the final recipe, Experiment 43b; see docs/TRAINING.md and EXPERIMENTS.md).

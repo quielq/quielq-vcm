@@ -128,7 +128,7 @@ real time.
 | Item | Value |
 |---|---|
 | GitHub repository | [github.com/quielq/quielq-vcm](https://github.com/quielq/quielq-vcm), public, MIT ([LICENSE](LICENSE)) |
-| Dataset location | Hugging Face `airimonda/ai231-me2-voice-commands`; each source keeps its own license (CC BY 4.0, CC0, FSC non-commercial academic, …, see the dataset card). DOI: not minted yet (the dataset owner can create one from the Hugging Face dataset settings or Zenodo) |
+| Dataset location | Hugging Face `airimonda/ai231-me2-voice-commands`, revision `da92a79` (also on the DGX at `/data/ai231`, verified identical clip for clip by `scripts/verify_shared_dataset.py`); each source keeps its own license (CC BY 4.0, CC0, FSC non-commercial academic, …, see the dataset card). DOI: not minted yet (the dataset owner can create one from the Hugging Face dataset settings or Zenodo) |
 | A100 cluster | `ai-n002`, 1 × A100-40GB; ~54 min to train the final model |
 | Model weights | `models/vcm_intent.onnx`, `models/vcm_intent.pt` (this repo) · release to be created (GitHub release with the two files) · licence: MIT (code and weights); the training data's own terms apply to its use |
 
@@ -136,7 +136,7 @@ real time.
 
 | # | Item | Status |
 |---|---|---|
-| 1 | Repo public, one-command reproduction | `bash scripts/reproduce.sh` (data → train → evaluate → ONNX → benchmark) |
+| 1 | Repo public, one-command reproduction | `bash scripts/reproduce.sh` (data → train → evaluate → ONNX → benchmark); on the DGX it reads the class's shared copy `/data/ai231` after checking it against the committed dataset fingerprint |
 | 2 | Dataset licensed and citable (DOI) | Licensed per source on the dataset card; DOI pending, to be minted by the dataset owner |
 | 3 | Training logs + final checkpoint committed | [`results/`](results/) (logs, evaluations, launchers for Experiments 37–43) and `models/vcm_intent.pt` |
 | 4 | Pi latency reproduced by the posted script | `python scripts/benchmark_pi.py --json bench_pi.json` on the Pi 5: 15.8 ms p95 ([results/bench_pi5.md](results/bench_pi5.md)) |
@@ -436,7 +436,7 @@ The device uses 0.6, and 0.4 while music plays.
 |---|---|
 | **Device** (Pi or laptop) | `vcm_listen.py` (the voice loop), `kiwi_doctor.py` (preflight check), `benchmark_pi.py` (latency p95 / RTF), `measure_footprint.py` |
 | **Laptop** | `deploy_pi.sh` (deploy to the Pi), `mac_phone_bridge.py`, `spotify_auth.py`, `record_wakeword.py` |
-| **Data** (DGX) | `build_me2_manifest.py` (master dataset → manifest, slot labels, metadata) |
+| **Data** (DGX) | `build_me2_manifest.py` (master dataset → manifest, slot labels, metadata; `--shared-cache /data/ai231` for the class's copy), `verify_shared_dataset.py` (checks a copy against the committed fingerprint) |
 | **Train and evaluate** (DGX) | `reproduce.sh` (all steps), `python -m vcm.train.train`, `generate_ensemble_labels.py` (distillation teacher), `evaluate_checkpoint.py`, `summarize_experiments.py`, `export_onnx.py`, `train_wakeword.py`, `evaluate_wakeword.py` |
 | **Old dataset** (Experiments 1–36) | `build_manifest.py`, `fetch_*.py`, `process_fsc.py`, `qa_filter_option_b.py`, `generate_targeted_synthetic.py`, `build_slot_labels.py`, cascade scripts; see the archive branch |
 
