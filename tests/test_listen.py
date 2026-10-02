@@ -80,3 +80,21 @@ def test_listener_refuses_a_speaker_monitor_as_its_microphone(monkeypatch):
     with pytest.raises(vcm_listen.MicLost):
         vcm_listen.guard_input(None)
     vcm_listen.guard_input("USB PnP")  # an explicit --device isn't second-guessed
+
+
+def test_result_line_says_what_the_device_does():
+    """One JSON line per command for the class benchmark (vcm-benchmark): the
+    command and slot when acted on, OUT_OF_SCOPE when it is not."""
+    import json
+
+    from vcm.deploy.runtime import Prediction
+
+    acted = Prediction("TIMER", 0.93)
+    acted.slot_value, acted.slot_confidence = "30s", 0.99
+    line = json.loads(vcm_listen.result_line(acted, 9.84, 1500.4))
+    assert line == {"intent": "TIMER", "slot": "30s", "confidence": 0.93, "model_intent": "TIMER",
+                    "infer_ms": 9.8, "audio_ms": 1500}
+    unsure = json.loads(vcm_listen.result_line(Prediction("STOP", 0.27), 10.0, 800.0))
+    assert unsure["intent"] == "OUT_OF_SCOPE" and unsure["model_intent"] == "STOP" and "slot" not in unsure
+    assert json.loads(vcm_listen.result_line(Prediction("unknown_background", 0.9), 9.0, 900.0))["intent"] == "OUT_OF_SCOPE"
+    assert json.loads(vcm_listen.result_line(None, 0.0, 700.0)) == {"intent": "OUT_OF_SCOPE", "infer_ms": 0.0, "audio_ms": 700}

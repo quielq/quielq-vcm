@@ -1,0 +1,389 @@
+kind,transcript,true,lines
+wake,Play a song,PLAY_MUSIC,"{""intent"": ""NEXT"", ""confidence"": 0.949, ""model_intent"": ""NEXT"", ""infer_ms"": 29.0, ""audio_ms"": 1400}"
+wake,Play music,PLAY_MUSIC,"{""intent"": ""PLAY_MUSIC"", ""confidence"": 0.998, ""model_intent"": ""PLAY_MUSIC"", ""infer_ms"": 6.6, ""audio_ms"": 1300}"
+wake,Start the music,PLAY_MUSIC,"{""intent"": ""PLAY_MUSIC"", ""confidence"": 0.969, ""model_intent"": ""PLAY_MUSIC"", ""infer_ms"": 7.8, ""audio_ms"": 1500}"
+wake,Start music,PLAY_MUSIC,"{""intent"": ""PLAY_MUSIC"", ""confidence"": 1.0, ""model_intent"": ""PLAY_MUSIC"", ""infer_ms"": 4.9, ""audio_ms"": 1400}"
+wake,Put on the music,PLAY_MUSIC,"{""intent"": ""STOP"", ""confidence"": 0.895, ""model_intent"": ""STOP"", ""infer_ms"": 5.0, ""audio_ms"": 1200}"
+wake,Play some music,PLAY_MUSIC,"{""intent"": ""PLAY_MUSIC"", ""confidence"": 0.999, ""model_intent"": ""PLAY_MUSIC"", ""infer_ms"": 5.1, ""audio_ms"": 1400}"
+wake,Weather,WEATHER,"{""intent"": ""WEATHER"", ""confidence"": 0.994, ""model_intent"": ""WEATHER"", ""infer_ms"": 4.9, ""audio_ms"": 1100}"
+wake,Weather,WEATHER,"{""intent"": ""WEATHER"", ""confidence"": 1.0, ""model_intent"": ""WEATHER"", ""infer_ms"": 5.2, ""audio_ms"": 800}"
+wake,What's the weather?,WEATHER,"{""intent"": ""WEATHER"", ""confidence"": 0.996, ""model_intent"": ""WEATHER"", ""infer_ms"": 5.0, ""audio_ms"": 1500}"
+wake,What's the weather?,WEATHER,"{""intent"": ""WEATHER"", ""confidence"": 1.0, ""model_intent"": ""WEATHER"", ""infer_ms"": 4.9, ""audio_ms"": 1200}"
+wake,Tell me the weather,WEATHER,"{""intent"": ""WEATHER"", ""confidence"": 0.999, ""model_intent"": ""WEATHER"", ""infer_ms"": 5.0, ""audio_ms"": 1500}"
+wake,Tell me the weather,WEATHER,"{""intent"": ""WEATHER"", ""confidence"": 1.0, ""model_intent"": ""WEATHER"", ""infer_ms"": 5.0, ""audio_ms"": 1300}"
+wake,Time,TIME,"{""intent"": ""TIME"", ""confidence"": 0.996, ""model_intent"": ""TIME"", ""infer_ms"": 5.0, ""audio_ms"": 900}"
+wake,Time,TIME,"{""intent"": ""TIME"", ""confidence"": 0.999, ""model_intent"": ""TIME"", ""infer_ms"": 5.0, ""audio_ms"": 900}"
+wake,What time is it?,TIME,"{""intent"": ""TIME"", ""confidence"": 0.924, ""model_intent"": ""TIME"", ""infer_ms"": 4.9, ""audio_ms"": 1400}"
+wake,What time is it?,TIME,"{""intent"": ""TIME"", ""confidence"": 1.0, ""model_intent"": ""TIME"", ""infer_ms"": 4.9, ""audio_ms"": 1200}"
+wake,Tell me the time,TIME,"{""intent"": ""TIME"", ""confidence"": 0.997, ""model_intent"": ""TIME"", ""infer_ms"": 5.1, ""audio_ms"": 1600}"
+wake,Tell me the time,TIME,"{""intent"": ""TIME"", ""confidence"": 1.0, ""model_intent"": ""TIME"", ""infer_ms"": 4.9, ""audio_ms"": 1300}"
+wake,Lights on,LIGHT_ON,"{""intent"": ""LIGHT_ON"", ""confidence"": 0.999, ""model_intent"": ""LIGHT_ON"", ""infer_ms"": 5.7, ""audio_ms"": 1300}"
+wake,Lights on,LIGHT_ON,"{""intent"": ""LIGHT_ON"", ""confidence"": 1.0, ""model_intent"": ""LIGHT_ON"", ""infer_ms"": 5.4, ""audio_ms"": 1200}"
+wake,Power on the lights,LIGHT_ON,"{""intent"": ""LIGHT_ON"", ""confidence"": 0.998, ""model_intent"": ""LIGHT_ON"", ""infer_ms"": 5.7, ""audio_ms"": 1800}"
+wake,Power on the lights,LIGHT_ON,"{""intent"": ""LIGHT_ON"", ""confidence"": 0.999, ""model_intent"": ""LIGHT_ON"", ""infer_ms"": 5.8, ""audio_ms"": 1300}"
+wake,Turn on the lights,LIGHT_ON,"{""intent"": ""LIGHT_ON"", ""confidence"": 0.994, ""model_intent"": ""LIGHT_ON"", ""infer_ms"": 5.0, ""audio_ms"": 2000}"
+wake,Turn on the lights,LIGHT_ON,"{""intent"": ""LIGHT_ON"", ""confidence"": 1.0, ""model_intent"": ""LIGHT_ON"", ""infer_ms"": 5.0, ""audio_ms"": 1300}"
+wake,Lights off,LIGHT_OFF,"{""intent"": ""LIGHT_OFF"", ""confidence"": 0.633, ""model_intent"": ""LIGHT_OFF"", ""infer_ms"": 5.0, ""audio_ms"": 1500}"
+wake,Lights out,LIGHT_OFF,"{""intent"": ""LIGHT_OFF"", ""confidence"": 0.999, ""model_intent"": ""LIGHT_OFF"", ""infer_ms"": 5.0, ""audio_ms"": 1200}"
+wake,Kill the lights,LIGHT_OFF,"{""intent"": ""LIGHT_OFF"", ""confidence"": 0.999, ""model_intent"": ""LIGHT_OFF"", ""infer_ms"": 5.2, ""audio_ms"": 1700}"
+wake,Kill the lights,LIGHT_OFF,"{""intent"": ""LIGHT_OFF"", ""confidence"": 1.0, ""model_intent"": ""LIGHT_OFF"", ""infer_ms"": 5.0, ""audio_ms"": 1300}"
+wake,Turn off the lights,LIGHT_OFF,"{""intent"": ""LIGHT_ON"", ""confidence"": 0.914, ""model_intent"": ""LIGHT_ON"", ""infer_ms"": 5.1, ""audio_ms"": 2200}"
+wake,Shut off the lights,LIGHT_OFF,"{""intent"": ""LIGHT_OFF"", ""confidence"": 0.992, ""model_intent"": ""LIGHT_OFF"", ""infer_ms"": 5.3, ""audio_ms"": 1400}"
+wake,Pause,PAUSE,"{""intent"": ""PAUSE"", ""confidence"": 0.999, ""model_intent"": ""PAUSE"", ""infer_ms"": 5.0, ""audio_ms"": 900}"
+wake,Pause,PAUSE,"{""intent"": ""PAUSE"", ""confidence"": 1.0, ""model_intent"": ""PAUSE"", ""infer_ms"": 7.9, ""audio_ms"": 800}"
+wake,Pause the music,PAUSE,"{""intent"": ""PAUSE"", ""confidence"": 0.998, ""model_intent"": ""PAUSE"", ""infer_ms"": 5.2, ""audio_ms"": 1400}"
+wake,Pause audio,PAUSE,"{""intent"": ""PAUSE"", ""confidence"": 1.0, ""model_intent"": ""PAUSE"", ""infer_ms"": 5.0, ""audio_ms"": 1400}"
+wake,Pause this song,PAUSE,"{""intent"": ""PAUSE"", ""confidence"": 0.996, ""model_intent"": ""PAUSE"", ""infer_ms"": 5.1, ""audio_ms"": 1500}"
+wake,Pause song,PAUSE,"{""intent"": ""PAUSE"", ""confidence"": 1.0, ""model_intent"": ""PAUSE"", ""infer_ms"": 5.0, ""audio_ms"": 1200}"
+wake,Stop music,STOP,"{""intent"": ""STOP"", ""confidence"": 0.975, ""model_intent"": ""STOP"", ""infer_ms"": 5.2, ""audio_ms"": 1400}"
+wake,Stop,STOP,"{""intent"": ""STOP"", ""confidence"": 0.999, ""model_intent"": ""STOP"", ""infer_ms"": 4.8, ""audio_ms"": 600}"
+wake,Stop playing music,STOP,"{""intent"": ""STOP"", ""confidence"": 0.993, ""model_intent"": ""STOP"", ""infer_ms"": 5.0, ""audio_ms"": 1900}"
+wake,Stop playing,STOP,"{""intent"": ""STOP"", ""confidence"": 1.0, ""model_intent"": ""STOP"", ""infer_ms"": 5.0, ""audio_ms"": 1200}"
+wake,Turn off the music,STOP,"{""intent"": ""STOP"", ""confidence"": 0.999, ""model_intent"": ""STOP"", ""infer_ms"": 5.1, ""audio_ms"": 1500}"
+wake,End playback,STOP,"{""intent"": ""STOP"", ""confidence"": 0.999, ""model_intent"": ""STOP"", ""infer_ms"": 5.4, ""audio_ms"": 1400}"
+wake,Next song,NEXT,"{""intent"": ""OUT_OF_SCOPE"", ""infer_ms"": 0.0, ""audio_ms"": 500}"
+wake,Next song,NEXT,"{""intent"": ""NEXT"", ""confidence"": 1.0, ""model_intent"": ""NEXT"", ""infer_ms"": 5.0, ""audio_ms"": 1300}"
+wake,Skip song,NEXT,"{""intent"": ""NEXT"", ""confidence"": 0.994, ""model_intent"": ""NEXT"", ""infer_ms"": 5.1, ""audio_ms"": 1500}"
+wake,Skip song,NEXT,"{""intent"": ""NEXT"", ""confidence"": 1.0, ""model_intent"": ""NEXT"", ""infer_ms"": 5.2, ""audio_ms"": 1100}"
+wake,Play next song,NEXT,"{""intent"": ""NEXT"", ""confidence"": 0.997, ""model_intent"": ""NEXT"", ""infer_ms"": 5.4, ""audio_ms"": 1500}"
+wake,Play next song,NEXT,"{""intent"": ""NEXT"", ""confidence"": 1.0, ""model_intent"": ""NEXT"", ""infer_ms"": 5.2, ""audio_ms"": 1300}"
+wake,Volume up,VOLUME_UP,"{""intent"": ""VOLUME_UP"", ""confidence"": 0.999, ""model_intent"": ""VOLUME_UP"", ""infer_ms"": 5.1, ""audio_ms"": 1800}"
+wake,Volume up,VOLUME_UP,"{""intent"": ""VOLUME_UP"", ""confidence"": 1.0, ""model_intent"": ""VOLUME_UP"", ""infer_ms"": 5.3, ""audio_ms"": 1200}"
+wake,Increase the volume,VOLUME_UP,"{""intent"": ""VOLUME_UP"", ""confidence"": 0.997, ""model_intent"": ""VOLUME_UP"", ""infer_ms"": 4.9, ""audio_ms"": 1700}"
+wake,Increase the volume,VOLUME_UP,"{""intent"": ""VOLUME_UP"", ""confidence"": 0.998, ""model_intent"": ""VOLUME_UP"", ""infer_ms"": 4.9, ""audio_ms"": 1600}"
+wake,Turn the volume up,VOLUME_UP,"{""intent"": ""VOLUME_UP"", ""confidence"": 1.0, ""model_intent"": ""VOLUME_UP"", ""infer_ms"": 5.2, ""audio_ms"": 1800}"
+wake,Turn the volume up,VOLUME_UP,"{""intent"": ""VOLUME_UP"", ""confidence"": 1.0, ""model_intent"": ""VOLUME_UP"", ""infer_ms"": 5.0, ""audio_ms"": 1500}"
+wake,Volume down,VOLUME_DOWN,"{""intent"": ""VOLUME_DOWN"", ""confidence"": 0.999, ""model_intent"": ""VOLUME_DOWN"", ""infer_ms"": 5.0, ""audio_ms"": 1700}"
+wake,Volume down,VOLUME_DOWN,"{""intent"": ""VOLUME_DOWN"", ""confidence"": 1.0, ""model_intent"": ""VOLUME_DOWN"", ""infer_ms"": 5.0, ""audio_ms"": 1400}"
+wake,Lower the volume,VOLUME_DOWN,"{""intent"": ""VOLUME_DOWN"", ""confidence"": 0.998, ""model_intent"": ""VOLUME_DOWN"", ""infer_ms"": 5.1, ""audio_ms"": 2400}"
+wake,Lower the volume,VOLUME_DOWN,"{""intent"": ""VOLUME_DOWN"", ""confidence"": 0.999, ""model_intent"": ""VOLUME_DOWN"", ""infer_ms"": 6.9, ""audio_ms"": 1400}"
+wake,Turn the volume down,VOLUME_DOWN,"{""intent"": ""VOLUME_DOWN"", ""confidence"": 1.0, ""model_intent"": ""VOLUME_DOWN"", ""infer_ms"": 6.1, ""audio_ms"": 2000}"
+wake,Turn the volume down,VOLUME_DOWN,"{""intent"": ""VOLUME_DOWN"", ""confidence"": 1.0, ""model_intent"": ""VOLUME_DOWN"", ""infer_ms"": 5.1, ""audio_ms"": 1500}"
+wake,Call,CALL,"{""intent"": ""CALL"", ""confidence"": 0.99, ""model_intent"": ""CALL"", ""infer_ms"": 4.9, ""audio_ms"": 1100}"
+wake,Call,CALL,"{""intent"": ""CALL"", ""confidence"": 1.0, ""model_intent"": ""CALL"", ""infer_ms"": 4.9, ""audio_ms"": 900}"
+wake,Make a call,CALL,"{""intent"": ""CALL"", ""confidence"": 0.998, ""model_intent"": ""CALL"", ""infer_ms"": 5.1, ""audio_ms"": 1600}"
+wake,Make a call,CALL,"{""intent"": ""CALL"", ""confidence"": 1.0, ""model_intent"": ""CALL"", ""infer_ms"": 5.1, ""audio_ms"": 1100}"
+wake,Make a phone call,CALL,"{""intent"": ""CALL"", ""confidence"": 0.663, ""model_intent"": ""CALL"", ""infer_ms"": 5.1, ""audio_ms"": 2200}"
+wake,Make a phone call,CALL,"{""intent"": ""CALL"", ""confidence"": 1.0, ""model_intent"": ""CALL"", ""infer_ms"": 8.0, ""audio_ms"": 1400}"
+wake,Message,MESSAGE,"{""intent"": ""MESSAGE"", ""confidence"": 0.668, ""model_intent"": ""MESSAGE"", ""infer_ms"": 5.5, ""audio_ms"": 2100}"
+wake,Message,MESSAGE,"{""intent"": ""MESSAGE"", ""confidence"": 1.0, ""model_intent"": ""MESSAGE"", ""infer_ms"": 5.0, ""audio_ms"": 1000}"
+wake,Send a message,MESSAGE,"{""intent"": ""MESSAGE"", ""confidence"": 1.0, ""model_intent"": ""MESSAGE"", ""infer_ms"": 5.0, ""audio_ms"": 1900}"
+wake,Send a message,MESSAGE,"{""intent"": ""MESSAGE"", ""confidence"": 1.0, ""model_intent"": ""MESSAGE"", ""infer_ms"": 5.3, ""audio_ms"": 1300}"
+wake,Send my message,MESSAGE,"{""intent"": ""MESSAGE"", ""confidence"": 0.999, ""model_intent"": ""MESSAGE"", ""infer_ms"": 5.0, ""audio_ms"": 1800}"
+wake,Send my message,MESSAGE,"{""intent"": ""MESSAGE"", ""confidence"": 1.0, ""model_intent"": ""MESSAGE"", ""infer_ms"": 5.0, ""audio_ms"": 1400}"
+wake,Reminders,LIST_REMINDERS,"{""intent"": ""LIST_REMINDERS"", ""confidence"": 0.992, ""model_intent"": ""LIST_REMINDERS"", ""infer_ms"": 5.0, ""audio_ms"": 2100}"
+wake,Reminders,LIST_REMINDERS,"{""intent"": ""LIST_REMINDERS"", ""confidence"": 1.0, ""model_intent"": ""LIST_REMINDERS"", ""infer_ms"": 4.9, ""audio_ms"": 1200}"
+wake,Show my reminders,LIST_REMINDERS,"{""intent"": ""LIST_REMINDERS"", ""confidence"": 0.995, ""model_intent"": ""LIST_REMINDERS"", ""infer_ms"": 5.0, ""audio_ms"": 1800}"
+wake,Show my reminders,LIST_REMINDERS,"{""intent"": ""LIST_REMINDERS"", ""confidence"": 1.0, ""model_intent"": ""LIST_REMINDERS"", ""infer_ms"": 4.9, ""audio_ms"": 1600}"
+wake,List my reminders,LIST_REMINDERS,"{""intent"": ""LIST_REMINDERS"", ""confidence"": 0.999, ""model_intent"": ""LIST_REMINDERS"", ""infer_ms"": 5.1, ""audio_ms"": 2000}"
+wake,List my reminders,LIST_REMINDERS,"{""intent"": ""LIST_REMINDERS"", ""confidence"": 1.0, ""model_intent"": ""LIST_REMINDERS"", ""infer_ms"": 5.2, ""audio_ms"": 1600}"
+wake,Timer 10 seconds,TIMER 10 seconds,"{""intent"": ""TIMER"", ""slot"": ""10s"", ""confidence"": 0.999, ""model_intent"": ""TIMER"", ""infer_ms"": 5.3, ""audio_ms"": 2200}"
+wake,Timer 10 seconds,TIMER 10 seconds,"{""intent"": ""TIMER"", ""slot"": ""10s"", ""confidence"": 0.997, ""model_intent"": ""TIMER"", ""infer_ms"": 4.8, ""audio_ms"": 1600}"
+wake,Timer 30 seconds,TIMER 30 seconds,"{""intent"": ""TIMER"", ""slot"": ""30s"", ""confidence"": 0.998, ""model_intent"": ""TIMER"", ""infer_ms"": 5.1, ""audio_ms"": 2000}"
+wake,Timer 30 seconds,TIMER 30 seconds,"{""intent"": ""TIMER"", ""slot"": ""30s"", ""confidence"": 1.0, ""model_intent"": ""TIMER"", ""infer_ms"": 5.0, ""audio_ms"": 2200}"
+wake,Timer 1 minute,TIMER 1 minute,"{""intent"": ""TIMER"", ""slot"": ""1m"", ""confidence"": 0.999, ""model_intent"": ""TIMER"", ""infer_ms"": 5.0, ""audio_ms"": 1500}"
+wake,Timer 1 minute,TIMER 1 minute,"{""intent"": ""TIMER"", ""slot"": ""1m"", ""confidence"": 1.0, ""model_intent"": ""TIMER"", ""infer_ms"": 5.0, ""audio_ms"": 1400}"
+wake,Countdown for 10 seconds,TIMER 10 seconds,"{""intent"": ""TIMER"", ""slot"": ""10s"", ""confidence"": 0.999, ""model_intent"": ""TIMER"", ""infer_ms"": 5.1, ""audio_ms"": 2100}"
+wake,Countdown for 10 seconds,TIMER 10 seconds,"{""intent"": ""TIMER"", ""slot"": ""10s"", ""confidence"": 0.999, ""model_intent"": ""TIMER"", ""infer_ms"": 5.0, ""audio_ms"": 1900}"
+wake,Countdown for 30 seconds,TIMER 30 seconds,"{""intent"": ""TIMER"", ""slot"": ""30s"", ""confidence"": 0.999, ""model_intent"": ""TIMER"", ""infer_ms"": 5.3, ""audio_ms"": 2400}"
+wake,Countdown for 30 seconds,TIMER 30 seconds,"{""intent"": ""TIMER"", ""slot"": ""30s"", ""confidence"": 1.0, ""model_intent"": ""TIMER"", ""infer_ms"": 5.0, ""audio_ms"": 2300}"
+wake,Countdown for 1 minute,TIMER 1 minute,"{""intent"": ""TIMER"", ""slot"": ""1m"", ""confidence"": 0.999, ""model_intent"": ""TIMER"", ""infer_ms"": 5.4, ""audio_ms"": 1900}"
+wake,Countdown for 1 minute,TIMER 1 minute,"{""intent"": ""TIMER"", ""slot"": ""1m"", ""confidence"": 1.0, ""model_intent"": ""TIMER"", ""infer_ms"": 5.2, ""audio_ms"": 1800}"
+wake,Start a timer for 10 seconds,TIMER 10 seconds,"{""intent"": ""TIMER"", ""slot"": ""10s"", ""confidence"": 0.999, ""model_intent"": ""TIMER"", ""infer_ms"": 5.0, ""audio_ms"": 2900}"
+wake,Start a timer for 10 seconds,TIMER 10 seconds,"{""intent"": ""TIMER"", ""slot"": ""10s"", ""confidence"": 1.0, ""model_intent"": ""TIMER"", ""infer_ms"": 5.2, ""audio_ms"": 2200}"
+wake,Start a timer for 30 seconds,TIMER 30 seconds,"{""intent"": ""TIMER"", ""slot"": ""30s"", ""confidence"": 0.999, ""model_intent"": ""TIMER"", ""infer_ms"": 6.0, ""audio_ms"": 2800}"
+wake,Start a timer for 30 seconds,TIMER 30 seconds,"{""intent"": ""TIMER"", ""slot"": ""30s"", ""confidence"": 1.0, ""model_intent"": ""TIMER"", ""infer_ms"": 5.9, ""audio_ms"": 2400}"
+wake,Start a timer for 1 minute,TIMER 1 minute,"{""intent"": ""TIMER"", ""slot"": ""1m"", ""confidence"": 0.998, ""model_intent"": ""TIMER"", ""infer_ms"": 5.8, ""audio_ms"": 2500}"
+wake,Start a timer for 1 minute,TIMER 1 minute,"{""intent"": ""TIMER"", ""slot"": ""1m"", ""confidence"": 1.0, ""model_intent"": ""TIMER"", ""infer_ms"": 5.3, ""audio_ms"": 1900}"
+wake,Alarm 6:00 AM,ALARM 6:00 AM,"{""intent"": ""ALARM"", ""slot"": ""6:00 AM"", ""confidence"": 0.994, ""model_intent"": ""ALARM"", ""infer_ms"": 5.8, ""audio_ms"": 2700}"
+wake,Alarm 6 AM,ALARM 6:00 AM,"{""intent"": ""ALARM"", ""slot"": ""6:00 AM"", ""confidence"": 1.0, ""model_intent"": ""ALARM"", ""infer_ms"": 5.7, ""audio_ms"": 1900}"
+wake,Alarm 8:00 AM,ALARM 8:00 AM,"{""intent"": ""ALARM"", ""slot"": ""8:00 AM"", ""confidence"": 1.0, ""model_intent"": ""ALARM"", ""infer_ms"": 5.8, ""audio_ms"": 1800}"
+wake,Alarm 8 AM,ALARM 8:00 AM,"{""intent"": ""ALARM"", ""slot"": ""8:00 AM"", ""confidence"": 1.0, ""model_intent"": ""ALARM"", ""infer_ms"": 6.0, ""audio_ms"": 1900}"
+wake,Alarm 9 PM,ALARM 9:00 PM,"{""intent"": ""ALARM"", ""slot"": ""9:00 PM"", ""confidence"": 0.999, ""model_intent"": ""ALARM"", ""infer_ms"": 5.8, ""audio_ms"": 2000}"
+wake,Alarm 9 PM,ALARM 9:00 PM,"{""intent"": ""ALARM"", ""slot"": ""9:00 PM"", ""confidence"": 0.994, ""model_intent"": ""ALARM"", ""infer_ms"": 5.7, ""audio_ms"": 2600}"
+wake,Wake me up at 6:00 AM,ALARM 6:00 AM,"{""intent"": ""ALARM"", ""slot"": ""6:00 AM"", ""confidence"": 0.999, ""model_intent"": ""ALARM"", ""infer_ms"": 5.8, ""audio_ms"": 2400}"
+wake,Wake me up at 6 AM,ALARM 6:00 AM,"{""intent"": ""ALARM"", ""slot"": ""6:00 AM"", ""confidence"": 1.0, ""model_intent"": ""ALARM"", ""infer_ms"": 5.8, ""audio_ms"": 2100}"
+wake,Wake me up at 8:00 AM,ALARM 8:00 AM,"{""intent"": ""ALARM"", ""slot"": ""8:00 AM"", ""confidence"": 0.984, ""model_intent"": ""ALARM"", ""infer_ms"": 5.3, ""audio_ms"": 3300}"
+wake,Wake me up at 8 AM,ALARM 8:00 AM,"{""intent"": ""ALARM"", ""slot"": ""8:00 AM"", ""confidence"": 1.0, ""model_intent"": ""ALARM"", ""infer_ms"": 5.7, ""audio_ms"": 1900}"
+wake,Wake me up at 9:00 PM,ALARM 9:00 PM,"{""intent"": ""ALARM"", ""slot"": ""9:00 PM"", ""confidence"": 0.979, ""model_intent"": ""ALARM"", ""infer_ms"": 5.7, ""audio_ms"": 2800}"
+wake,Wake me up at 9 PM,ALARM 9:00 PM,"{""intent"": ""ALARM"", ""slot"": ""9:00 PM"", ""confidence"": 0.999, ""model_intent"": ""ALARM"", ""infer_ms"": 5.5, ""audio_ms"": 1800}"
+wake,Set an alarm for 6:00 AM,ALARM 6:00 AM,"{""intent"": ""ALARM"", ""slot"": ""6:00 AM"", ""confidence"": 1.0, ""model_intent"": ""ALARM"", ""infer_ms"": 5.6, ""audio_ms"": 2800}"
+wake,Set an alarm for 6 AM,ALARM 6:00 AM,"{""intent"": ""ALARM"", ""slot"": ""6:00 AM"", ""confidence"": 1.0, ""model_intent"": ""ALARM"", ""infer_ms"": 6.2, ""audio_ms"": 2100}"
+wake,Set an alarm for 8:00 AM,ALARM 8:00 AM,"{""intent"": ""ALARM"", ""slot"": ""8:00 AM"", ""confidence"": 0.996, ""model_intent"": ""ALARM"", ""infer_ms"": 5.6, ""audio_ms"": 2400}"
+wake,Set an alarm for 8 AM,ALARM 8:00 AM,"{""intent"": ""ALARM"", ""slot"": ""8:00 AM"", ""confidence"": 1.0, ""model_intent"": ""ALARM"", ""infer_ms"": 5.5, ""audio_ms"": 2300}"
+wake,Set an alarm for 9:00 PM,ALARM 9:00 PM,"{""intent"": ""ALARM"", ""slot"": ""9:00 PM"", ""confidence"": 1.0, ""model_intent"": ""ALARM"", ""infer_ms"": 5.7, ""audio_ms"": 2800}"
+wake,Set an alarm for 9 PM,ALARM 9:00 PM,"{""intent"": ""ALARM"", ""slot"": ""9:00 PM"", ""confidence"": 1.0, ""model_intent"": ""ALARM"", ""infer_ms"": 5.1, ""audio_ms"": 2000}"
+wake,Temperature 18 degrees,TEMPERATURE 18 degrees,"{""intent"": ""TEMPERATURE"", ""slot"": ""22 degrees"", ""confidence"": 1.0, ""model_intent"": ""TEMPERATURE"", ""infer_ms"": 5.1, ""audio_ms"": 2300}"
+wake,Temperature 18 degrees,TEMPERATURE 18 degrees,"{""intent"": ""TEMPERATURE"", ""slot"": ""18 degrees"", ""confidence"": 1.0, ""model_intent"": ""TEMPERATURE"", ""infer_ms"": 5.1, ""audio_ms"": 2300}"
+wake,Temperature 22 degrees,TEMPERATURE 22 degrees,"{""intent"": ""TEMPERATURE"", ""slot"": ""18 degrees"", ""confidence"": 0.999, ""model_intent"": ""TEMPERATURE"", ""infer_ms"": 5.1, ""audio_ms"": 2700}"
+wake,Temperature 22 degrees,TEMPERATURE 22 degrees,"{""intent"": ""TEMPERATURE"", ""slot"": ""22 degrees"", ""confidence"": 1.0, ""model_intent"": ""TEMPERATURE"", ""infer_ms"": 5.0, ""audio_ms"": 2300}"
+wake,Temperature 26 degrees,TEMPERATURE 26 degrees,"{""intent"": ""TEMPERATURE"", ""slot"": ""26 degrees"", ""confidence"": 1.0, ""model_intent"": ""TEMPERATURE"", ""infer_ms"": 5.0, ""audio_ms"": 2500}"
+wake,Temperature 26 degrees,TEMPERATURE 26 degrees,"{""intent"": ""TEMPERATURE"", ""slot"": ""26 degrees"", ""confidence"": 1.0, ""model_intent"": ""TEMPERATURE"", ""infer_ms"": 5.1, ""audio_ms"": 2100}"
+wake,Change the temperature to 18 degrees,TEMPERATURE 18 degrees,"{""intent"": ""TEMPERATURE"", ""slot"": ""26 degrees"", ""confidence"": 0.999, ""model_intent"": ""TEMPERATURE"", ""infer_ms"": 5.7, ""audio_ms"": 2900}"
+wake,Change the temperature to 18 degrees,TEMPERATURE 18 degrees,"{""intent"": ""TEMPERATURE"", ""slot"": ""18 degrees"", ""confidence"": 1.0, ""model_intent"": ""TEMPERATURE"", ""infer_ms"": 5.0, ""audio_ms"": 3100}"
+wake,Change the temperature to 22 degrees,TEMPERATURE 22 degrees,"{""intent"": ""TEMPERATURE"", ""slot"": ""22 degrees"", ""confidence"": 1.0, ""model_intent"": ""TEMPERATURE"", ""infer_ms"": 5.2, ""audio_ms"": 2700}"
+wake,Change the temperature to 22 degrees,TEMPERATURE 22 degrees,"{""intent"": ""TEMPERATURE"", ""slot"": ""22 degrees"", ""confidence"": 1.0, ""model_intent"": ""TEMPERATURE"", ""infer_ms"": 5.0, ""audio_ms"": 2700}"
+wake,Change the temperature to 26 degrees,TEMPERATURE 26 degrees,"{""intent"": ""TEMPERATURE"", ""slot"": ""26 degrees"", ""confidence"": 1.0, ""model_intent"": ""TEMPERATURE"", ""infer_ms"": 5.1, ""audio_ms"": 2800}"
+wake,Change the temperature to 26 degrees,TEMPERATURE 26 degrees,"{""intent"": ""TEMPERATURE"", ""slot"": ""26 degrees"", ""confidence"": 1.0, ""model_intent"": ""TEMPERATURE"", ""infer_ms"": 5.0, ""audio_ms"": 2900}"
+wake,Set the temperature to 18 degrees,TEMPERATURE 18 degrees,"{""intent"": ""TEMPERATURE"", ""slot"": ""22 degrees"", ""confidence"": 1.0, ""model_intent"": ""TEMPERATURE"", ""infer_ms"": 5.1, ""audio_ms"": 2500}"
+wake,Set the temperature to 18 degrees,TEMPERATURE 18 degrees,"{""intent"": ""TEMPERATURE"", ""slot"": ""18 degrees"", ""confidence"": 1.0, ""model_intent"": ""TEMPERATURE"", ""infer_ms"": 5.1, ""audio_ms"": 2700}"
+wake,Set the temperature to 22 degrees,TEMPERATURE 22 degrees,"{""intent"": ""TEMPERATURE"", ""slot"": ""22 degrees"", ""confidence"": 1.0, ""model_intent"": ""TEMPERATURE"", ""infer_ms"": 5.2, ""audio_ms"": 3700}"
+wake,Set the temperature to 22 degrees,TEMPERATURE 22 degrees,"{""intent"": ""TEMPERATURE"", ""slot"": ""22 degrees"", ""confidence"": 1.0, ""model_intent"": ""TEMPERATURE"", ""infer_ms"": 5.2, ""audio_ms"": 2500}"
+wake,Set the temperature to 26 degrees,TEMPERATURE 26 degrees,"{""intent"": ""TEMPERATURE"", ""slot"": ""26 degrees"", ""confidence"": 1.0, ""model_intent"": ""TEMPERATURE"", ""infer_ms"": 5.2, ""audio_ms"": 2800}"
+wake,Set the temperature to 26 degrees,TEMPERATURE 26 degrees,"{""intent"": ""TEMPERATURE"", ""slot"": ""26 degrees"", ""confidence"": 1.0, ""model_intent"": ""TEMPERATURE"", ""infer_ms"": 5.1, ""audio_ms"": 2600}"
+wake,Brightness 20 percent,BRIGHTNESS 20 percent,"{""intent"": ""BRIGHTNESS"", ""slot"": ""20%"", ""confidence"": 0.996, ""model_intent"": ""BRIGHTNESS"", ""infer_ms"": 5.1, ""audio_ms"": 2200}"
+wake,Brightness 20 percent,BRIGHTNESS 20 percent,"{""intent"": ""BRIGHTNESS"", ""slot"": ""20%"", ""confidence"": 0.999, ""model_intent"": ""BRIGHTNESS"", ""infer_ms"": 4.9, ""audio_ms"": 2000}"
+wake,Brightness 60 percent,BRIGHTNESS 60 percent,"{""intent"": ""BRIGHTNESS"", ""slot"": ""20%"", ""confidence"": 0.999, ""model_intent"": ""BRIGHTNESS"", ""infer_ms"": 5.3, ""audio_ms"": 2600}"
+wake,Brightness 60 percent,BRIGHTNESS 60 percent,"{""intent"": ""BRIGHTNESS"", ""slot"": ""60%"", ""confidence"": 1.0, ""model_intent"": ""BRIGHTNESS"", ""infer_ms"": 5.2, ""audio_ms"": 2000}"
+wake,Brightness 100 percent,BRIGHTNESS 100 percent,"{""intent"": ""BRIGHTNESS"", ""slot"": ""100%"", ""confidence"": 0.983, ""model_intent"": ""BRIGHTNESS"", ""infer_ms"": 5.2, ""audio_ms"": 2500}"
+wake,Brightness 100 percent,BRIGHTNESS 100 percent,"{""intent"": ""BRIGHTNESS"", ""slot"": ""100%"", ""confidence"": 0.999, ""model_intent"": ""BRIGHTNESS"", ""infer_ms"": 5.0, ""audio_ms"": 2200}"
+wake,Change the brightness to 20 percent,BRIGHTNESS 20 percent,"{""intent"": ""BRIGHTNESS"", ""slot"": ""20%"", ""confidence"": 0.998, ""model_intent"": ""BRIGHTNESS"", ""infer_ms"": 5.1, ""audio_ms"": 2400}"
+wake,Adjust brightness to 20 percent,BRIGHTNESS 20 percent,"{""intent"": ""BRIGHTNESS"", ""slot"": ""20%"", ""confidence"": 1.0, ""model_intent"": ""BRIGHTNESS"", ""infer_ms"": 5.2, ""audio_ms"": 2800}"
+wake,Change the brightness to 60 percent,BRIGHTNESS 60 percent,"{""intent"": ""BRIGHTNESS"", ""slot"": ""60%"", ""confidence"": 0.999, ""model_intent"": ""BRIGHTNESS"", ""infer_ms"": 5.0, ""audio_ms"": 2600}"
+wake,Adjust brightness to 60 percent,BRIGHTNESS 60 percent,"{""intent"": ""BRIGHTNESS"", ""slot"": ""60%"", ""confidence"": 1.0, ""model_intent"": ""BRIGHTNESS"", ""infer_ms"": 4.9, ""audio_ms"": 2600}"
+wake,Set the brightness to 100 percent,BRIGHTNESS 100 percent,"{""intent"": ""BRIGHTNESS"", ""slot"": ""100%"", ""confidence"": 0.975, ""model_intent"": ""BRIGHTNESS"", ""infer_ms"": 5.0, ""audio_ms"": 2600}"
+wake,Adjust brightness to 100 percent,BRIGHTNESS 100 percent,"{""intent"": ""BRIGHTNESS"", ""slot"": ""100%"", ""confidence"": 1.0, ""model_intent"": ""BRIGHTNESS"", ""infer_ms"": 5.1, ""audio_ms"": 2700}"
+wake,Brightness level 20 percent,BRIGHTNESS 20 percent,"{""intent"": ""BRIGHTNESS"", ""slot"": ""20%"", ""confidence"": 1.0, ""model_intent"": ""BRIGHTNESS"", ""infer_ms"": 5.1, ""audio_ms"": 2300}"
+wake,Brightness level 20 percent,BRIGHTNESS 20 percent,"{""intent"": ""BRIGHTNESS"", ""slot"": ""20%"", ""confidence"": 1.0, ""model_intent"": ""BRIGHTNESS"", ""infer_ms"": 5.2, ""audio_ms"": 2400}"
+wake,Brightness level 60 percent,BRIGHTNESS 60 percent,"{""intent"": ""BRIGHTNESS"", ""slot"": ""60%"", ""confidence"": 1.0, ""model_intent"": ""BRIGHTNESS"", ""infer_ms"": 5.4, ""audio_ms"": 2300}"
+wake,Brightness level 60 percent,BRIGHTNESS 60 percent,"{""intent"": ""BRIGHTNESS"", ""slot"": ""60%"", ""confidence"": 1.0, ""model_intent"": ""BRIGHTNESS"", ""infer_ms"": 5.6, ""audio_ms"": 2400}"
+wake,Brightness level 100 percent,BRIGHTNESS 100 percent,"{""intent"": ""BRIGHTNESS"", ""slot"": ""100%"", ""confidence"": 1.0, ""model_intent"": ""BRIGHTNESS"", ""infer_ms"": 5.1, ""audio_ms"": 2400}"
+wake,Brightness level 100 percent,BRIGHTNESS 100 percent,"{""intent"": ""BRIGHTNESS"", ""slot"": ""100%"", ""confidence"": 0.995, ""model_intent"": ""BRIGHTNESS"", ""infer_ms"": 5.0, ""audio_ms"": 2900}"
+wake,Change the lights to Red,COLOR Red,"{""intent"": ""COLOR"", ""slot"": ""red"", ""confidence"": 0.998, ""model_intent"": ""COLOR"", ""infer_ms"": 5.0, ""audio_ms"": 1700}"
+wake,Change color to red,COLOR Red,"{""intent"": ""COLOR"", ""slot"": ""red"", ""confidence"": 1.0, ""model_intent"": ""COLOR"", ""infer_ms"": 5.3, ""audio_ms"": 1600}"
+wake,Change the lights to Blue,COLOR Blue,"{""intent"": ""COLOR"", ""slot"": ""blue"", ""confidence"": 0.992, ""model_intent"": ""COLOR"", ""infer_ms"": 5.0, ""audio_ms"": 1900}"
+wake,Change color to blue,COLOR Blue,"{""intent"": ""COLOR"", ""slot"": ""blue"", ""confidence"": 1.0, ""model_intent"": ""COLOR"", ""infer_ms"": 5.0, ""audio_ms"": 1700}"
+wake,Change the lights to Green,COLOR Green,"{""intent"": ""COLOR"", ""slot"": ""green"", ""confidence"": 0.999, ""model_intent"": ""COLOR"", ""infer_ms"": 5.1, ""audio_ms"": 2000}"
+wake,Change color to green,COLOR Green,"{""intent"": ""COLOR"", ""slot"": ""green"", ""confidence"": 1.0, ""model_intent"": ""COLOR"", ""infer_ms"": 5.1, ""audio_ms"": 1700}"
+wake,Switch color to red,COLOR Red,"{""intent"": ""COLOR"", ""slot"": ""red"", ""confidence"": 1.0, ""model_intent"": ""COLOR"", ""infer_ms"": 5.0, ""audio_ms"": 1500}"
+wake,Switch color to red,COLOR Red,"{""intent"": ""COLOR"", ""slot"": ""red"", ""confidence"": 0.998, ""model_intent"": ""COLOR"", ""infer_ms"": 5.1, ""audio_ms"": 1600}"
+wake,Switch color to blue,COLOR Blue,"{""intent"": ""COLOR"", ""slot"": ""blue"", ""confidence"": 1.0, ""model_intent"": ""COLOR"", ""infer_ms"": 5.4, ""audio_ms"": 1700}"
+wake,Switch color to blue,COLOR Blue,"{""intent"": ""COLOR"", ""slot"": ""blue"", ""confidence"": 0.988, ""model_intent"": ""COLOR"", ""infer_ms"": 5.1, ""audio_ms"": 2200}"
+wake,Switch color to green,COLOR Green,"{""intent"": ""COLOR"", ""slot"": ""green"", ""confidence"": 1.0, ""model_intent"": ""COLOR"", ""infer_ms"": 5.1, ""audio_ms"": 1700}"
+wake,Switch color to green,COLOR Green,"{""intent"": ""COLOR"", ""slot"": ""green"", ""confidence"": 0.999, ""model_intent"": ""COLOR"", ""infer_ms"": 5.1, ""audio_ms"": 1800}"
+wake,Color Red,COLOR Red,"{""intent"": ""COLOR"", ""slot"": ""red"", ""confidence"": 0.971, ""model_intent"": ""COLOR"", ""infer_ms"": 5.3, ""audio_ms"": 1200}"
+wake,Set color to red,COLOR Red,"{""intent"": ""COLOR"", ""slot"": ""red"", ""confidence"": 1.0, ""model_intent"": ""COLOR"", ""infer_ms"": 8.1, ""audio_ms"": 1900}"
+wake,Color Blue,COLOR Blue,"{""intent"": ""OUT_OF_SCOPE"", ""confidence"": 0.433, ""model_intent"": ""CALL"", ""infer_ms"": 8.1, ""audio_ms"": 1200}"
+wake,Set color to blue,COLOR Blue,"{""intent"": ""COLOR"", ""slot"": ""blue"", ""confidence"": 1.0, ""model_intent"": ""COLOR"", ""infer_ms"": 5.4, ""audio_ms"": 1400}"
+wake,Set the lights to Green,COLOR Green,"{""intent"": ""COLOR"", ""slot"": ""green"", ""confidence"": 0.994, ""model_intent"": ""COLOR"", ""infer_ms"": 5.4, ""audio_ms"": 1900}"
+wake,Set color to green,COLOR Green,"{""intent"": ""COLOR"", ""slot"": ""green"", ""confidence"": 1.0, ""model_intent"": ""COLOR"", ""infer_ms"": 5.0, ""audio_ms"": 1500}"
+wake,Reminder Drink water,CREATE_REMINDER Drink water,"{""intent"": ""CREATE_REMINDER"", ""slot"": ""drink water"", ""confidence"": 0.991, ""model_intent"": ""CREATE_REMINDER"", ""infer_ms"": 5.1, ""audio_ms"": 2200}"
+wake,Reminder drink water,CREATE_REMINDER Drink water,"{""intent"": ""CREATE_REMINDER"", ""slot"": ""drink water"", ""confidence"": 0.999, ""model_intent"": ""CREATE_REMINDER"", ""infer_ms"": 5.1, ""audio_ms"": 1900}"
+wake,Reminder Study,CREATE_REMINDER Study,"{""intent"": ""CREATE_REMINDER"", ""slot"": ""study"", ""confidence"": 0.996, ""model_intent"": ""CREATE_REMINDER"", ""infer_ms"": 5.7, ""audio_ms"": 1700}"
+wake,Reminder study,CREATE_REMINDER Study,"{""intent"": ""CREATE_REMINDER"", ""slot"": ""study"", ""confidence"": 1.0, ""model_intent"": ""CREATE_REMINDER"", ""infer_ms"": 7.1, ""audio_ms"": 1200}"
+wake,Reminder Exercise,CREATE_REMINDER Exercise,"{""intent"": ""CREATE_REMINDER"", ""slot"": ""exercise"", ""confidence"": 0.997, ""model_intent"": ""CREATE_REMINDER"", ""infer_ms"": 5.1, ""audio_ms"": 2000}"
+wake,Reminder exercise,CREATE_REMINDER Exercise,"{""intent"": ""CREATE_REMINDER"", ""slot"": ""exercise"", ""confidence"": 1.0, ""model_intent"": ""CREATE_REMINDER"", ""infer_ms"": 4.9, ""audio_ms"": 1800}"
+wake,Remind me to Drink water,CREATE_REMINDER Drink water,"{""intent"": ""CREATE_REMINDER"", ""slot"": ""drink water"", ""confidence"": 0.992, ""model_intent"": ""CREATE_REMINDER"", ""infer_ms"": 5.0, ""audio_ms"": 2300}"
+wake,Remind me to drink water,CREATE_REMINDER Drink water,"{""intent"": ""CREATE_REMINDER"", ""slot"": ""drink water"", ""confidence"": 1.0, ""model_intent"": ""CREATE_REMINDER"", ""infer_ms"": 5.3, ""audio_ms"": 1900}"
+wake,Remind me to Study,CREATE_REMINDER Study,"{""intent"": ""CREATE_REMINDER"", ""slot"": ""study"", ""confidence"": 0.985, ""model_intent"": ""CREATE_REMINDER"", ""infer_ms"": 5.1, ""audio_ms"": 1800}"
+wake,Remind me to study,CREATE_REMINDER Study,"{""intent"": ""CREATE_REMINDER"", ""slot"": ""study"", ""confidence"": 1.0, ""model_intent"": ""CREATE_REMINDER"", ""infer_ms"": 5.0, ""audio_ms"": 1600}"
+wake,Remind me to Exercise,CREATE_REMINDER Exercise,"{""intent"": ""CREATE_REMINDER"", ""slot"": ""exercise"", ""confidence"": 0.996, ""model_intent"": ""CREATE_REMINDER"", ""infer_ms"": 5.0, ""audio_ms"": 2600}"
+wake,Remind me to exercise,CREATE_REMINDER Exercise,"{""intent"": ""CREATE_REMINDER"", ""slot"": ""exercise"", ""confidence"": 0.997, ""model_intent"": ""CREATE_REMINDER"", ""infer_ms"": 5.0, ""audio_ms"": 2200}"
+wake,Create a reminder to Drink water,CREATE_REMINDER Drink water,"{""intent"": ""CREATE_REMINDER"", ""slot"": ""drink water"", ""confidence"": 0.998, ""model_intent"": ""CREATE_REMINDER"", ""infer_ms"": 5.0, ""audio_ms"": 2800}"
+wake,Create a reminder to drink water,CREATE_REMINDER Drink water,"{""intent"": ""CREATE_REMINDER"", ""slot"": ""drink water"", ""confidence"": 1.0, ""model_intent"": ""CREATE_REMINDER"", ""infer_ms"": 5.0, ""audio_ms"": 2400}"
+wake,Create a reminder to Study,CREATE_REMINDER Study,"{""intent"": ""CREATE_REMINDER"", ""slot"": ""study"", ""confidence"": 0.976, ""model_intent"": ""CREATE_REMINDER"", ""infer_ms"": 5.6, ""audio_ms"": 2100}"
+wake,Create a reminder to study,CREATE_REMINDER Study,"{""intent"": ""CREATE_REMINDER"", ""slot"": ""study"", ""confidence"": 1.0, ""model_intent"": ""CREATE_REMINDER"", ""infer_ms"": 7.4, ""audio_ms"": 2200}"
+wake,Create a reminder to Exercise,CREATE_REMINDER Exercise,"{""intent"": ""CREATE_REMINDER"", ""slot"": ""exercise"", ""confidence"": 0.667, ""model_intent"": ""CREATE_REMINDER"", ""infer_ms"": 5.0, ""audio_ms"": 2500}"
+wake,Create a reminder to exercise,CREATE_REMINDER Exercise,"{""intent"": ""CREATE_REMINDER"", ""slot"": ""exercise"", ""confidence"": 1.0, ""model_intent"": ""CREATE_REMINDER"", ""infer_ms"": 5.0, ""audio_ms"": 2700}"
+wake,They first met while both studying at University College Dublin.,OUT_OF_SCOPE,"{""intent"": ""OUT_OF_SCOPE"", ""confidence"": 0.939, ""model_intent"": ""OUT_OF_SCOPE"", ""infer_ms"": 5.7, ""audio_ms"": 4300}"
+wake,Then they scrambled round the rocks to the other side of the house.,OUT_OF_SCOPE,"{""intent"": ""OUT_OF_SCOPE"", ""confidence"": 0.827, ""model_intent"": ""OUT_OF_SCOPE"", ""infer_ms"": 5.0, ""audio_ms"": 4100}"
+wake,Then they scrambled round the rocks to the other side of the house.,OUT_OF_SCOPE,"{""intent"": ""OUT_OF_SCOPE"", ""confidence"": 0.828, ""model_intent"": ""OUT_OF_SCOPE"", ""infer_ms"": 5.1, ""audio_ms"": 4000}"
+wake,Kitchen heat up,OUT_OF_SCOPE,"{""intent"": ""OUT_OF_SCOPE"", ""confidence"": 0.751, ""model_intent"": ""OUT_OF_SCOPE"", ""infer_ms"": 5.0, ""audio_ms"": 1300}"
+wake,Decrease the heating,OUT_OF_SCOPE,"{""intent"": ""ALARM"", ""slot"": ""8:00 AM"", ""confidence"": 0.679, ""model_intent"": ""ALARM"", ""infer_ms"": 5.4, ""audio_ms"": 1500}"
+wake,Set language to Chinese,OUT_OF_SCOPE,"{""intent"": ""OUT_OF_SCOPE"", ""confidence"": 0.536, ""model_intent"": ""TIMER"", ""infer_ms"": 5.0, ""audio_ms"": 2000}"
+wake,Go get me some juice,OUT_OF_SCOPE,"{""intent"": ""TEMPERATURE"", ""slot"": ""18 degrees"", ""confidence"": 0.975, ""model_intent"": ""TEMPERATURE"", ""infer_ms"": 4.9, ""audio_ms"": 1600}"
+wake,Fetch my socks,OUT_OF_SCOPE,"{""intent"": ""OUT_OF_SCOPE"", ""confidence"": 0.593, ""model_intent"": ""NEXT"", ""infer_ms"": 4.9, ""audio_ms"": 1400}"
+wake,Bring some juice,OUT_OF_SCOPE,"{""intent"": ""PLAY_MUSIC"", ""confidence"": 0.671, ""model_intent"": ""PLAY_MUSIC"", ""infer_ms"": 4.9, ""audio_ms"": 1300}"
+wake,More heat,OUT_OF_SCOPE,"{""intent"": ""OUT_OF_SCOPE"", ""confidence"": 0.998, ""model_intent"": ""OUT_OF_SCOPE"", ""infer_ms"": 5.5, ""audio_ms"": 1000}"
+wake,Open the garage door.,OUT_OF_SCOPE,"{""intent"": ""OUT_OF_SCOPE"", ""confidence"": 0.535, ""model_intent"": ""COLOR"", ""infer_ms"": 4.8, ""audio_ms"": 1700}"
+wake,My sister is visiting next month.,OUT_OF_SCOPE,"{""intent"": ""OUT_OF_SCOPE"", ""confidence"": 0.489, ""model_intent"": ""BRIGHTNESS"", ""infer_ms"": 5.0, ""audio_ms"": 3000}"
+wake,Book a table for two tonight.,OUT_OF_SCOPE,"{""intent"": ""OUT_OF_SCOPE"", ""confidence"": 0.858, ""model_intent"": ""OUT_OF_SCOPE"", ""infer_ms"": 4.9, ""audio_ms"": 2300}"
+wake,Start the washing machine.,OUT_OF_SCOPE,"{""intent"": ""OUT_OF_SCOPE"", ""confidence"": 0.718, ""model_intent"": ""OUT_OF_SCOPE"", ""infer_ms"": 5.2, ""audio_ms"": 4200}"
+wake,Find flights to Cebu.,OUT_OF_SCOPE,"{""intent"": ""OUT_OF_SCOPE"", ""confidence"": 0.299, ""model_intent"": ""PLAY_MUSIC"", ""infer_ms"": 4.9, ""audio_ms"": 1700}"
+wake,We're going to the beach on Saturday.,OUT_OF_SCOPE,"{""intent"": ""OUT_OF_SCOPE"", ""confidence"": 0.922, ""model_intent"": ""OUT_OF_SCOPE"", ""infer_ms"": 5.4, ""audio_ms"": 1200}"
+no_wake,Play a song,PLAY_MUSIC,
+no_wake,Play music,PLAY_MUSIC,
+no_wake,Start the music,PLAY_MUSIC,
+no_wake,Start music,PLAY_MUSIC,
+no_wake,Put on the music,PLAY_MUSIC,
+no_wake,Play some music,PLAY_MUSIC,
+no_wake,Weather,WEATHER,
+no_wake,Weather,WEATHER,
+no_wake,What's the weather?,WEATHER,
+no_wake,What's the weather?,WEATHER,
+no_wake,Tell me the weather,WEATHER,
+no_wake,Tell me the weather,WEATHER,
+no_wake,Time,TIME,
+no_wake,Time,TIME,
+no_wake,What time is it?,TIME,
+no_wake,What time is it?,TIME,
+no_wake,Tell me the time,TIME,
+no_wake,Tell me the time,TIME,
+no_wake,Lights on,LIGHT_ON,
+no_wake,Lights on,LIGHT_ON,
+no_wake,Power on the lights,LIGHT_ON,
+no_wake,Power on the lights,LIGHT_ON,
+no_wake,Turn on the lights,LIGHT_ON,
+no_wake,Turn on the lights,LIGHT_ON,
+no_wake,Lights off,LIGHT_OFF,
+no_wake,Lights out,LIGHT_OFF,
+no_wake,Kill the lights,LIGHT_OFF,
+no_wake,Kill the lights,LIGHT_OFF,
+no_wake,Turn off the lights,LIGHT_OFF,
+no_wake,Shut off the lights,LIGHT_OFF,
+no_wake,Pause,PAUSE,
+no_wake,Pause,PAUSE,
+no_wake,Pause the music,PAUSE,
+no_wake,Pause audio,PAUSE,
+no_wake,Pause this song,PAUSE,
+no_wake,Pause song,PAUSE,
+no_wake,Stop music,STOP,
+no_wake,Stop,STOP,
+no_wake,Stop playing music,STOP,
+no_wake,Stop playing,STOP,
+no_wake,Turn off the music,STOP,
+no_wake,End playback,STOP,
+no_wake,Next song,NEXT,
+no_wake,Next song,NEXT,
+no_wake,Skip song,NEXT,
+no_wake,Skip song,NEXT,
+no_wake,Play next song,NEXT,
+no_wake,Play next song,NEXT,
+no_wake,Volume up,VOLUME_UP,
+no_wake,Volume up,VOLUME_UP,
+no_wake,Increase the volume,VOLUME_UP,
+no_wake,Increase the volume,VOLUME_UP,
+no_wake,Turn the volume up,VOLUME_UP,
+no_wake,Turn the volume up,VOLUME_UP,
+no_wake,Volume down,VOLUME_DOWN,
+no_wake,Volume down,VOLUME_DOWN,
+no_wake,Lower the volume,VOLUME_DOWN,
+no_wake,Lower the volume,VOLUME_DOWN,
+no_wake,Turn the volume down,VOLUME_DOWN,
+no_wake,Turn the volume down,VOLUME_DOWN,
+no_wake,Call,CALL,
+no_wake,Call,CALL,
+no_wake,Make a call,CALL,
+no_wake,Make a call,CALL,
+no_wake,Make a phone call,CALL,
+no_wake,Make a phone call,CALL,
+no_wake,Message,MESSAGE,
+no_wake,Message,MESSAGE,
+no_wake,Send a message,MESSAGE,
+no_wake,Send a message,MESSAGE,
+no_wake,Send my message,MESSAGE,
+no_wake,Send my message,MESSAGE,
+no_wake,Reminders,LIST_REMINDERS,
+no_wake,Reminders,LIST_REMINDERS,
+no_wake,Show my reminders,LIST_REMINDERS,
+no_wake,Show my reminders,LIST_REMINDERS,
+no_wake,List my reminders,LIST_REMINDERS,
+no_wake,List my reminders,LIST_REMINDERS,
+no_wake,Timer 10 seconds,TIMER 10 seconds,
+no_wake,Timer 10 seconds,TIMER 10 seconds,
+no_wake,Timer 30 seconds,TIMER 30 seconds,
+no_wake,Timer 30 seconds,TIMER 30 seconds,
+no_wake,Timer 1 minute,TIMER 1 minute,
+no_wake,Timer 1 minute,TIMER 1 minute,
+no_wake,Countdown for 10 seconds,TIMER 10 seconds,
+no_wake,Countdown for 10 seconds,TIMER 10 seconds,
+no_wake,Countdown for 30 seconds,TIMER 30 seconds,
+no_wake,Countdown for 30 seconds,TIMER 30 seconds,
+no_wake,Countdown for 1 minute,TIMER 1 minute,
+no_wake,Countdown for 1 minute,TIMER 1 minute,
+no_wake,Start a timer for 10 seconds,TIMER 10 seconds,
+no_wake,Start a timer for 10 seconds,TIMER 10 seconds,
+no_wake,Start a timer for 30 seconds,TIMER 30 seconds,
+no_wake,Start a timer for 30 seconds,TIMER 30 seconds,
+no_wake,Start a timer for 1 minute,TIMER 1 minute,
+no_wake,Start a timer for 1 minute,TIMER 1 minute,
+no_wake,Alarm 6:00 AM,ALARM 6:00 AM,
+no_wake,Alarm 6 AM,ALARM 6:00 AM,
+no_wake,Alarm 8:00 AM,ALARM 8:00 AM,
+no_wake,Alarm 8 AM,ALARM 8:00 AM,
+no_wake,Alarm 9 PM,ALARM 9:00 PM,
+no_wake,Alarm 9 PM,ALARM 9:00 PM,
+no_wake,Wake me up at 6:00 AM,ALARM 6:00 AM,
+no_wake,Wake me up at 6 AM,ALARM 6:00 AM,
+no_wake,Wake me up at 8:00 AM,ALARM 8:00 AM,
+no_wake,Wake me up at 8 AM,ALARM 8:00 AM,
+no_wake,Wake me up at 9:00 PM,ALARM 9:00 PM,
+no_wake,Wake me up at 9 PM,ALARM 9:00 PM,
+no_wake,Set an alarm for 6:00 AM,ALARM 6:00 AM,
+no_wake,Set an alarm for 6 AM,ALARM 6:00 AM,
+no_wake,Set an alarm for 8:00 AM,ALARM 8:00 AM,
+no_wake,Set an alarm for 8 AM,ALARM 8:00 AM,
+no_wake,Set an alarm for 9:00 PM,ALARM 9:00 PM,
+no_wake,Set an alarm for 9 PM,ALARM 9:00 PM,
+no_wake,Temperature 18 degrees,TEMPERATURE 18 degrees,
+no_wake,Temperature 18 degrees,TEMPERATURE 18 degrees,
+no_wake,Temperature 22 degrees,TEMPERATURE 22 degrees,
+no_wake,Temperature 22 degrees,TEMPERATURE 22 degrees,
+no_wake,Temperature 26 degrees,TEMPERATURE 26 degrees,
+no_wake,Temperature 26 degrees,TEMPERATURE 26 degrees,
+no_wake,Change the temperature to 18 degrees,TEMPERATURE 18 degrees,
+no_wake,Change the temperature to 18 degrees,TEMPERATURE 18 degrees,
+no_wake,Change the temperature to 22 degrees,TEMPERATURE 22 degrees,
+no_wake,Change the temperature to 22 degrees,TEMPERATURE 22 degrees,
+no_wake,Change the temperature to 26 degrees,TEMPERATURE 26 degrees,
+no_wake,Change the temperature to 26 degrees,TEMPERATURE 26 degrees,
+no_wake,Set the temperature to 18 degrees,TEMPERATURE 18 degrees,
+no_wake,Set the temperature to 18 degrees,TEMPERATURE 18 degrees,
+no_wake,Set the temperature to 22 degrees,TEMPERATURE 22 degrees,
+no_wake,Set the temperature to 22 degrees,TEMPERATURE 22 degrees,
+no_wake,Set the temperature to 26 degrees,TEMPERATURE 26 degrees,
+no_wake,Set the temperature to 26 degrees,TEMPERATURE 26 degrees,
+no_wake,Brightness 20 percent,BRIGHTNESS 20 percent,
+no_wake,Brightness 20 percent,BRIGHTNESS 20 percent,
+no_wake,Brightness 60 percent,BRIGHTNESS 60 percent,
+no_wake,Brightness 60 percent,BRIGHTNESS 60 percent,
+no_wake,Brightness 100 percent,BRIGHTNESS 100 percent,
+no_wake,Brightness 100 percent,BRIGHTNESS 100 percent,
+no_wake,Change the brightness to 20 percent,BRIGHTNESS 20 percent,
+no_wake,Adjust brightness to 20 percent,BRIGHTNESS 20 percent,
+no_wake,Change the brightness to 60 percent,BRIGHTNESS 60 percent,
+no_wake,Adjust brightness to 60 percent,BRIGHTNESS 60 percent,
+no_wake,Set the brightness to 100 percent,BRIGHTNESS 100 percent,
+no_wake,Adjust brightness to 100 percent,BRIGHTNESS 100 percent,
+no_wake,Brightness level 20 percent,BRIGHTNESS 20 percent,
+no_wake,Brightness level 20 percent,BRIGHTNESS 20 percent,
+no_wake,Brightness level 60 percent,BRIGHTNESS 60 percent,
+no_wake,Brightness level 60 percent,BRIGHTNESS 60 percent,
+no_wake,Brightness level 100 percent,BRIGHTNESS 100 percent,
+no_wake,Brightness level 100 percent,BRIGHTNESS 100 percent,
+no_wake,Change the lights to Red,COLOR Red,
+no_wake,Change color to red,COLOR Red,
+no_wake,Change the lights to Blue,COLOR Blue,
+no_wake,Change color to blue,COLOR Blue,
+no_wake,Change the lights to Green,COLOR Green,
+no_wake,Change color to green,COLOR Green,
+no_wake,Switch color to red,COLOR Red,
+no_wake,Switch color to red,COLOR Red,
+no_wake,Switch color to blue,COLOR Blue,
+no_wake,Switch color to blue,COLOR Blue,
+no_wake,Switch color to green,COLOR Green,
+no_wake,Switch color to green,COLOR Green,
+no_wake,Color Red,COLOR Red,
+no_wake,Set color to red,COLOR Red,
+no_wake,Color Blue,COLOR Blue,
+no_wake,Set color to blue,COLOR Blue,
+no_wake,Set the lights to Green,COLOR Green,
+no_wake,Set color to green,COLOR Green,
+no_wake,Reminder Drink water,CREATE_REMINDER Drink water,
+no_wake,Reminder drink water,CREATE_REMINDER Drink water,
+no_wake,Reminder Study,CREATE_REMINDER Study,
+no_wake,Reminder study,CREATE_REMINDER Study,
+no_wake,Reminder Exercise,CREATE_REMINDER Exercise,
+no_wake,Reminder exercise,CREATE_REMINDER Exercise,
+no_wake,Remind me to Drink water,CREATE_REMINDER Drink water,
+no_wake,Remind me to drink water,CREATE_REMINDER Drink water,
+no_wake,Remind me to Study,CREATE_REMINDER Study,
+no_wake,Remind me to study,CREATE_REMINDER Study,
+no_wake,Remind me to Exercise,CREATE_REMINDER Exercise,
+no_wake,Remind me to exercise,CREATE_REMINDER Exercise,
+no_wake,Create a reminder to Drink water,CREATE_REMINDER Drink water,
+no_wake,Create a reminder to drink water,CREATE_REMINDER Drink water,
+no_wake,Create a reminder to Study,CREATE_REMINDER Study,
+no_wake,Create a reminder to study,CREATE_REMINDER Study,
+no_wake,Create a reminder to Exercise,CREATE_REMINDER Exercise,
+no_wake,Create a reminder to exercise,CREATE_REMINDER Exercise,
