@@ -57,8 +57,9 @@ def test_every_intent_has_a_handler(tmp_path):
     for intent in INTENT_LABELS:
         reply = d.handle(intent, None)
         assert reply and not reply.startswith("I don't know"), intent
-    assert d.handle("unknown_background") == ""
-    assert len(state.snapshot()["log"]) == len(INTENT_LABELS) + 1
+    assert d.handle("OUT_OF_SCOPE") == ""
+    assert d.handle("unknown_background") == ""  # models before Exp 37
+    assert len(state.snapshot()["log"]) == len(INTENT_LABELS) + 2
 
 
 def test_lights_brightness_color_and_state_persists(tmp_path):

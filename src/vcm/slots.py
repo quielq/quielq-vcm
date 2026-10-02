@@ -3,20 +3,20 @@
 The intent model says TIMER but not *how long*, COLOR but not *which
 color*. Each slotted intent here gets a closed vocabulary of values, and
 the model gets a small classification head per slot (see
-vcm.train.architectures.CRNN). A closed set keeps the heads tiny and
-matches the class dataset schema, which fixes 3 values per slot; each
-vocabulary is the schema's values plus other common ones.
+vcm.train.architectures.CRNN).
 
-Values the vocabulary doesn't cover (a 25-minute timer, 7:15 AM) aren't
-forced into a wrong class: they get no slot label for training and are
-reported as out-of-vocabulary in evaluation.
+Since Experiment 37 each vocabulary is exactly the final class schema's
+3 values (Option B): 10 s / 30 s / 1 min, 6:00 AM / 8:00 AM / 9:00 PM,
+18 / 22 / 26 degrees, 20 / 60 / 100 percent, red / blue / green, and
+drink water / study / exercise. The master dataset labels only these
+values. Through Experiment 36 the TIMER, ALARM, BRIGHTNESS and COLOR
+heads also had other common values (24, 28, 12 and 14 classes); those
+models carry their own vocabulary in the checkpoint and ONNX metadata,
+so they still run.
 
-TEMPERATURE and CREATE_REMINDER (Experiment 35) use just the class
-schema's 3 values each: 18/22/26 degrees, and the tasks drink water /
-study / exercise (the class recordings' tasks; the schema CSV said "call
-home" until Exp 36). FSC's temperature commands carry no value ("increase
-the heat") and stay unlabeled; any other reminder task is out of
-vocabulary (the dashboard edits its text).
+Values outside the vocabulary (a 25-minute timer, 7:15 AM) aren't forced
+into a wrong class: parse_slot returns None for them, so they get no
+slot label for training and are reported as out-of-vocabulary.
 """
 
 from __future__ import annotations
@@ -27,19 +27,21 @@ from pathlib import Path
 
 from vcm.dataset.sources.dataset_schema import SLOTTED_INTENTS
 
-# Canonical value strings. Order is the head's class order, so append
-# only — reordering would break trained checkpoints.
-_DURATIONS_S = (10, 15, 20, 30, 45, 60, 90, 120, 180, 240, 300, 360, 420, 480, 600, 720, 900, 1200, 1500, 1800, 2700, 3600, 5400, 7200)  # fmt: skip
-_ALARM_TIMES = tuple(f"{h}:00 {m}" for m in ("AM", "PM") for h in (12, *range(1, 12))) + (
-    "5:30 AM", "6:30 AM", "7:30 AM", "8:30 AM",
-)  # fmt: skip
-_PERCENTS = (10, 20, 25, 30, 40, 50, 60, 70, 75, 80, 90, 100)
+# Colors parse_color recognizes (and the lamp understands). Only the
+# schema's three are slot-head classes (SLOT_VOCAB below).
 COLORS = (
     "red", "blue", "green", "yellow", "orange", "purple", "pink", "white",
     "warm white", "cool white", "cyan", "magenta", "violet", "teal",
 )  # fmt: skip
 
 
+
+# Canonical value strings for the schema's values. Order is the head's class
+# order: changing it breaks trained checkpoints.
+_DURATIONS_S = (10, 30, 60)
+_ALARM_TIMES = ("6:00 AM", "8:00 AM", "9:00 PM")
+_PERCENTS = (20, 60, 100)
+_SCHEMA_COLORS = ("red", "blue", "green")
 TEMPERATURES = ("18 degrees", "22 degrees", "26 degrees")
 REMINDER_TASKS = ("drink water", "study", "exercise")
 
@@ -60,7 +62,7 @@ SLOT_VOCAB: dict[str, tuple[str, ...]] = {
     "TIMER": tuple(duration_label(s) for s in _DURATIONS_S),
     "ALARM": _ALARM_TIMES,
     "BRIGHTNESS": tuple(f"{p}%" for p in _PERCENTS),
-    "COLOR": COLORS,
+    "COLOR": _SCHEMA_COLORS,
     # Experiment 35, appended after the Exp 32 heads (head order = dict order)
     "TEMPERATURE": TEMPERATURES,
     "CREATE_REMINDER": REMINDER_TASKS,

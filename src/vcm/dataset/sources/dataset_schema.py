@@ -10,9 +10,12 @@ recordings are organized against it, without this project needing to own
 or duplicate the recordings themselves.
 
 The sheet has three option tables (A/B/C) at increasing phrasing/value
-richness; this module captures Option B, the richest (3 phrasing
-variations and 3 example slot values per intent), as of 2026-09-17.
-Re-sync from the live sheet if it's updated upstream. `export_csv()`
+richness. The class agreed (2026-10-01) to use Option B as the final
+schema for labeling and for the demo benchmark: 3 phrasing variations
+per intent and 3 slot values per slotted intent, 93 phrases in all.
+This module matches that final version exactly (changes/Final Dataset
+Schema.csv, and variations.csv in the class's master dataset,
+huggingface.co/datasets/airimonda/ai231-me2-voice-commands). `export_csv()`
 below writes this same spec out as a plain CSV, a convenient format for
 anyone who wants to load it with pandas/Excel/etc. without going through
 Sheets at all.
@@ -30,16 +33,16 @@ from dataclasses import dataclass
 from pathlib import Path
 
 FIXED_INTENTS: dict[str, tuple[str, ...]] = {
-    "PLAY_MUSIC": ("Play music", "Play a song", "Start the music"),
+    "PLAY_MUSIC": ("Play music", "Start music", "Play some music"),
     "WEATHER": ("Weather", "What's the weather?", "Tell me the weather"),
     "TIME": ("Time", "What time is it?", "Tell me the time"),
     "LIGHT_ON": ("Lights on", "Power on the lights", "Turn on the lights"),
-    "LIGHT_OFF": ("Lights off", "Kill the lights", "Turn off the lights"),
-    "PAUSE": ("Pause", "Pause the music", "Pause this song"),
-    "STOP": ("Stop song", "Stop music", "Stop playing music"),
-    "NEXT": ("Skip song", "Next song", "Play next song"),
+    "LIGHT_OFF": ("Lights out", "Kill the lights", "Shut off the lights"),
+    "PAUSE": ("Pause", "Pause audio", "Pause song"),
+    "STOP": ("Stop", "Stop playing", "End playback"),
+    "NEXT": ("Next song", "Skip song", "Play next song"),
     "VOLUME_UP": ("Volume up", "Increase the volume", "Turn the volume up"),
-    "VOLUME_DOWN": ("Volume down", "Decrease the volume", "Turn the volume down"),
+    "VOLUME_DOWN": ("Volume down", "Lower the volume", "Turn the volume down"),
     "CALL": ("Call", "Make a call", "Make a phone call"),
     "MESSAGE": ("Message", "Send a message", "Send my message"),
     "LIST_REMINDERS": ("Reminders", "Show my reminders", "List my reminders"),
@@ -69,13 +72,13 @@ SLOTTED_INTENTS: dict[str, dict[str, tuple[str, ...]]] = {
     "BRIGHTNESS": {
         "templates": (
             "Brightness {percent}",
-            "Set the brightness to {percent}",
-            "Change the brightness to {percent}",
+            "Adjust brightness to {percent}",
+            "Brightness level {percent}",
         ),
         "values": ("20 percent", "60 percent", "100 percent"),
     },
     "COLOR": {
-        "templates": ("Color {color}", "Change the lights to {color}", "Set the lights to {color}"),
+        "templates": ("Change color to {color}", "Switch color to {color}", "Set color to {color}"),
         "values": ("Red", "Blue", "Green"),
     },
     "CREATE_REMINDER": {
@@ -89,6 +92,12 @@ SLOTTED_INTENTS: dict[str, dict[str, tuple[str, ...]]] = {
 }
 
 INTENT_LABELS: tuple[str, ...] = tuple(FIXED_INTENTS) + tuple(SLOTTED_INTENTS)
+
+# The master dataset's non-command class: noise, Filipino speech, near-miss
+# requests and general speech. Models before Experiment 37 called their
+# (noise-only) non-command class "unknown_background".
+OUT_OF_SCOPE = "OUT_OF_SCOPE"
+NON_COMMAND_LABELS: tuple[str, ...] = (OUT_OF_SCOPE, "unknown_background")
 
 _PLACEHOLDER_RE = re.compile(r"\{[^}]+\}")
 

@@ -1,16 +1,105 @@
-# Dataset Development — How to Reproduce This
+# Dataset
 
-This walks through every dataset-side step in this repo, in order, so
-anyone (classmates included) can reproduce the exact same output from a
-fresh clone. The candidate-source research behind it is in the archived
-[original architecture review](archive/original_architecture_review.md), Section 9; this doc covers
-running the code and the data actually used.
+**From Experiment 37 on, the source of truth is the class's master
+dataset and the final Dataset Schema (Option B).** The class agreed on
+both on 2026-10-01: the schema is the basis for labeling the 19 intents
+and their slot values, its 93 phrases are the demo benchmark, and every
+group's data is collated into one dataset with one fixed test set. This
+project now trains and tests only on that dataset.
+
+The rest of this document, from "Before Experiment 37" on, describes the
+dataset this project built for itself for Experiments 1 to 36. It is
+kept as history. That version of the code is on the
+`archive/exp36-pre-me2-schema` branch (tag `v1-exp36`).
 
 Dataset development is a **collective effort**. See "Acknowledgments"
-at the end of this document for how this pipeline builds on work shared
-across the class.
+at the end of this document.
 
-## Final training data (what the shipped model was trained on)
+## The class master dataset (Experiment 37 on)
+
+- **Where:** [huggingface.co/datasets/airimonda/ai231-me2-voice-commands](https://huggingface.co/datasets/airimonda/ai231-me2-voice-commands)
+  (also on the class Google Drive as `ai231-me2-gold-dataset`). Collated
+  by Ailene (`airimonda` on Hugging Face). Audit and documentation:
+  [claude.ai/artifact/PPNHMWd5rx9qcXTdcukV7s](https://claude.ai/artifact/PPNHMWd5rx9qcXTdcukV7s).
+- **Schema:** [`data/dataset_schema/final_dataset_schema.csv`](../data/dataset_schema/final_dataset_schema.csv) (the class sheet,
+  Option B), the same as the dataset's `variations.csv`.
+  `vcm/dataset/sources/dataset_schema.py` holds it in code and
+  [`data/dataset_schema/dataset_schema.csv`](../data/dataset_schema/dataset_schema.csv)
+  is its export. A test checks all 93 phrases match.
+- **Classes:** the 19 schema commands plus `OUT_OF_SCOPE` (noise,
+  Filipino speech, near-miss requests and general speech). Our old
+  non-command class, `unknown_background`, was noise only.
+- **Slot values:** exactly the schema's 3 per slotted command (10 s / 30 s
+  / 1 min; 6:00 AM / 8:00 AM / 9:00 PM; 18 / 22 / 26 degrees; 20 / 60 /
+  100 percent; red / blue / green; drink water / study / exercise). The
+  model's slot heads now have 3 classes each (`vcm/slots.py`).
+- **Audio:** 16 kHz mono 16-bit WAV.
+
+### Splits
+
+The dataset's own splits are used as published. No speaker or synthetic
+voice is in more than one split. We only add a validation split, carved
+out of train by speaker, so that picking the best epoch never looks at
+test.
+
+| Split | Clips | Real | Synthetic | Filipino voices | Out of scope | Speakers | Use |
+|---|---:|---:|---:|---:|---:|---:|---|
+| train | 9,273 | 2,494 | 6,779 | 737 | 187 | 271 | Training |
+| val (ours, from train) | 1,409 | 382 | 1,027 | 5 | 14 | 44 | Choosing the epoch |
+| **test** (class-fixed) | **4,418** | 1,050 | 3,368 | 203 | 47 | 121 | **Headline result** |
+| holdout (class-fixed) | 196 | 96 | 100 | 76 | 10 | 5 | Raspberry Pi live-test set; also scored offline |
+
+- **Test** has 47 clips per Option B variation (141 per fixed command,
+  423 per slotted command) plus 47 out-of-scope clips. 76% of it is the
+  group's synthetic voices.
+- **Validation** takes about 12% of each source's train clips, as whole
+  speakers. Sources with fewer than 5 speakers stay in train, so all
+  group recordings (Filipino speakers) and the noise clips are used for
+  training. Seed 0, `scripts/build_me2_manifest.py`.
+- **Not used:** the dataset's `numerals` set (66,390 number-only clips
+  from MLEnd and Speech Commands). It sits outside the splits and has no
+  command labels.
+
+Train by source (train + val): group synthetic set 7,806, SLURP 1,381,
+group recordings 649, SNIPS 411, Fluent Speech Commands 293, Xela's
+recordings 64, Common Voice 36, Timers and Such 31, Speech Commands noise
+11. 73% of train is synthetic.
+
+### Build it
+
+```bash
+# 1. Download train/test/holdout (about 1 GB; skips the 2 GB numerals set)
+python -c "from huggingface_hub import snapshot_download; snapshot_download(
+  'airimonda/ai231-me2-voice-commands', repo_type='dataset', local_dir='data/me2/hf',
+  allow_patterns=['data/train-*', 'data/test-*', 'data/holdout-*', 'README.md', 'variations.csv'])"
+
+# 2. Write the audio and this repo's manifest, slot labels and metadata
+python scripts/build_me2_manifest.py
+```
+
+Step 2 writes, all under `data/me2/` (gitignored):
+
+| File | What |
+|---|---|
+| `<split>/audio/*.wav` | 15,296 clips |
+| `manifest.csv` | `audio_path, label, source, is_synthetic, speaker_id, split` (`vcm/dataset/manifest.py`) |
+| `slot_labels.csv` | 8,640 slot labels from the dataset's `slot_value`, in `vcm/slots.py`'s value format |
+| `metadata.csv` | accent group, variation, transcript and Whisper check per clip, for evaluation breakdowns |
+
+### What changed from our old dataset
+
+| | Old (Experiments 1–36) | Master dataset (37 on) |
+|---|---|---|
+| Size | 70,641 clips (64% real) | 10,682 train + val clips (27% real) |
+| Test set | Each source's own split; real speech only (6,577 clips) | Class-fixed, 4,418 clips, real and synthetic, balanced per variation |
+| Non-command class | `unknown_background`, 600 noise clips | `OUT_OF_SCOPE`, mostly speech |
+| Slot values | 24 timers, 28 alarm times, 12 brightness levels, 14 colors, 3 + 3 | 3 per slot, the schema's |
+| Filipino voices | Only in 16 of Option B's cloned reference speakers | Group recordings (5 ME2 speakers and Xela's S1–S5) in every split |
+| CALL, NEXT, LIST_REMINDERS | Synthetic only | Group recordings too |
+
+## Before Experiment 37: the project's own dataset
+
+### Final training data for Experiments 33 to 36
 
 The shipped model (Experiment 36) trained on
 `data/dataset_manifest_exp36.csv`: **70,641 clips**, built in layers on top

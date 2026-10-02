@@ -141,34 +141,61 @@ training runs themselves survive either way, since they're under
 
 ## Reproducing the final model
 
-The exact launch scripts are in `logs/` on the DGX. Rebuilt from the recipe
-in EXPERIMENTS.md (Experiments 29b, 31, 34–36), with the data from
-[DATASET.md](DATASET.md) in place:
+From Experiment 37 the intent + slot model trains on the class master
+dataset ([DATASET.md](DATASET.md#the-class-master-dataset-experiment-37-on)).
+The exact launcher is `logs/launch_exp37.sh` on the DGX. All runs went on
+one idle GPU (GPU 6 at the time).
 
 ```bash
+# Data (once): download the master dataset and build data/me2/
+python -c "from huggingface_hub import snapshot_download; snapshot_download(
+  'airimonda/ai231-me2-voice-commands', repo_type='dataset', local_dir='data/me2/hf',
+  allow_patterns=['data/*', 'README.md', 'variations.csv'])"
+python scripts/build_me2_manifest.py --numerals
+
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 NUMBA_NUM_THREADS=1
 export CUDA_VISIBLE_DEVICES=<an idle GPU>
 
-# Intent + slot model (Experiment 36, seed 1 shipped; seeds 0 and 2 for comparison)
-python -m vcm.train.train --model crnn --seed 1 \
-  --manifest data/dataset_manifest_exp36.csv --slot-labels data/slot_labels_exp36.csv --slot-weight 0.3 \
-  --epochs 80 --batch-size 128 --lr 1e-3 --warmup-epochs 5 --confusable-alpha 2.0 \
-  --window-s 5.0 --trim-silence --wave-augment --num-workers 8 \
-  --out checkpoints/exp36_joint_w03_s1.pt
+# Distillation teacher: 9 CRNNs with the Experiment 37 recipe (logs/launch_exp37.sh:
+# 37a 80 epochs, 37b 150 epochs, 37c --real-oversample 3; seeds 0-2), then their soft labels
+python scripts/generate_ensemble_labels.py checkpoints/exp37*_s*.pt \
+  --manifest data/me2/manifest.csv --out data/me2/ensemble37_labels.csv
 
-# "Hey Kiwi" wake word (Experiment 34, seed 0 shipped)
+# Intent + slot model (Experiment 41d; seed 0 shipped, seeds 1 and 2 for comparison)
+python -m vcm.train.train --model crnn --seed 0 \
+  --manifest data/me2/manifest.csv --slot-labels data/me2/slot_labels.csv --slot-weight 0.3 \
+  --epochs 80 --batch-size 128 --lr 1e-3 --warmup-epochs 5 --confusable-alpha 2.0 \
+  --window-s 5.0 --trim-silence --wave-augment --num-workers 6 \
+  --rnn-layers 2 --pool-heads 4 --width 80 --rnn-hidden 96 --augment --freq-mask-only \
+  --babble-manifest data/me2/manifest.csv --babble-clips 0 --extra-oos-clips 1500 \
+  --distill-weight 1.0 --distill-temperature 3 --distill-soften-teacher \
+  --distill-labels data/me2/ensemble37_labels.csv \
+  --out checkpoints/exp41d_combo_wide_distill_s0.pt
+
+# Evaluate on the class-fixed test set and the Pi holdout set, then export
+python scripts/evaluate_checkpoint.py checkpoints/exp41d_combo_wide_distill_s*.pt \
+  --manifest data/me2/manifest.csv --slot-labels data/me2/slot_labels.csv \
+  --metadata data/me2/metadata.csv --split test        # and --split holdout
+python scripts/export_onnx.py checkpoints/exp41d_combo_wide_distill_s0.pt --out models/vcm_intent
+
+# "Hey Kiwi" wake word: unchanged (Experiment 34, seed 0), not part of the
+# master dataset
 python scripts/train_wakeword.py --seed 0 \
   --extra-wake-manifest data/wakeword_real/manifest.csv \
   --out checkpoints/kiwi_wakeword_v2_s0.pt
-
-# Evaluate (TESTING.md), then export to ONNX for the device
-python scripts/evaluate_checkpoint.py checkpoints/exp36_joint_w03_s*.pt \
-  --manifest data/dataset_manifest_exp36.csv --slot-labels data/slot_labels_exp36.csv \
-  --exclude-source snips_lights
-python scripts/export_onnx.py checkpoints/exp36_joint_w03_s1.pt --out models/vcm_intent
 python scripts/export_onnx.py checkpoints/kiwi_wakeword_v2_s0.pt --out models/kiwi_wakeword
 ```
 
-Each intent run takes about 1.5 hours with 3–5 runs sharing one A100
-(80 epochs at ~65 s). Results vary by about ±0.4 points between seeds, so
-compare configurations over 3 seeds.
+`bash scripts/reproduce.sh` does all of the above in one command.
+
+Timing on `ai-n002`, everything on one A100 (GPU 6): ~18 s per epoch for
+the Experiment 37 model with 6 runs sharing the GPU (~25 min a run), and
+~25 s per epoch for the final 372K model (~34 min a seed). Results vary by
+0.1–2 points between seeds (real speech varies most), so every
+configuration ran 3 seeds and was compared on val. The full-resolution
+baselines (DS-CNN, BC-ResNet) need 7–12 GB each; the CRNN needs ~2.5 GB.
+All Experiment 37–41 logs, evaluations and launchers are in
+[`results/`](../results/).
+
+The Experiment 36 commands (old dataset) are on the
+`archive/exp36-pre-me2-schema` branch.

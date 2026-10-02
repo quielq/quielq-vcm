@@ -1,5 +1,15 @@
 # Footprint: storage and memory
 
+> **Model update (Experiment 41d, 2026-10-02).** The measurements below were
+> taken with the Experiment 36 models (intent 432 KB + wake word 107 KB =
+> 539 KB). The current intent model, trained on the class master dataset,
+> is 1.46 MB (1.57 MB with the wake word; `vcm_intent_small.onnx` keeps it
+> at 0.83 MB). It has 3.4× the parameters but needs about the same time per
+> command on one DGX core (8.8 ms p95, vs 10.8 ms for the Experiment 36 model;
+> features dominate). Re-run
+> `scripts/benchmark_pi.py` and `scripts/measure_footprint.py` on the Pi
+> for its own numbers.
+
 How much SD card space and RAM this project needs, measured rather than
 estimated. Part 1 is the device, Part 2 compares our pipeline with the ASR
 cascade we chose not to ship, and Part 3 covers the development and training

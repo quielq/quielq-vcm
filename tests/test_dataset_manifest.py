@@ -24,7 +24,7 @@ def _row(**overrides):
 
 def test_manifest_row_rejects_invalid_split():
     with pytest.raises(ValueError):
-        _row(split="holdout")
+        _row(split="validation")
 
 
 def test_write_read_roundtrip(tmp_path):

@@ -6,14 +6,14 @@ exported to fp32 ONNX and run with ONNX Runtime (no PyTorch on the device).
 | | Intent + slot model | "Hey Kiwi" wake word |
 |---|---|---|
 | File | `models/vcm_intent.onnx` | `models/kiwi_wakeword.onnx` |
-| Size | 432 KB | 107 KB |
-| Parameters | 107,887 | 25,475 |
-| Compute | 53.7M multiply-adds (~107 MFLOPs) per command | 5.3M multiply-adds per window, 10 windows a second |
+| Size | 1.46 MB (1,463 KB) fp32; `vcm_intent_small.onnx` 722 KB | 107 KB |
+| Parameters | 372,096 | 25,475 |
+| Compute | 91.7M multiply-adds per command (74M convolutions, 18M GRU and heads) | 5.3M multiply-adds per window, 10 windows a second |
 | Input | 40 log-mel bands × 501 frames (5.0 s, silence-trimmed) | 40 × 151 frames (1.5 s window) |
-| Output | 20 classes (19 intents + `unknown_background`) and 6 slot-value heads | wake / not wake |
+| Output | 20 classes (19 intents + `OUT_OF_SCOPE`) and 6 slot-value heads, 3 values each | wake / not wake |
 | When it runs | Once per command, after the wake word | Every 100 ms, always on |
-| Source checkpoint | `exp36_joint_w03_s1.pt` (Experiment 36, seed 1) | `kiwi_wakeword_v2_s0.pt` (Experiment 34) |
-| Headline result | **84.84%** real-speech test accuracy (n=6,577) | 3.1% missed wake words (clean), 0/10 of the author's real takes missed, at threshold 0.6 |
+| Source checkpoint | `exp41d_combo_wide_distill_s0.pt` (Experiment 41d, seed 0; also `models/vcm_intent.pt`) | `kiwi_wakeword_v2_s0.pt` (Experiment 34) |
+| Headline result | **92.98%** on the class test set (n=4,418), 73.48% on its real speech, 94.90% on the Pi holdout set | 3.1% missed wake words (clean), 0/10 of the author's real takes missed, at threshold 0.6 |
 
 The label list, slot vocabulary and feature settings are stored in each ONNX
 file's metadata, so the runtime reads them from the model instead of keeping
@@ -27,16 +27,22 @@ ASR on the device because of its footprint, and a closed-set classifier is
 orders of magnitude smaller.
 
 Six intents also carry a value, predicted by a classification head over a
-fixed vocabulary (`vcm/slots.py`):
+fixed vocabulary (`vcm/slots.py`). Since Experiment 37 each vocabulary is
+exactly the class schema's 3 values:
 
-| Intent | Values | Count |
-|---|---|---:|
-| TIMER | 10 s … 2 h | 24 |
-| ALARM | every hour 12:00 AM … 11:00 PM, plus 5:30–8:30 AM | 28 |
-| BRIGHTNESS | 10 … 100 % | 12 |
-| COLOR | red, blue, green, … warm white, teal | 14 |
-| TEMPERATURE | 18 / 22 / 26 degrees | 3 |
-| CREATE_REMINDER | drink water / study / exercise | 3 |
+| Intent | Values |
+|---|---|
+| TIMER | 10 seconds / 30 seconds / 1 minute |
+| ALARM | 6:00 AM / 8:00 AM / 9:00 PM |
+| TEMPERATURE | 18 / 22 / 26 degrees |
+| BRIGHTNESS | 20 / 60 / 100 percent |
+| COLOR | red / blue / green |
+| CREATE_REMINDER | drink water / study / exercise |
+
+Through Experiment 36 the TIMER, ALARM, BRIGHTNESS and COLOR heads had
+24, 28, 12 and 14 values. The 20th class was `unknown_background`
+(noise only); it is now `OUT_OF_SCOPE`, which is mostly speech that is
+not a command.
 
 ## 2. Features
 
@@ -72,38 +78,38 @@ Shapes are written as channels × mel bands × time frames. One time frame is
 
 ```mermaid
 ---
-title: Figure 1. The shipped CRNN (107,887 parameters, 432 KB)
+title: Figure 1. The shipped CRNN (372,096 parameters, 1.46 MB)
 ---
 flowchart TB
     IN["<b>Input: log-mel spectrogram</b><br/>1 × 40 × 501<br/>5 seconds of audio, 10 ms per frame"]
 
-    subgraph CNN["① Convolutional front end: finds short sound patterns (23K)"]
+    subgraph CNN["① Convolutional front end: finds short sound patterns (34K)"]
         direction TB
-        C1["Conv 10×4, stride 2, 64 filters, BatchNorm, ReLU<br/>→ 64 × 20 × 250 (2.8K)"]
-        D1["Depthwise-separable block 1<br/>3×3 depthwise + 1×1 pointwise<br/>→ 64 × 20 × 250 (5K)"]
-        D2["Block 2, stride 2<br/>→ 64 × 10 × 125 (5K)"]
-        D3["Block 3<br/>→ 64 × 10 × 125 (5K)"]
-        D4["Block 4, stride 2<br/>→ 64 × 5 × 63 (5K)"]
+        C1["Conv 10×4, stride 2, 80 filters, BatchNorm, ReLU<br/>→ 80 × 20 × 250 (3.4K)"]
+        D1["Depthwise-separable block 1<br/>3×3 depthwise + 1×1 pointwise<br/>→ 80 × 20 × 250 (7.6K)"]
+        D2["Block 2, stride 2<br/>→ 80 × 10 × 125 (7.6K)"]
+        D3["Block 3<br/>→ 80 × 10 × 125 (7.6K)"]
+        D4["Block 4, stride 2<br/>→ 80 × 5 × 63 (7.6K)"]
         C1 --> D1 --> D2 --> D3 --> D4
     end
 
-    P["<b>② Frequency projection</b> (21K)<br/>1×1 conv folds 64 channels × 5 bands into 64 features<br/>→ a sequence of 63 steps × 64, one step ≈ 80 ms"]
+    P["<b>② Frequency projection</b> (39K)<br/>1×1 conv folds 80 channels × 5 bands into 96 features<br/>→ a sequence of 63 steps × 96, one step ≈ 80 ms"]
 
-    subgraph RNN["③ Bidirectional GRU: reads the command in order (50K)"]
+    subgraph RNN["③ 2-layer bidirectional GRU: reads the command in order (279K)"]
         direction LR
-        F["Forward GRU, 64 units<br/>start → end"]
-        B["Backward GRU, 64 units<br/>end → start"]
+        F["Forward GRU, 96 units × 2 layers<br/>start → end"]
+        B["Backward GRU, 96 units × 2 layers<br/>end → start"]
     end
 
-    S["63 steps × 128 features<br/>each step now knows what came before and after it"]
+    S["63 steps × 192 features<br/>each step now knows what came before and after it"]
 
-    A["<b>④ Attention pooling</b> (129)<br/>scores every step, softmax over time,<br/>weighted average → 128 features"]
-    I["<b>Intent classifier</b> (2.6K)<br/>dropout 0.1, linear<br/>→ 20 classes"]
+    A["<b>④ Attention pooling, 4 heads</b> (772)<br/>each head scores every step, softmax over time;<br/>4 weighted averages joined → 768 features"]
+    I["<b>Intent classifier</b> (15K)<br/>dropout 0.1, linear<br/>→ 20 classes"]
 
-    subgraph SLOTS["⑤ Six slot heads (11.6K)"]
+    subgraph SLOTS["⑤ Six slot heads (4.6K)"]
         direction LR
         SA["Own attention pooling<br/>finds where the value is said"]
-        SC["Linear → value<br/>TIMER 24 · ALARM 28 · BRIGHTNESS 12<br/>COLOR 14 · TEMPERATURE 3 · REMINDER 3"]
+        SC["Linear → value, 3 each<br/>TIMER · ALARM · TEMPERATURE<br/>BRIGHTNESS · COLOR · REMINDER"]
         SA --> SC
     end
 
@@ -112,8 +118,11 @@ flowchart TB
     S --> SLOTS
 ```
 
-Total: **107,887 parameters**, 432 KB as fp32 ONNX, 53.7M multiply-adds per
-command. Almost half of the parameters are in the GRU.
+Total: **372,096 parameters**, 1.46 MB as fp32 ONNX, 91.7M multiply-adds per
+command. Three quarters of the parameters are in the GRU. The Experiment 37
+model, the same recipe as the Experiment 36 one on the old data, had 64
+filters, one GRU layer of 64 units and one attention head: 99,373
+parameters.
 
 ### 3.2 Walking through it
 
@@ -124,17 +133,22 @@ command. Almost half of the parameters are in the GRU.
    This uses about 8 times fewer parameters than a normal 3×3 convolution.
    Blocks 2 and 4 halve the map again, so the later blocks see a wider
    stretch of audio.
-2. **Frequency projection.** The map is now 64 channels × 5 bands × 63
-   steps. A 1×1 convolution turns each time step into one vector of 64
+2. **Frequency projection.** The map is now 80 channels × 5 bands × 63
+   steps. A 1×1 convolution turns each time step into one vector of 96
    numbers. The audio is now a sequence, one step per ~80 ms.
-3. **Bidirectional GRU.** One GRU reads the 63 steps from start to end, and
-   another reads them from end to start. Their outputs are joined, so every
-   step carries context from the whole command. This is what lets the model
-   tell "turn the volume up" from "turn the volume down".
-4. **Attention pooling.** A single linear layer gives every step a score.
-   Softmax turns the scores into weights that add up to 1. The weighted
-   average becomes the summary of the command. The step that says "up" can
-   get a high weight and decide the answer.
+3. **Bidirectional GRU, 2 layers.** One GRU reads the 63 steps from start
+   to end, and another reads them from end to start. Their outputs are
+   joined, so every step carries context from the whole command. A second
+   layer reads the first layer's output the same way. This is what lets
+   the model tell "turn the volume up" from "turn the volume down". The
+   second layer was the best single change on the master dataset (+1.5
+   points of real speech on val, Experiment 39g).
+4. **Attention pooling, 4 heads.** A linear layer gives every step 4
+   scores. Softmax over time turns each head's scores into weights that add
+   up to 1, and each head's weighted average is a summary of the command.
+   The 4 summaries are joined. The step that says "up" can get a high
+   weight and decide the answer; different heads can attend to different
+   words.
 5. **Slot heads.** Each slotted intent has its own attention pooling and
    classifier. The value ("five minutes", "blue") is usually in a different
    part of the command than the words that identify the intent, so each slot
@@ -172,11 +186,11 @@ word decides the answer. It was the largest single gain in the project:
 **+11 points on real speech** (Experiment 28), the same across three seeds.
 
 **Assignment note.** The original plan said "no attention/transformer
-layers". Attention pooling here is one linear scorer over time steps (129
+layers". Attention pooling here is one linear scorer over time steps (193
 parameters per head). A Transformer's self-attention compares every step
-with every other step and is much larger. If the rule is meant literally,
-plain average pooling is the fallback (see Future enhancements in the
-README).
+with every other step and is much larger. We measured the fallback: with
+plain average pooling instead, real-speech accuracy drops 5.6 points on
+val and 5.2 on test (Experiment 39h), so attention pooling stays.
 
 ## 4. Compared with the other models we tested
 
@@ -266,6 +280,9 @@ count and takes 440 to 950 ms per command on a laptop, so it was not shipped
 
 ### 4.4 Side by side
 
+On the old dataset (Experiments 1–36; the cascade was never rebuilt for the
+master dataset):
+
 | | DS-CNN | BC-ResNet | **CRNN (shipped)** | ASR cascade |
 |---|---|---|---|---|
 | Parameters | 26,300 | 25,748 | **107,887** | ~74M + classifier |
@@ -282,21 +299,35 @@ The CRNN is about 4 times bigger than DS-CNN. That is still tiny: it fits
 the 1 MB budget twice over and runs in under 10 ms on the Pi. The extra
 parameters went where DS-CNN was weak: reading the command in order.
 
+On the master dataset, at the same size (~100K parameters, same data and
+recipe, Experiment 38), mean of 3 seeds:
+
+| | DS-CNN 128×5 | BC-ResNet 112×6 | CRNN (Exp 37a) | **CRNN, shipped (Exp 41d)** |
+|---|---:|---:|---:|---:|
+| Parameters | 99,604 | 89,396 | 99,373 | **372,096** |
+| Test, all | 86.90% | 78.83% | 90.09% | **92.92%** |
+| Test, real speech | 52.21% | 37.88% | 63.58% | **73.21%** |
+
 ## 5. Training recipe (final model)
 
 Full commands are in [TRAINING.md](TRAINING.md#reproducing-the-final-model);
-results for every run are in [EXPERIMENTS.md](EXPERIMENTS.md).
+results for every run are in [EXPERIMENTS.md](EXPERIMENTS.md). Every choice
+below was made on our validation split, never on test.
 
 | Setting | Value | Why (experiment) |
 |---|---|---|
-| Data | 70,641 clips, 64% real speech ([DATASET.md](DATASET.md)) | QA-filtered synthetic data (25), targeted phrasings (31), slot-value clips (32, 35, 36) |
-| Epochs, batch, optimizer | 80 epochs, batch 128, Adam lr 1e-3, 5 warm-up epochs then cosine decay | Warm-up + cosine beat a flat rate (5–7) |
-| Loss | Class-weighted cross-entropy + confusable-pair penalty (alpha 2.0) on VOLUME_UP/DOWN/TEMPERATURE and LIGHT_ON/OFF | Targets the one-word confusions (14–16) |
-| Slot loss | Cross-entropy per slot head, weight 0.3, only on clips with a slot label | Weight 1.0 cost 3.5 intent points (32 vs 34) |
-| Waveform augmentation | Background noise at 5–25 dB SNR, speed 0.9–1.1×, room reverb, 0–0.3 s start shift | +4.6 points real speech (29b) |
-| Features | Silence trim + 5.0 s window | Removes a train/live mismatch (29a) |
-| Checkpoint selection | Best validation accuracy; compare seeds on the **test** split, real speech only | Validation includes synthetic clips, which score 94–99% and hide real-speech weaknesses |
-| Seeds | 3; shipped seed 1 | Seed 0 was one clip better on intent but failed the ALARM slot gate (36) |
+| Data | Class master dataset: 9,273 train clips (27% real) + 1,500 numerals clips as OUT_OF_SCOPE ([DATASET.md](DATASET.md)) | The class's agreed data (37); bare numbers aren't commands (39d) |
+| Epochs, batch, optimizer | 80 epochs (6,800 steps), batch 128, Adam lr 1e-3, 5 warm-up epochs then cosine decay | 150 epochs didn't help (37b) |
+| Loss | Class-weighted cross-entropy + confusable-pair penalty (alpha 2.0) on VOLUME_UP/DOWN/TEMPERATURE and LIGHT_ON/OFF | Targets the one-word confusions (old Exp 14–16) |
+| Slot loss | Cross-entropy per slot head, weight 0.3, on clips with a schema slot value | (old Exp 32–34) |
+| Distillation | KL toward the averaged predictions of 9 of our own CRNNs (Exp 37, same train split), temperature 3 on both sides, weight 1 | The ensemble scores 92.0% on val against 89.3% for one model (40b, 41d) |
+| Waveform augmentation | Background noise at 5–25 dB SNR, speed 0.9–1.1×, room reverb, 0–0.3 s start shift | (old Exp 29b) |
+| SpecAugment | 2 frequency masks (up to 8 bands), no time masks | Time masks can erase the one word that matters (39a) |
+| Architecture | 80 channels, 2-layer GRU of 96, 4 attention heads | 39f, 39g, 39j; mean pooling −5.6 (39h) |
+| Features | Silence trim + 5.0 s window | Removes a train/live mismatch (old Exp 29a) |
+| Checkpoint selection | Best validation accuracy | Val is speaker-disjoint from train and test |
+| Seeds | 3; shipped seed 0, the best on val | Seeds differ by up to 2 points on real speech |
+| Tried and dropped | EMA of weights (−3.6 real on val), numerals as background talk (−2.5), label smoothing, wider speed range, more epochs, repeating real clips | Experiments 37 and 39 |
 
 ## 6. The wake word
 
@@ -334,15 +365,22 @@ default is 0.6, and 0.4 while music is playing.
   thread.
 - **fp32, not int8.** Dynamic int8 quantization cost 6.8 points of
   real-speech accuracy (Experiment 32) to save 134 KB, and was no faster.
-  Both fp32 files together are 539 KB, under the 1 MB budget.
+  With the wake word, the shipped files total 1.57 MB. That is over the
+  1 MB the earlier models kept to; `models/vcm_intent_small.onnx`
+  (Experiment 40b, 182K parameters, 722 KB, 92.21% test / 70.99% real
+  speech) keeps both under 1 MB at a cost of ~0.8 points.
 - Commands below 0.6 confidence get "didn't catch that, please repeat"
   instead of an action. On validation (measured on the Experiment 34 model)
   this rejects ~11% of commands and raises accuracy on the accepted ones
   from 86% to 92%.
 
-Measured cost on the Raspberry Pi 5 (`scripts/benchmark_pi.py`): 9.9 ms per
-command (3.7 ms features + 6.2 ms model), the wake word uses 2% of one core,
-94 MB peak memory. See [FOOTPRINT.md](FOOTPRINT.md).
+Measured cost (`scripts/benchmark_pi.py`, 196 holdout clips, 1 thread): on
+one DGX CPU core the shipped model takes 8.2 ms mean / 8.8 ms p95 per
+command end to end (RTF 0.008 at p95); the small one 6.6 / 7.0 ms. The
+previous model (Experiment 36, 432 KB) took 9.9 ms on the Raspberry Pi 5
+(3.7 ms features + 6.2 ms model), with the wake word at 2% of one core and
+94 MB peak memory; run the same script on the Pi for this model's numbers.
+See [FOOTPRINT.md](FOOTPRINT.md).
 
 ## 8. Alternative considered: ASR cascade
 

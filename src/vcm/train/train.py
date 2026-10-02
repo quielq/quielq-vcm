@@ -17,7 +17,9 @@ label list and the model name it was trained with
 from __future__ import annotations
 
 import argparse
+import copy
 import random
+from dataclasses import replace
 import time
 from pathlib import Path
 
@@ -28,6 +30,9 @@ from torch.nn import functional as F
 from torch.utils.data import DataLoader
 
 from vcm.train.architectures import CRNN, BCResNet, DSCNN
+from vcm.dataset.manifest import read_manifest
+from vcm.dataset.sources.dataset_schema import OUT_OF_SCOPE
+from vcm.train import wave_augment
 from vcm.train.dataset import (
     DEFAULT_FEATURE_CONFIG,
     LABELS,
@@ -35,6 +40,7 @@ from vcm.train.dataset import (
     cap_per_class,
     class_counts,
     class_weights,
+    load_babble_bank,
     load_distillation_labels,
     load_noise_bank,
 )
@@ -109,6 +115,49 @@ def main() -> None:
         "classes rather than reweighting the loss (see EXPERIMENTS.md Experiment 20) — a "
         "dataset-level fix, doesn't interact with the loss function or LR schedule the way "
         "ConfusablePairLoss's focal-loss option did. Default: no cap, use every row.",
+    )
+    parser.add_argument("--rnn-hidden", type=int, default=None, help="CRNN GRU size (default 64).")
+    parser.add_argument("--rnn-layers", type=int, default=None, help="CRNN stacked GRU layers (default 1).")
+    parser.add_argument("--pool", choices=["attention", "mean"], default=None, help="CRNN pooling over time (default attention).")
+    parser.add_argument("--pool-heads", type=int, default=None, help="CRNN attention-pooling heads (default 1).")
+    parser.add_argument(
+        "--freq-mask-only",
+        action="store_true",
+        help="With --augment: SpecAugment frequency masks only, never time masks (time masks can erase "
+        "the one word that matters, Experiments 2 and 8).",
+    )
+    parser.add_argument("--speed-range", type=float, nargs=2, default=None, help="Wave-augment speed range (default 0.9 1.1).")
+    parser.add_argument("--noise-prob", type=float, default=None, help="Wave-augment chance of mixing in noise (default 0.5).")
+    parser.add_argument(
+        "--babble-manifest",
+        type=Path,
+        default=None,
+        help="Add --babble-clips speech clips from this manifest's numerals split to the wave-augment noise "
+        "bank (background talk). Needs --wave-augment.",
+    )
+    parser.add_argument("--babble-clips", type=int, default=2000)
+    parser.add_argument(
+        "--extra-oos-clips",
+        type=int,
+        default=0,
+        help="Add this many clips from --babble-manifest's numerals split to train as OUT_OF_SCOPE "
+        "(a bare number is not a command). Default 0.",
+    )
+    parser.add_argument(
+        "--ema-decay",
+        type=float,
+        default=0.0,
+        help="Keep an exponential moving average of the weights (e.g. 0.999) and evaluate/save it "
+        "instead of the raw weights. 0 (default) disables.",
+    )
+    parser.add_argument(
+        "--real-oversample",
+        type=int,
+        default=1,
+        help="Repeat every real-speech (non-synthetic) training clip this many times per epoch, "
+        "out-of-scope clips included; waveform augmentation makes each repeat sound different. "
+        "For the class master dataset, where 73%% of train is synthetic (EXPERIMENTS.md "
+        "Experiment 37). Class weights are computed after repeating. Default 1: no repeats.",
     )
     parser.add_argument(
         "--width",
@@ -268,6 +317,12 @@ def main() -> None:
         help="Softmax temperature for the distillation KL term (Hinton et al. 2015's default "
         "is a mild 2-4). Only used when --distill-weight > 0.",
     )
+    parser.add_argument(
+        "--distill-soften-teacher",
+        action="store_true",
+        help="Soften the teacher's probabilities with --distill-temperature too (for near one-hot "
+        "teachers such as scripts/generate_ensemble_labels.py output).",
+    )
     parser.add_argument("--out", type=Path, default=Path("checkpoints/best.pt"))
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--seed", type=int, default=0, help="Random seed, for comparable experiments")
@@ -287,11 +342,30 @@ def main() -> None:
     )
     val_ds = ManifestDataset.from_csv(args.manifest, split="val", augment=False, feature_config=feature_config)
     print(f"Feature config: {feature_config}", flush=True)
+    if args.speed_range is not None:
+        wave_augment.SPEED_RANGE = tuple(args.speed_range)  # module global, inherited by forked workers
+    if args.noise_prob is not None:
+        wave_augment.NOISE_PROB = args.noise_prob
+    if args.freq_mask_only:
+        train_ds.spec_augment_kwargs = {"num_time_masks": 0}
+    numeral_rows = []
+    if args.babble_manifest is not None:
+        numeral_rows = [r for r in read_manifest(args.babble_manifest) if r.split == "numerals"]
     if args.wave_augment:
         # Built before --max-per-class/--train-fraction so the noise bank is
         # always the full train-split background set.
         train_ds.noise_bank = load_noise_bank(train_ds.rows)
         print(f"Waveform augmentation on, noise bank: {len(train_ds.noise_bank)} train-split clips", flush=True)
+        if numeral_rows and args.babble_clips:
+            babble = load_babble_bank(numeral_rows, args.babble_clips)
+            train_ds.noise_bank = train_ds.noise_bank + babble
+            print(f"  + {len(babble)} numerals clips as background talk", flush=True)
+    if args.extra_oos_clips:
+        if not numeral_rows:
+            raise SystemExit("--extra-oos-clips needs --babble-manifest with a numerals split")
+        extra = [replace(r, label=OUT_OF_SCOPE, split="train") for r in random.sample(numeral_rows, min(args.extra_oos_clips, len(numeral_rows)))]
+        train_ds.rows = train_ds.rows + extra
+        print(f"--extra-oos-clips: {len(extra)} numerals clips added as OUT_OF_SCOPE", flush=True)
     if args.max_per_class is not None:
         before = len(train_ds.rows)
         train_ds.rows = cap_per_class(train_ds.rows, args.max_per_class)
@@ -299,6 +373,10 @@ def main() -> None:
     if args.train_fraction < 1.0:
         n_keep = max(1, int(len(train_ds.rows) * args.train_fraction))
         train_ds.rows = random.sample(train_ds.rows, n_keep)
+    if args.real_oversample > 1:
+        real_rows = [r for r in train_ds.rows if not r.is_synthetic]
+        train_ds.rows = train_ds.rows + real_rows * (args.real_oversample - 1)
+        print(f"--real-oversample {args.real_oversample}: {len(real_rows)} real clips repeated", flush=True)
     print(
         f"train: {len(train_ds)} examples (train_fraction={args.train_fraction}), "
         f"val: {len(val_ds)} examples",
@@ -368,7 +446,10 @@ def main() -> None:
 
     if use_distillation:
         distill_criterion = DistillationLoss(
-            criterion, distill_weight=args.distill_weight, temperature=args.distill_temperature
+            criterion,
+            distill_weight=args.distill_weight,
+            temperature=args.distill_temperature,
+            soften_teacher=args.distill_soften_teacher,
         )
 
     model_kwargs: dict[str, int | float] = {"num_classes": len(LABELS)}
@@ -382,6 +463,11 @@ def main() -> None:
         model_kwargs["dropout"] = args.dropout
     if use_slots:
         model_kwargs["slot_sizes"] = {intent: len(SLOT_VOCAB[intent]) for intent in SLOT_INTENTS}
+    for flag, kwarg in (("rnn_hidden", "rnn_hidden"), ("rnn_layers", "rnn_layers"), ("pool", "pool"), ("pool_heads", "pool_heads")):
+        if getattr(args, flag) is not None:
+            if args.model != "crnn":
+                raise SystemExit(f"--{flag.replace('_', '-')} is CRNN only")
+            model_kwargs[kwarg] = getattr(args, flag)
     model = MODELS[args.model](**model_kwargs).to(device)
     n_params = sum(p.numel() for p in model.parameters())
     print(f"Model params: {n_params:,}", flush=True)
@@ -419,6 +505,12 @@ def main() -> None:
         params += list(ctc_head.parameters())
         print(f"Auxiliary CTC head (training only): {sum(p.numel() for p in ctc_head.parameters()):,} params", flush=True)
     optimizer = torch.optim.Adam(params, lr=args.lr, weight_decay=args.weight_decay)
+    ema_model = None
+    if args.ema_decay > 0.0:
+        # Weights and BatchNorm statistics both averaged; this copy is what gets evaluated and saved.
+        ema_model = copy.deepcopy(model).eval()
+        for p in ema_model.parameters():
+            p.requires_grad_(False)
 
     scheduler = None
     if args.warmup_epochs > 0:
@@ -476,11 +568,19 @@ def main() -> None:
                     loss = loss + args.slot_weight * torch.stack(slot_losses).mean()
             loss.backward()
             optimizer.step()
+            if ema_model is not None:
+                with torch.no_grad():
+                    for e, m in zip(ema_model.state_dict().values(), model.state_dict().values()):
+                        if e.dtype.is_floating_point:
+                            e.mul_(args.ema_decay).add_(m, alpha=1 - args.ema_decay)
+                        else:
+                            e.copy_(m)
             running_loss += loss.item() * labels.size(0)
             n_seen += labels.size(0)
 
         train_loss = running_loss / n_seen
-        val_loss, val_acc, val_slot_acc = evaluate(model, val_loader, device, criterion, with_slots=use_slots)
+        eval_model = ema_model if ema_model is not None else model
+        val_loss, val_acc, val_slot_acc = evaluate(eval_model, val_loader, device, criterion, with_slots=use_slots)
         elapsed = time.time() - t0
         current_lr = optimizer.param_groups[0]["lr"]
         ctc_str = f"ctc_loss={running_ctc / n_seen:.4f}  " if use_ctc else ""
@@ -500,13 +600,20 @@ def main() -> None:
             best_val_acc = selection
             torch.save(
                 {
-                    "model_state_dict": model.state_dict(),
+                    "model_state_dict": eval_model.state_dict(),
                     "model_name": args.model,
                     "augment": args.augment,
                     "seed": args.seed,
                     "warmup_epochs": args.warmup_epochs,
                     "train_fraction": args.train_fraction,
                     "max_per_class": args.max_per_class,
+                    "real_oversample": args.real_oversample,
+                    "ema_decay": args.ema_decay,
+                    "freq_mask_only": args.freq_mask_only,
+                    "speed_range": args.speed_range,
+                    "noise_prob": args.noise_prob,
+                    "babble_clips": args.babble_clips if args.babble_manifest else 0,
+                    "extra_oos_clips": args.extra_oos_clips,
                     "resumed_from": str(args.resume_from) if args.resume_from else None,
                     "frozen_from": str(args.freeze_from) if frozen else None,
                     "confusable_alpha": args.confusable_alpha,

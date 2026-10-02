@@ -102,21 +102,24 @@ cd ~/quielq-vcm && .venv/bin/python scripts/vcm_listen.py --server http://127.0.
   already at 16 kHz. `--device "USB PnP"` also works: it records the raw
   mic at 48 kHz and resamples.
 
-**Intent model choice.** Two intent models ship, and `--intent-model`
-picks one (Experiments 34 and 36, EXPERIMENTS.md):
+**Intent model choice.** `--intent-model` picks the file (EXPERIMENTS.md
+Experiments 36, 40 and 41). Accuracy is on the class test set (all clips /
+real speech); slot accuracy on its real speech.
 
-| File | Intent | Slot values (timer / alarm / brightness / color / temperature / reminder) |
-|---|---:|---|
-| `models/vcm_intent.onnx` (default: Experiment 36 seed 1) | 84.8% | 74 / 98 / 75 / 87 / 100 / 100% |
-| `models/vcm_intent_frozen.onnx` (Experiment 31 frozen + slot heads) | 85.5% | 68 / 90 / 68 / 84 / – / – |
+| File | Size | Intent | Slot values, real speech (timer / alarm / temperature / brightness / color / reminder) |
+|---|---:|---:|---|
+| `models/vcm_intent.onnx` (default: Experiment 41d seed 0, master dataset) | 1.46 MB | 92.98% / 73.48% | 89 / 80 / 93 / 100 / 87 / 78% |
+| `models/vcm_intent_small.onnx` (Experiment 40b seed 1, master dataset) | 722 KB | 92.21% / 70.99% | |
+| `models/vcm_intent_exp36.onnx` (Experiment 36, old dataset, old slot values) | 432 KB | 84.8% real on the old test set | |
 
-Temperature (18 / 22 / 26 degrees) and reminder (drink water / study /
-exercise) values are measured on synthetic clips only; try them on your
-own voice.
+Slot values are the schema's three per command: 10 s / 30 s / 1 min,
+6:00 AM / 8:00 AM / 9:00 PM, 18 / 22 / 26 degrees, 20 / 60 / 100 percent,
+red / blue / green, drink water / study / exercise. The demo benchmark is
+the 93 Option B phrases; the model gets 99% of them right on test.
 
-To compare with the previous default:
+To compare with the previous default (old dataset; it still outputs `unknown_background`, which the home server accepts):
 ```bash
-cd ~/quielq-vcm && .venv/bin/python scripts/vcm_listen.py --intent-model models/vcm_intent_frozen.onnx --server http://127.0.0.1:8000 --show-scores
+cd ~/quielq-vcm && .venv/bin/python scripts/vcm_listen.py --intent-model models/vcm_intent_exp36.onnx --server http://127.0.0.1:8000 --show-scores
 ```
 
 **3. Mac: open the dashboard** at http://raspberrypi.local:8000. On an

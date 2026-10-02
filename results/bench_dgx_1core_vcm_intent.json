@@ -1,0 +1,19 @@
+{
+  "machine": "ai-n002.hpc.coe.upd.edu.ph (x86_64)",
+  "cores": 256,
+  "intent_model": "vcm_intent.onnx",
+  "intent_model_kb": 1463.3759765625,
+  "clips": "data/me2/holdout/audio",
+  "n": 196,
+  "e2e_ms_mean": 8.21660489927293,
+  "e2e_ms_p50": 8.21982603520155,
+  "e2e_ms_p95": 8.816783549264073,
+  "rtf_mean": 0.0038366289948425945,
+  "rtf_p95": 0.00832375420742676,
+  "features_ms": 3.185923211276531,
+  "model_ms": 3.054992873221636,
+  "wake_hop_ms_p95": 0.6867359858006239,
+  "wake_core_share": 0.0066478241235017775,
+  "onnxruntime_threads": 1,
+  "peak_rss_mb": 121.80859375
+}
