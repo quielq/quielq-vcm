@@ -203,6 +203,67 @@ python scripts/evaluate_wakeword.py models/kiwi_wakeword.onnx --intent-manifest 
 prints overall, real-speech, per-source, per-accent, per-class,
 confusable-group, slot and reject-threshold tables.
 
+### The class live benchmark (offline rehearsal)
+
+The class's shared benchmark ([airimonda/vcm-benchmark](https://github.com/airimonda/vcm-benchmark),
+commit `eaf3605`) plays "wake word, 0.8 s pause, command" from a laptop to
+the Pi for every holdout clip, reads the line the Pi prints, and scores it.
+It can only run with the Pi and a laptop in one room, so we rehearsed it
+offline with `scripts/class_benchmark_offline.py`: the benchmark's own
+holdout loader and trial audio (trimmed, levelled, the author's held-out
+"hey kiwi" takes in front), streamed through our real listener pipeline
+(wake word, chime, `record_command`, `first_speech_span`, intent + slot
+model) with faint room noise, and scored with the benchmark's own parser
+and report code ([results/class_benchmark_offline/report.md](../results/class_benchmark_offline/report.md)).
+
+| Benchmark metric (202 holdout clips) | overall | real voice | synthetic voice |
+|---|---:|---:|---:|
+| Intent accuracy (19) | **96.0%** [92–98%] | 91.7% | 100% |
+| Command accuracy (93: intent and slot) | 93.6% | 86.5% | 100% |
+| False accept (out-of-scope clip acted on) | 18.8% (3/16) [7–43%] | 30.0% (3/10) | 0% (0/6) |
+| False reject (command ignored) | 1.1% | 2.3% | 0% |
+| False wake (command without "Hey Kiwi" acted on) | 0% (0/186) | 0% | 0% |
+| Slot exact (intent right) | 95.3% | 89.1% | 100% |
+
+The intent accuracy matches the offline holdout score (96.04%), so the
+listener, its output line and the benchmark's scoring agree. The live run
+adds the room, the laptop speaker and the Pi microphone, so expect lower
+wake detection and accuracy there. With pauses of 0.3 s and 1.5 s instead
+of 0.8 s the results are within one clip.
+
+What the live run needs from us, and its risks:
+
+- **Output line.** The benchmark reads one line per command with `intent`,
+  `slot`, `infer_ms` and `audio_ms`. `scripts/vcm_listen.py` prints it as
+  JSON (`result_line`): the command and slot it acts on, or
+  `OUT_OF_SCOPE` when it doesn't act (the model said out of scope, or
+  confidence was below 0.6). Our older human-readable lines alone would
+  have scored 0%.
+- **Keep the chime on.** The wake word fires before "Hey Kiwi" ends; the
+  listener skips that tail while its 0.23 s chime plays. With
+  `--no-chime`, the tail plus the benchmark's pause ends the recording
+  before the command starts, and the rehearsal drops to 8.9%. The service
+  plays the chime by default.
+- **Don't let actions run during the test.** With the home server running,
+  a PLAY_MUSIC trial starts music, which plays over the next trials (and
+  lowers the wake threshold to 0.4). Stop the home server
+  (`systemctl --user stop vcm-home`) for the benchmark; the listener still
+  prints its line. Restart it afterwards.
+- **Out of scope is the weak spot:** 3 of the 16 out-of-scope clips were
+  acted on ("go get me some juice" as TEMPERATURE, 0.98 confidence). The
+  interval is wide (7–43%) with so few clips.
+- **Latency** in the live report runs from the end of the command to our
+  line, so it includes the 0.6 s of silence the listener waits for before
+  deciding the command is over.
+- **The benchmark's holdout is not pinned.** It downloads the dataset's
+  current `main` and caches it in `.cache/holdout.parquet`; its README and
+  report text still describe the older 196-clip holdout (10 out-of-scope,
+  all real). Delete a stale cache before running. None of the old or new
+  holdout clips, or their speakers, are in our training data either way.
+- **Mic check.** The benchmark records with `arecord`; if the listener
+  holds the microphone, use the `default` input (PipeWire), as the
+  benchmark suggests.
+
 ## 2. On-device and live tests
 
 **Speed and memory** (`scripts/benchmark_pi.py`, no microphone needed;

@@ -21,6 +21,7 @@ its timing, so latency can be read straight off an SSH session.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import queue
 import time
@@ -37,6 +38,7 @@ import numpy as np
 from vcm.audio.capture import SAMPLE_RATE
 from vcm.audio.features import speech_level
 from vcm.audio.resample import StreamResampler, input_rate
+from vcm.dataset.sources.dataset_schema import NON_COMMAND_LABELS, OUT_OF_SCOPE
 from vcm.deploy.runtime import OnnxIntentModel
 from vcm.wakeword.detector import WakeWordDetector, onnx_scorer
 
@@ -296,10 +298,29 @@ def send_to_server(server: str, intent: str, slot: str | None, confidence: float
         print(f"  (home server unreachable at {server}: {exc})")
 
 
+def result_line(pred, infer_ms: float, audio_ms: float) -> str:
+    """One JSON line per command with what the device does, in the format of
+    the class's live benchmark (github.com/airimonda/vcm-benchmark): intent,
+    slot, infer_ms (features + model) and audio_ms (the audio the model
+    heard). A low-confidence command ("please repeat") or a non-command is
+    not acted on, so its intent is OUT_OF_SCOPE; the model's own top answer
+    is kept as model_intent. `pred` None means the recording was silent."""
+    acted = pred is not None and pred.intent not in NON_COMMAND_LABELS and pred.confidence >= REJECT_THRESHOLD
+    out = {"intent": pred.intent if acted else OUT_OF_SCOPE}
+    if acted and pred.slot_value:
+        out["slot"] = pred.slot_value
+    if pred is not None:
+        out.update(confidence=round(pred.confidence, 3), model_intent=pred.intent)
+    out.update(infer_ms=round(infer_ms, 1), audio_ms=round(audio_ms))
+    return json.dumps(out)
+
+
 def report(model: OnnxIntentModel, audio: np.ndarray, t_end: float, server: str | None = None) -> None:
+    audio_ms = len(audio) / SAMPLE_RATE * 1000
     level = speech_level(audio)
     if level < SILENCE_THRESHOLD:
         print(f"  (silence, speech level={level:.4f} — skipped)")
+        print(result_line(None, 0.0, audio_ms), flush=True)
         return
     t0 = time.perf_counter()
     pred = model.predict_audio(audio)
@@ -307,6 +328,7 @@ def report(model: OnnxIntentModel, audio: np.ndarray, t_end: float, server: str 
     slot = f"  {pred.slot_value} ({pred.slot_confidence:.2f})" if pred.slot_value else ""
     verdict = "didn't catch that, please repeat" if pred.confidence < REJECT_THRESHOLD else "->"
     print(f"  {verdict} {pred.intent} ({pred.confidence:.2f}){slot}   [model {ms:.0f} ms, {time.perf_counter() - t_end:.2f} s after end of command]")
+    print(result_line(pred, ms, audio_ms), flush=True)
     if server and pred.confidence >= REJECT_THRESHOLD:
         send_to_server(server, pred.intent, pred.slot_value, pred.confidence)
 

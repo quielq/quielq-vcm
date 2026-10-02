@@ -21,3 +21,5 @@ its checkpoint is `models/vcm_intent.pt`. What each config changes is in
 [docs/EXPERIMENTS.md](../docs/EXPERIMENTS.md), Part 2.
 
 Experiments 37–42 used the dataset's first revision (`25111444`); Experiment 43 the current one (`da92a79`). Their test numbers are not comparable.
+
+`class_benchmark_offline/` is the offline rehearsal of the class's live benchmark (airimonda/vcm-benchmark at `eaf3605`), from `scripts/class_benchmark_offline.py`; see docs/TESTING.md.
