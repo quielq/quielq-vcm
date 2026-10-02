@@ -116,21 +116,28 @@ compared it clip by clip with our pinned download on 2026-10-02:
 | test | 4,443 | identical | identical | identical |
 | holdout | 202 | identical | identical | identical |
 | numerals | 66,390 | identical | identical | identical |
+| supplemental_synth | 5,856 | identical | identical | identical (added to the shared copy at 17:43) |
 
-It **is** revision `da92a79`, so building from it gives the same manifest,
-slot labels, metadata and audio files as the download (checked), and every
-result in this repo holds for it. One difference: it has only the default
-splits, **not `supplemental_synth`**, which the shipped model's training
-uses (3,461 clips). The pipeline therefore reads train/test/holdout/numerals
-from `/data/ai231` and only `supplemental_synth` from Hugging Face. Without
-those clips you get Experiment 43a instead of 43b (about 2 points less real
-speech on val, EXPERIMENTS.md).
+Its default splits **are** revision `da92a79` and its `supplemental_synth`
+is the one the shipped model trained on, so building from it gives the same
+manifest, slot labels, metadata and audio files as the download (checked),
+and every result in this repo holds for it. **The pipeline reads everything
+from `/data/ai231`; nothing is downloaded on the DGX.**
+
+The shared copy is the class's revision `6947f13`, which also has
+`synthetic_negatives` (1,000 train + 250 test generated out-of-scope clips,
+DEMAND / MS-SNSD noise). We don't use it. Hugging Face has a later revision
+(`5abbe53`, 2026-10-02 19:32) that adds `supplemental_fil` (14,120
+Filipino-accented synthetic clips, train only), which is not in the shared
+copy either. **Training stays on the content above. Adding any new class
+data is a decision to make first, not something the scripts pick up.**
 
 `scripts/verify_shared_dataset.py` checks any copy against
-`data/dataset_schema/me2_fingerprint_da92a79.json` (clip count and a hash
-over every clip's audio and labels, per split) in about 10 seconds. If the
-shared copy is ever refreshed to a different revision, the check fails and
-`scripts/reproduce.sh` falls back to the pinned download.
+`data/dataset_schema/me2_fingerprint_da92a79.json` in about 20 seconds. The
+fingerprint holds a clip count and a hash over every clip's audio and labels,
+per split, including `supplemental_synth`. The script also lists the configs
+it doesn't use. If the shared copy is ever refreshed to different content,
+the check fails and `scripts/reproduce.sh` falls back to the pinned download.
 
 ```bash
 python scripts/verify_shared_dataset.py --shared-cache /data/ai231   # expect "identical to the revision every result is on"
@@ -148,8 +155,7 @@ python -c "from huggingface_hub import snapshot_download; snapshot_download(
 python scripts/build_me2_manifest.py --numerals --supplemental
 ```
 
-On the DGX, step 1 only needs `supplemental_synth/*`, `README.md` and
-`variations.csv`; the rest comes from the shared copy:
+On the DGX, skip step 1; everything comes from the shared copy:
 
 ```bash
 python scripts/verify_shared_dataset.py --shared-cache /data/ai231

@@ -152,7 +152,8 @@ python -c "from huggingface_hub import snapshot_download; snapshot_download(
   'airimonda/ai231-me2-voice-commands', repo_type='dataset', local_dir='data/me2/hf',
   revision='da92a79ffde3031d5bb2a25138d9dd7d9f7ed006', allow_patterns=['data/*', 'supplemental_synth/*', 'README.md', 'variations.csv'])"
 python scripts/build_me2_manifest.py --numerals --supplemental
-# On the DGX, use the class's shared copy instead (identical to da92a79; DATASET.md):
+# On the DGX, use the class's shared copy instead, no download (identical to da92a79
+# plus its supplemental_synth; DATASET.md):
 #   python scripts/verify_shared_dataset.py --shared-cache /data/ai231
 #   python scripts/build_me2_manifest.py --shared-cache /data/ai231 --numerals --supplemental
 

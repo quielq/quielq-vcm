@@ -29,12 +29,13 @@ What it does:
   "supplemental" (train.py --include-supplemental). Clips of val, test or
   holdout voices are dropped, so every split stays voice-disjoint and val
   is the same with or without them.
-- With --shared-cache, train/test/holdout/numerals are read from the
-  class's shared copy on the DGX (/data/ai231, a Hugging Face `datasets`
-  cache) instead of --hf-dir. It holds no supplemental_synth, so
-  --supplemental still reads that from --hf-dir. Check the shared copy
-  with scripts/verify_shared_dataset.py first: on 2026-10-02 it was
-  identical, clip for clip, to revision da92a79.
+- With --shared-cache, everything (train/test/holdout/numerals and
+  supplemental_synth) is read from the class's shared copy on the DGX
+  (/data/ai231, a Hugging Face `datasets` cache) instead of --hf-dir.
+  Check the shared copy with scripts/verify_shared_dataset.py first: on
+  2026-10-02 it was identical, clip for clip, to revision da92a79 plus its
+  supplemental_synth. Its other configs (synthetic_negatives, and any the
+  class adds later) are not read.
 - With --numerals, also the numerals set (66,390 number-only clips, labeled
   OUT_OF_SCOPE by the dataset) as split "numerals", source prefixed
   "numerals_" so it is never taken for the train split's noise clips.
@@ -47,7 +48,7 @@ Usage:
         revision='da92a79ffde3031d5bb2a25138d9dd7d9f7ed006',
         allow_patterns=['data/*', 'supplemental_synth/*', 'README.md', 'variations.csv'])"
     python scripts/build_me2_manifest.py --numerals --supplemental
-    # or, on the DGX, from the class's shared copy (supplemental_synth still from data/me2/hf):
+    # or, on the DGX, from the class's shared copy (no download):
     python scripts/build_me2_manifest.py --shared-cache /data/ai231 --numerals --supplemental
 """
 
@@ -73,12 +74,13 @@ METADATA_FIELDS = (
 )  # fmt: skip
 
 
-def shared_cache_dir(cache: Path) -> Path:
+def shared_cache_dir(cache: Path, config: str = "default") -> Path:
     """The Arrow folder that load_dataset("airimonda/ai231-me2-voice-commands",
-    cache_dir=cache) wrote (its last component is a config hash)."""
-    dirs = sorted(p.parent for p in cache.glob("airimonda___ai231-me2-voice-commands/default/*/*/dataset_info.json"))
+    config, cache_dir=cache) wrote (its last component is the dataset revision)."""
+    pattern = f"airimonda___ai231-me2-voice-commands/{config}/*/*/dataset_info.json"
+    dirs = sorted(p.parent for p in cache.glob(pattern))
     if len(dirs) != 1:
-        raise SystemExit(f"expected one dataset cache under {cache}, found {len(dirs)}")
+        raise SystemExit(f"expected one {config} dataset cache under {cache}, found {len(dirs)}")
     return dirs[0]
 
 
@@ -99,6 +101,20 @@ def read_split(hf_dir: Path, split: str, shared: Path | None = None) -> list[dic
             rows.extend(pq.read_table(path).to_pylist())
     if not rows:
         raise SystemExit(f"no files for split {split!r} under {shared or hf_dir / 'data'}")
+    return rows
+
+
+def read_supplemental(hf_dir: Path, shared_cache: Path | None = None) -> list[dict]:
+    """The supplemental_synth config's rows, from the download or from the
+    shared cache's supplemental_synth folder (same columns, same row order)."""
+    if shared_cache is not None:
+        paths = sorted(shared_cache_dir(shared_cache, "supplemental_synth").glob("ai231-me2-voice-commands-train*.arrow"))
+        rows = [r for path in paths for r in read_arrow(path).to_pylist()]
+    else:
+        paths = sorted(hf_dir.glob("supplemental_synth/*.parquet"))
+        rows = [r for path in paths for r in pq.read_table(path).to_pylist()]
+    if not rows:
+        raise SystemExit(f"no supplemental_synth files under {shared_cache or hf_dir}")
     return rows
 
 
@@ -132,8 +148,8 @@ def main() -> None:
         "--shared-cache",
         type=Path,
         default=None,
-        help="Read train/test/holdout/numerals from this shared datasets cache (e.g. /data/ai231) "
-        "instead of --hf-dir.",
+        help="Read train/test/holdout/numerals and supplemental_synth from this shared datasets cache "
+        "(e.g. /data/ai231) instead of --hf-dir.",
     )
     parser.add_argument("--out-dir", type=Path, default=Path("data/me2"))
     parser.add_argument("--val-fraction", type=float, default=0.12)
@@ -158,9 +174,7 @@ def main() -> None:
     dropped_supplemental = 0
     for split in SPLITS + (("numerals",) if args.numerals else ()) + (("supplemental",) if args.supplemental else ()):
         if split == "supplemental":
-            rows = []
-            for path in sorted(args.hf_dir.glob("supplemental_synth/*.parquet")):
-                rows.extend(pq.read_table(path).to_pylist())
+            rows = read_supplemental(args.hf_dir, args.shared_cache)
             keep = [r for r in rows if r["voice_split"] == "train" and (r["source"], r["speaker_id"] or "") in train_voices]
             dropped_supplemental = len(rows) - len(keep)
             rows = keep
