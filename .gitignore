@@ -20,6 +20,7 @@ data/home_state.json
 data/external/
 # the class master dataset (Hugging Face download + scripts/build_me2_manifest.py output, all audio)
 data/me2/
+data/me2_r1/
 # Experiment 33-36 manifests (published in the quielq-vcm-dataset repo)
 data/dataset_manifest_exp3*.csv
 data/slot_labels_exp3*.csv
