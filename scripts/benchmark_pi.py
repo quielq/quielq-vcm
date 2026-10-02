@@ -23,8 +23,9 @@ import resource
 import time
 from pathlib import Path
 
+import wave
+
 import numpy as np
-import soundfile as sf
 
 from vcm.audio.capture import SAMPLE_RATE
 from vcm.audio.features import extract_log_mel
@@ -54,12 +55,15 @@ def per_call_ms(fn, n: int) -> np.ndarray:
 
 
 def load_clips(folder: Path, limit: int) -> list[np.ndarray]:
+    # Standard-library WAV reading, so the Pi needs nothing beyond requirements-pi.txt.
     clips = []
     for path in sorted(folder.glob("*.wav"))[:limit]:
-        audio, sr = sf.read(path, dtype="float32")
-        if sr != SAMPLE_RATE:
-            raise SystemExit(f"{path}: {sr} Hz, expected {SAMPLE_RATE}")
-        clips.append(audio if audio.ndim == 1 else audio.mean(axis=1))
+        with wave.open(str(path)) as w:
+            if w.getsampwidth() != 2 or w.getframerate() != SAMPLE_RATE:
+                raise SystemExit(f"{path}: need 16-bit PCM at {SAMPLE_RATE} Hz")
+            audio = np.frombuffer(w.readframes(w.getnframes()), dtype="<i2").astype("float32") / 32768.0
+            audio = audio.reshape(-1, w.getnchannels()).mean(axis=1)
+        clips.append(audio)
     if not clips:
         raise SystemExit(f"no .wav files in {folder}")
     return clips
