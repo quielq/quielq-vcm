@@ -12,8 +12,8 @@ exported to fp32 ONNX and run with ONNX Runtime (no PyTorch on the device).
 | Input | 40 log-mel bands × 501 frames (5.0 s, silence-trimmed) | 40 × 151 frames (1.5 s window) |
 | Output | 20 classes (19 intents + `OUT_OF_SCOPE`) and 6 slot-value heads, 3 values each | wake / not wake |
 | When it runs | Once per command, after the wake word | Every 100 ms, always on |
-| Source checkpoint | `exp41d_combo_wide_distill_s0.pt` (Experiment 41d, seed 0; also `models/vcm_intent.pt`) | `exp42_wake_me2_s1.pt` (Experiment 42, seed 1; also `models/kiwi_wakeword.pt`) |
-| Headline result | **92.98%** on the class test set (n=4,418), 73.48% on its real speech, 94.90% on the Pi holdout set | 4.1% missed (4.6% in noise), 0/10 of the author's real takes missed, 11.2 false wake-ups/hour, at threshold 0.6 |
+| Source checkpoint | `exp43b_supplemental_s1.pt` (Experiment 43b, seed 1; also `models/vcm_intent.pt`) | `exp43w_wake_s1.pt` (Experiment 43, seed 1; also `models/kiwi_wakeword.pt`) |
+| Headline result | **95.50%** on the class test set (n=4,443, revision `da92a79`), 78.64% on its real speech, 96.04% on the Pi holdout set | 3.8% missed (7.2% in noise), 0/10 of the author's real takes missed, 12.9 false wake-ups/hour, at threshold 0.6 |
 
 The label list, slot vocabulary and feature settings are stored in each ONNX
 file's metadata, so the runtime reads them from the model instead of keeping
@@ -303,13 +303,14 @@ the 1 MB budget twice over and runs in under 10 ms on the Pi. The extra
 parameters went where DS-CNN was weak: reading the command in order.
 
 On the master dataset, at the same size (~100K parameters, same data and
-recipe, Experiment 38), mean of 3 seeds:
+recipe, Experiment 38, trained on the first revision), mean of 3 seeds on
+the current test set (none of its clips were in that train split):
 
-| | DS-CNN 128×5 | BC-ResNet 112×6 | CRNN (Exp 37a) | **CRNN, shipped (Exp 41d)** |
+| | DS-CNN 128×5 | BC-ResNet 112×6 | CRNN (Exp 37a) | **CRNN, shipped (Exp 43b)** |
 |---|---:|---:|---:|---:|
 | Parameters | 99,604 | 89,396 | 99,373 | **372,096** |
-| Test, all | 86.90% | 78.83% | 90.09% | **92.92%** |
-| Test, real speech | 52.21% | 37.88% | 63.58% | **73.21%** |
+| Test, all | 89.50% | 81.29% | 92.41% | **95.27%** |
+| Test, real speech | 57.06% | 41.57% | 69.71% | **77.57%** |
 
 ## 5. Training recipe (final model)
 
@@ -319,17 +320,17 @@ below was made on our validation split, never on test.
 
 | Setting | Value | Why (experiment) |
 |---|---|---|
-| Data | Class master dataset: 9,273 train clips (27% real) + 1,500 numerals clips as OUT_OF_SCOPE ([DATASET.md](DATASET.md)) | The class's agreed data (37); bare numbers aren't commands (39d) |
-| Epochs, batch, optimizer | 80 epochs (6,800 steps), batch 128, Adam lr 1e-3, 5 warm-up epochs then cosine decay | 150 epochs didn't help (37b) |
+| Data | Class master dataset, revision `da92a79`: 9,285 train clips (22% real) + 3,461 supplemental synthetic clips of train voices + 1,500 numerals clips as OUT_OF_SCOPE = 14,246 ([DATASET.md](DATASET.md)) | The class's agreed data (37, 43); bare numbers aren't commands (39d); supplemental clips +2.1 real on val (43b vs 43a) |
+| Epochs, batch, optimizer | 80 epochs (8,960 steps), batch 128, Adam lr 1e-3, 5 warm-up epochs then cosine decay | 150 epochs didn't help (37b) |
 | Loss | Class-weighted cross-entropy + confusable-pair penalty (alpha 2.0) on VOLUME_UP/DOWN/TEMPERATURE and LIGHT_ON/OFF | Targets the one-word confusions (old Exp 14–16) |
 | Slot loss | Cross-entropy per slot head, weight 0.3, on clips with a schema slot value | (old Exp 32–34) |
-| Distillation | KL toward the averaged predictions of 9 of our own CRNNs (Exp 37, same train split), temperature 3 on both sides, weight 1 | The ensemble scores 92.0% on val against 89.3% for one model (40b, 41d) |
+| Distillation | KL toward the averaged predictions of 9 of our own CRNNs (the Experiment 36 recipe on the same train split, Exp 43t), temperature 3 on both sides, weight 1 | The ensemble scores 92.0% on val against 89.3% for one model (40b, 41d) |
 | Waveform augmentation | Background noise at 5–25 dB SNR, speed 0.9–1.1×, room reverb, 0–0.3 s start shift | (old Exp 29b) |
 | SpecAugment | 2 frequency masks (up to 8 bands), no time masks | Time masks can erase the one word that matters (39a) |
 | Architecture | 80 channels, 2-layer GRU of 96, 4 attention heads | 39f, 39g, 39j; mean pooling −5.6 (39h) |
 | Features | Silence trim + 5.0 s window | Removes a train/live mismatch (old Exp 29a) |
 | Checkpoint selection | Best validation accuracy | Val is speaker-disjoint from train and test |
-| Seeds | 3; shipped seed 0, the best on val | Seeds differ by up to 2 points on real speech |
+| Seeds | 3; shipped seed 1, the best on val | Seeds differ by up to 2 points on real speech |
 | Tried and dropped | EMA of weights (−3.6 real on val), numerals as background talk (−2.5), label smoothing, wider speed range, more epochs, repeating real clips | Experiments 37 and 39 |
 
 ## 6. The wake word
@@ -341,7 +342,7 @@ design at a quarter of the size (32 channels, 32 GRU units each way),
 trained on 1.5 s windows:
 ~3,000 synthetic "hey kiwi" clips in 145 cloned voices, the author's own 20
 training takes, near-miss phrases ("hey kitty", "every week") as hard
-negatives, and ordinary speech and noise. Since Experiment 42 the ordinary
+negatives, and ordinary speech and noise. Since Experiment 42 (retrained on the current revision in 43) the ordinary
 speech and noise come only from the class master dataset (its train split,
 including out-of-scope speech, plus 3,000 numerals clips); the earlier
 Experiment 34 detector used the project's old dataset for them. The "hey
@@ -353,14 +354,14 @@ passes the threshold, `scripts/vcm_listen.py` records until 0.6 s of quiet
 
 | Threshold | Missed, clean | Missed, 10 dB noise | Author's real takes missed | False wake-ups per hour* |
 |---:|---:|---:|---:|---:|
-| **0.6 (default)** | 4.1% | 4.6% | 0/10 | 11.2 |
-| 0.7 | 4.1% | 6.6% | 0/10 | 8.5 |
-| 0.85 | 7.9% | 11.3% | 0/10 | 4.3 |
-| 0.95 | 17.9% | 24.0% | 1/10 | 1.6 |
+| **0.6 (default)** | 3.8% | 7.2% | 0/10 | 12.9 |
+| 0.7 | 4.6% | 8.4% | 0/10 | 9.5 |
+| 0.85 | 8.2% | 12.5% | 0/10 | 7.2 |
+| 0.95 | 13.8% | 23.3% | 0/10 | 2.0 |
 
-\*Streaming the master dataset's test split (4,418 clips) and 300 near-miss
-phrases back to back, 3.05 h, so a real room sees fewer. The Experiment 34
-detector gives 3.1% / 6.6% / 0/10 / 19.7 per hour on the same stream at 0.6. The offline choice was 0.95; live testing on the Pi
+\*Streaming the master dataset's test split (4,443 clips) and 300 near-miss
+phrases back to back, 2.94 h, so a real room sees fewer. The Experiment 42
+detector gives 4.1% / 4.9% / 0/10 / 12.3 per hour on the same stream at 0.6. The offline choice was 0.95; live testing on the Pi
 showed it missed too many real attempts from across the room, so the
 default is 0.6, and 0.4 while music is playing.
 
@@ -376,8 +377,8 @@ default is 0.6, and 0.4 while music is playing.
   real-speech accuracy (Experiment 32) to save 134 KB, and was no faster.
   With the wake word, the shipped files total 1.57 MB. That is over the
   1 MB the earlier models kept to; `models/vcm_intent_small.onnx`
-  (Experiment 40b, 182K parameters, 722 KB, 92.21% test / 70.99% real
-  speech) keeps both under 1 MB at a cost of ~0.8 points.
+  (Experiment 43c, 182K parameters, 722 KB, 94.53% test / 76.06% real
+  speech) keeps both under 1 MB at a cost of ~1 point.
 - Commands below 0.6 confidence get "didn't catch that, please repeat"
   instead of an action. On validation (measured on the Experiment 34 model)
   this rejects ~11% of commands and raises accuracy on the accepted ones

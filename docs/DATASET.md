@@ -40,63 +40,95 @@ at the end of this document.
   model's slot heads now have 3 classes each (`vcm/slots.py`).
 - **Audio:** 16 kHz mono 16-bit WAV.
 
+### Revisions
+
+The dataset changed once after we started. We train and report on the
+**2026-10-02 revision, `da92a79`** (Experiment 43 on); Experiments 37–42
+used the 2026-10-01 revision `25111444`. Every download command below pins
+the revision.
+
+What the 2026-10-02 revision changed (compared clip by clip, by audio
+hash; no kept clip changed label or slot value):
+
+| | Train | Test | Holdout |
+|---|---:|---:|---:|
+| Clips (old → new) | 10,682 → 10,733 | 4,418 → 4,443 | 196 → 202 |
+| Removed | 517: fixed commands that also carried a value ("play purple haze", "turn on the kitchen lights", "is it sunny today"); 371 SLURP, 80 SNIPS, 37 FSC, 29 group recordings | 226 of the same kind (171 SLURP, 46 SNIPS, 9 FSC) | 57 (45 group recordings, 11 FSC, 1 Common Voice) |
+| Added | 499 synthetic commands of train voices, 69 synthetic out-of-scope | 222 synthetic commands of test voices, 29 synthetic out-of-scope | 56 group recordings, 6 synthetic out-of-scope |
+| Out of scope | 201 → 270 | 47 → 76 | 10 → 16 |
+
+- **Why it matters:** the removed clips were real people phrasing commands
+  their own way, the hardest part of the old test set. On the new test set
+  the same model scores about 2 points higher overall and 6 higher on real
+  speech (TESTING.md), so numbers from the two revisions are not
+  comparable.
+- **New: `supplemental_synth`**, 5,856 more synthetic clips of the group's
+  voices that are in no split, each tagged with the split its voice belongs
+  to (train 3,983, test 1,612, holdout 261). Only train-voice clips may be
+  added to training.
+- `variations.csv` (the 93 phrases) and the numerals set did not change.
+
 ### Splits
 
 The dataset's own splits are used as published. No speaker or synthetic
 voice is in more than one split. We only add a validation split, carved
-out of train by speaker, so that picking the best epoch never looks at
-test.
+out of train by speaker, so that picking the best epoch or setting never
+looks at test.
 
 | Split | Clips | Real | Synthetic | Filipino voices | Out of scope | Speakers | Use |
 |---|---:|---:|---:|---:|---:|---:|---|
-| train | 9,273 | 2,494 | 6,779 | 737 | 187 | 271 | Training |
-| val (ours, from train) | 1,409 | 382 | 1,027 | 5 | 14 | 44 | Choosing the epoch |
-| **test** (class-fixed) | **4,418** | 1,050 | 3,368 | 203 | 47 | 121 | **Headline result** |
-| holdout (class-fixed) | 196 | 96 | 100 | 76 | 10 | 5 | Raspberry Pi live-test set; also scored offline |
+| train | 9,285 | 2,019 | 7,266 | 708 | 251 | 331 | Training |
+| val (ours, from train) | 1,448 | 340 | 1,108 | 5 | 19 | 46 | Choosing epochs and settings |
+| **test** (class-fixed) | **4,443** | 824 | 3,619 | 203 | 76 | 144 | **Headline result** |
+| holdout (class-fixed) | 202 | 96 | 106 | 87 | 16 | 7 | Raspberry Pi live-test set; also scored offline |
+| numerals | 66,390 | all | — | — | all | 2,547 | 1,500 bare numbers sampled as OUT_OF_SCOPE examples |
+| supplemental (ours, from `supplemental_synth`) | 3,461 | — | 3,461 | — | — | 60 | Optional extra training clips (Experiment 43b) |
 
-- **Test** has 47 clips per Option B variation (141 per fixed command,
-  423 per slotted command) plus 47 out-of-scope clips. 76% of it is the
-  group's synthetic voices.
+- **Test** has 47 clips per Option B variation ("Message" 43) plus 76
+  out-of-scope clips. 81% of it is the group's synthetic voices; 777 clips
+  are real people saying a command.
 - **Validation** takes about 12% of each source's train clips, as whole
   speakers. Sources with fewer than 5 speakers stay in train, so all
   group recordings (Filipino speakers) and the noise clips are used for
   training. Seed 0, `scripts/build_me2_manifest.py`.
-- **Not used:** the dataset's `numerals` set (66,390 number-only clips
-  from MLEnd and Speech Commands). It sits outside the splits and has no
-  command labels.
+- **Supplemental** keeps only `supplemental_synth` clips whose voice is in
+  our train split; the 2,395 others (voices in our val, test or holdout)
+  are dropped, so val is the same with or without them.
+- Hours: train 6.10 h, test 2.45 h, holdout 0.18 h, numerals 21.8 h,
+  supplemental_synth 2.73 h.
 
-Train by source (train + val): group synthetic set 7,806, SLURP 1,381,
-group recordings 649, SNIPS 411, Fluent Speech Commands 293, Xela's
-recordings 64, Common Voice 36, Timers and Such 31, Speech Commands noise
-11. 73% of train is synthetic.
+Train by source (train + val): group synthetic set 8,305 (+69 synthetic
+out-of-scope), SLURP 1,010, group recordings 620, SNIPS 331, Fluent
+Speech Commands 256, Xela's recordings 64, Common Voice 36, Timers and
+Such 31, Speech Commands noise 11. 78% of train is synthetic.
 
 ### Build it
 
 ```bash
-# 1. Download train/test/holdout (about 1 GB; skips the 2 GB numerals set)
+# 1. Download the pinned revision: train/test/holdout, numerals, supplemental_synth (about 3.6 GB)
 python -c "from huggingface_hub import snapshot_download; snapshot_download(
-  'airimonda/ai231-me2-voice-commands', repo_type='dataset', local_dir='data/me2/hf',
-  allow_patterns=['data/train-*', 'data/test-*', 'data/holdout-*', 'README.md', 'variations.csv'])"
+  'airimonda/ai231-me2-voice-commands', repo_type='dataset', revision='da92a79ffde3031d5bb2a25138d9dd7d9f7ed006',
+  local_dir='data/me2/hf', allow_patterns=['data/*', 'supplemental_synth/*', 'README.md', 'variations.csv'])"
 
 # 2. Write the audio and this repo's manifest, slot labels and metadata
-python scripts/build_me2_manifest.py
+python scripts/build_me2_manifest.py --numerals --supplemental
 ```
 
 Step 2 writes, all under `data/me2/` (gitignored):
 
 | File | What |
 |---|---|
-| `<split>/audio/*.wav` | 15,296 clips |
+| `<split>/audio/*.wav` | every clip, by split |
 | `manifest.csv` | `audio_path, label, source, is_synthetic, speaker_id, split` (`vcm/dataset/manifest.py`) |
-| `slot_labels.csv` | 8,640 slot labels from the dataset's `slot_value`, in `vcm/slots.py`'s value format |
+| `slot_labels.csv` | 10,425 slot labels from the dataset's `slot_value`, in `vcm/slots.py`'s value format |
 | `metadata.csv` | accent group, variation, transcript and Whisper check per clip, for evaluation breakdowns |
 
 ### What changed from our old dataset
 
 | | Old (Experiments 1–36) | Master dataset (37 on) |
 |---|---|---|
-| Size | 70,641 clips (64% real) | 10,682 train + val clips (27% real) |
-| Test set | Each source's own split; real speech only (6,577 clips) | Class-fixed, 4,418 clips, real and synthetic, balanced per variation |
+| Size | 70,641 clips (64% real) | 10,733 train + val clips (22% real), plus optional 3,461 supplemental synthetic |
+| Test set | Each source's own split; real speech only (6,577 clips) | Class-fixed, 4,443 clips, real and synthetic, balanced per variation |
 | Non-command class | `unknown_background`, 600 noise clips | `OUT_OF_SCOPE`, mostly speech |
 | Slot values | 24 timers, 28 alarm times, 12 brightness levels, 14 colors, 3 + 3 | 3 per slot, the schema's |
 | Filipino voices | Only in 16 of Option B's cloned reference speakers | Group recordings (5 ME2 speakers and Xela's S1–S5) in every split |

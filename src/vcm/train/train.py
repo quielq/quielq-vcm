@@ -137,6 +137,12 @@ def main() -> None:
     )
     parser.add_argument("--babble-clips", type=int, default=2000)
     parser.add_argument(
+        "--include-supplemental",
+        action="store_true",
+        help="Add the manifest's 'supplemental' split (the master dataset's extra synthetic clips of "
+        "train voices, scripts/build_me2_manifest.py --supplemental) to the training rows.",
+    )
+    parser.add_argument(
         "--extra-oos-clips",
         type=int,
         default=0,
@@ -360,6 +366,12 @@ def main() -> None:
             babble = load_babble_bank(numeral_rows, args.babble_clips)
             train_ds.noise_bank = train_ds.noise_bank + babble
             print(f"  + {len(babble)} numerals clips as background talk", flush=True)
+    if args.include_supplemental:
+        supplemental = [replace(r, split="train") for r in read_manifest(args.manifest) if r.split == "supplemental"]
+        if not supplemental:
+            raise SystemExit("--include-supplemental: no 'supplemental' rows in the manifest")
+        train_ds.rows = train_ds.rows + supplemental
+        print(f"--include-supplemental: {len(supplemental)} supplemental synthetic clips added", flush=True)
     if args.extra_oos_clips:
         if not numeral_rows:
             raise SystemExit("--extra-oos-clips needs --babble-manifest with a numerals split")
@@ -614,6 +626,7 @@ def main() -> None:
                     "noise_prob": args.noise_prob,
                     "babble_clips": args.babble_clips if args.babble_manifest else 0,
                     "extra_oos_clips": args.extra_oos_clips,
+                    "include_supplemental": args.include_supplemental,
                     "resumed_from": str(args.resume_from) if args.resume_from else None,
                     "frozen_from": str(args.freeze_from) if frozen else None,
                     "confusable_alpha": args.confusable_alpha,

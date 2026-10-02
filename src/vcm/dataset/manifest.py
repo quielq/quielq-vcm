@@ -20,8 +20,9 @@ FIELDS = ("audio_path", "label", "source", "is_synthetic", "speaker_id", "split"
 # "holdout" is the master dataset's small set kept for the live test on
 # the Raspberry Pi (Experiment 37 onwards); nothing trains or selects on it.
 # "numerals" is its separate set of number-only clips (no test or holdout
-# speaker is in it), used only through explicit training flags.
-VALID_SPLITS = ("train", "val", "test", "holdout", "numerals")
+# speaker is in it), and "supplemental" its extra synthetic clips whose voices
+# are in our train split; both are used only through explicit training flags.
+VALID_SPLITS = ("train", "val", "test", "holdout", "numerals", "supplemental")
 
 
 @dataclass(frozen=True)

@@ -8,9 +8,9 @@ entry names the one it used. Every number below is copied from a real log
 file, not estimated — log paths are given so any entry can be re-checked
 (logs and checkpoints live on the DGX, not in git).
 
-**Shipped model: Experiment 41d, seed 0** (intent + slots, trained on the
-class master dataset: 92.98% on the class test set, 73.48% on its real
-speech) and the Experiment 34 wake word. Experiments 1–36 below used the
+**Shipped models: Experiment 43b, seed 1** (intent + slots, trained on the
+class master dataset's 2026-10-02 revision: 95.50% on the class test set,
+78.64% on its real speech) and the Experiment 43 wake word. Experiments 1–36 below used the
 project's own dataset; Part 2 (Experiment 37 on) uses only the class
 master dataset. Until Experiment 37 the shipped model was Experiment 36,
 seed 1 (84.84% real-speech test on the old test set). [MODEL.md](MODEL.md) describes them;
@@ -2686,3 +2686,59 @@ the master test split (4,418 clips) and 300 near-miss phrases, 3.05 h.
 - **Shipped: seed 1**, the best on validation: `models/kiwi_wakeword.onnx`
   (107 KB, identical to its checkpoint `models/kiwi_wakeword.pt`). The
   Experiment 34 file stays as `models/kiwi_wakeword_exp34.onnx`.
+
+## Experiment 43 — retraining on the dataset's 2026-10-02 revision
+
+The class master dataset was rebuilt on 2026-10-02 (revision `da92a79`;
+Experiments 37–42 used `25111444`). Compared clip by clip (audio hash):
+743 free-form real clips of fixed commands that also named a song, room or
+contact were replaced with synthetic clips of the same split's voices
+(train 517, test 226), synthetic out-of-scope sentences were added (train
+69, test 29, holdout 6), 57 holdout clips were swapped, and a new
+`supplemental_synth` set of 5,856 synthetic clips appeared. No kept clip
+changed label. None of the new test or holdout clips were in the old train
+split. Details: [DATASET.md](DATASET.md#revisions).
+
+Everything that learned from the old train split was retrained, with the
+recipes fixed in Experiments 37–42 (nothing re-tuned), 3 seeds each, all
+on GPU 6 (shared with one other user's small job). Launcher:
+`logs/run_queue_exp43.sh`.
+
+- **43t**: the 9 distillation teachers (Experiment 37a/b/c recipes) on
+  the new train split; their averaged predictions are the new soft labels.
+- **43a**: the shipped recipe (41d). **43b**: 43a plus the 3,461
+  `supplemental_synth` clips whose voices are in our train split
+  (`--include-supplemental`; clips of val, test or holdout voices are
+  never used). **43c**: the small recipe (40b).
+- **Wake word**: the Experiment 42 recipe on the new train split.
+
+| Config | val all | val real | test all | test real | holdout all | holdout real |
+|---|---:|---:|---:|---:|---:|---:|
+| 43t teacher: Exp 36 recipe, 80 epochs (99K) | 92.98 ± 0.35 | 71.72 ± 1.52 | 93.06 ± 0.50 | 70.27 ± 1.90 | 92.90 ± 1.51 | 93.80 ± 2.92 |
+| 43t teacher: 150 epochs | 93.51 ± 0.14 | 74.85 ± 1.09 | 93.74 ± 0.09 | 74.09 ± 1.39 | 94.39 ± 0.28 | 95.35 ± 0.00 |
+| 43t teacher: real clips ×3 | 93.14 ± 0.40 | 73.54 ± 1.55 | 92.50 ± 0.33 | 71.09 ± 2.05 | 92.90 ± 1.25 | 94.57 ± 1.35 |
+| 43c = 40b recipe: combo + distillation (182K) | 94.04 ± 0.39 | 75.76 ± 1.69 | 94.64 ± 0.43 | 75.93 ± 1.74 | 94.22 ± 1.59 | 93.80 ± 2.42 |
+| 43a = 41d recipe: combo, wider, distillation (372K) | 93.99 ± 0.32 | 74.95 ± 1.36 | 95.03 ± 0.27 | 77.52 ± 1.12 | 94.88 ± 1.25 | 94.96 ± 1.78 |
+| **43b = 43a + supplemental clips (372K)** | 94.34 ± 0.36 | 77.07 ± 1.97 | 95.27 ± 0.25 | 77.57 ± 0.98 | 95.38 ± 1.14 | 95.74 ± 0.67 |
+
+- **43b is the best on val** (94.34% / 77.07% real), +2.1 real speech over
+  43a from the supplemental clips. **Shipped: 43b seed 1**, the best seed
+  on val (94.75% / 79.09%): **95.50%** on test, **78.64%** real speech,
+  **96.04%** holdout. The small model is **43c seed 0** (best 43c seed on
+  val): 94.53% / 76.06% / 93.07%.
+- **Out of scope** improves most: 69.7% of the 76 out-of-scope test clips
+  labeled OUT_OF_SCOPE and 17.1% acted on, against 31.6% labeled for the
+  previous model (41d) on the same clips. The new train split has 69
+  synthetic near-miss sentences that the old one lacked.
+- **The previous model on the new test set**: 41d scores 94.80% / 79.15%
+  real / 93.07% holdout. On intents the retrain is level with it (+0.7
+  overall, −0.5 real, within one seed's spread); the gains are out of
+  scope and holdout.
+- **Baselines on the new test set** (Experiment 38 checkpoints, first
+  revision): DS-CNN 89.50% / 57.06%, BC-ResNet 81.29% / 41.57%, the
+  same-size CRNN 92.41% / 69.71%.
+- **Wake word**, at threshold 0.6 on the new test stream (2.94 h): seed 1,
+  the best on val (0.960), misses 3.8% clean / 7.2% in noise / 0 of 10 real
+  takes and fires 12.9 times per hour; the Experiment 42 detector on the
+  same stream: 4.1% / 4.9% / 0 / 12.3. About level; shipped for
+  consistency with the current revision.

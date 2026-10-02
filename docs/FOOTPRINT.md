@@ -1,6 +1,6 @@
 # Footprint: storage and memory
 
-> **Model update (Experiment 41d, 2026-10-02).** The measurements below were
+> **Model update (Experiments 41d and 43b, 2026-10-02).** The measurements below were
 > taken with the Experiment 36 models (intent 432 KB + wake word 107 KB =
 > 539 KB). The current intent model, trained on the class master dataset,
 > is 1.46 MB (1.57 MB with the wake word; `vcm_intent_small.onnx` keeps it
@@ -8,7 +8,8 @@
 > per command (3.8 ms features + 10.0 ms model; the Experiment 36 model took
 > 9.9 ms), wake word 1.9% of one core, listener 95 MB RSS, home server 47 MB,
 > 604 MB used system-wide with both services
-> ([results/bench_pi5.md](../results/bench_pi5.md)). The SD-card and package
+> ([results/bench_pi5.md](../results/bench_pi5.md); measured with the 41d weights,
+> the same architecture as the shipped 43b model). The SD-card and package
 > numbers below are unchanged apart from the model files.
 
 How much SD card space and RAM this project needs, measured rather than

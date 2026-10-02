@@ -1,0 +1,276 @@
+
+=== checkpoints/exp43t_e150_s0.pt (test split)
+all:          93.74% (n=4443)
+real speech:  75.68% (n=777)
+all, macro (mean of per-class): 90.67% over 20 classes
+real speech, macro (mean of per-class): 70.83% over 19 classes
+synthetic:    98.09% (n=3619)
+by source:
+  CommonVoice_en            85.71% (n=14)
+  FluentSpeechCommands      86.81% (n=144)
+  SLURP                     65.01% (n=403)
+  SNIPS                     73.77% (n=61)
+  TimersAndSuch             100.00% (n=2)
+  group_synthetic           98.52% (n=3590)
+  group_synthetic_oos       44.83% (n=29)
+  real_voice                82.68% (n=179)
+  xela_Multi-Sensor         100.00% (n=11)
+  xela_SET_TEMPERATURE_REAL 100.00% (n=10)
+by accent_group:
+  Filipino (group)          83.60% (n=189)
+  Filipino (open-source)    85.71% (n=14)
+  Native English            82.14% (n=224)
+  Other / non-native        64.58% (n=384)
+  Synthetic                 98.09% (n=3619)
+  Unknown                   100.00% (n=13)
+by variation_match:
+  (none)                    52.63% (n=76)
+  close                     70.22% (n=544)
+  exact                     97.91% (n=3823)
+
+per-class (all / real speech):
+  PLAY_MUSIC           87.23% (n=141)         28.57% (n=21)
+  WEATHER              91.49% (n=141)         53.85% (n=26)
+  TIME                 87.94% (n=141)         70.00% (n=50)
+  LIGHT_ON             88.65% (n=141)         45.83% (n=24)
+  LIGHT_OFF            87.94% (n=141)         66.67% (n=48)
+  PAUSE                94.33% (n=141)         88.00% (n=50)
+  STOP                 94.33% (n=141)         93.06% (n=72)
+  NEXT                 95.04% (n=141)         82.50% (n=40)
+  VOLUME_UP            82.98% (n=141)         65.22% (n=69)
+  VOLUME_DOWN          86.52% (n=141)         70.97% (n=62)
+  CALL                 91.49% (n=141)         37.50% (n=16)
+  MESSAGE              94.16% (n=137)         41.67% (n=12)
+  LIST_REMINDERS       95.04% (n=141)         82.14% (n=28)
+  TIMER                96.93% (n=423)         78.95% (n=19)
+  ALARM                97.16% (n=423)         82.35% (n=51)
+  TEMPERATURE          97.64% (n=423)         100.00% (n=28)
+  BRIGHTNESS           97.40% (n=423)         84.00% (n=25)
+  COLOR                95.74% (n=423)         85.59% (n=118)
+  CREATE_REMINDER      98.82% (n=423)         88.89% (n=18)
+  OUT_OF_SCOPE         52.63% (n=76)          n/a (n=0)
+
+confusable groups (correct / within-group confusion / other-wrong):
+  VOLUME_UP/VOLUME_DOWN/TEMPERATURE    92.5% / 1.8% / 5.7% (n=705)
+  LIGHT_ON/LIGHT_OFF                   88.3% / 3.5% / 8.2% (n=282)
+
+top confusions:
+  VOLUME_DOWN -> VOLUME_UP: 10
+  OUT_OF_SCOPE -> COLOR: 10
+  VOLUME_UP -> STOP: 7
+  TEMPERATURE -> OUT_OF_SCOPE: 7
+  TIME -> OUT_OF_SCOPE: 6
+  LIGHT_ON -> LIGHT_OFF: 6
+  COLOR -> OUT_OF_SCOPE: 6
+  VOLUME_UP -> OUT_OF_SCOPE: 5
+  MESSAGE -> OUT_OF_SCOPE: 5
+  ALARM -> OUT_OF_SCOPE: 5
+
+slot values (slot-head accuracy / intent+slot joint accuracy):
+  TIMER       real           68.42% /  52.63%  (n=19)
+  TIMER       synthetic      99.75% /  97.77%  (n=404)
+  ALARM       real           80.39% /  70.59%  (n=51)
+  ALARM       synthetic      98.66% /  98.39%  (n=372)
+  BRIGHTNESS  real           88.00% /  76.00%  (n=25)
+  BRIGHTNESS  synthetic      98.24% /  97.24%  (n=398)
+  COLOR       real           88.98% /  80.51%  (n=118)
+  COLOR       synthetic      98.69% /  98.36%  (n=305)
+  TEMPERATURE real           78.57% /  78.57%  (n=28)
+  TEMPERATURE synthetic      98.23% /  96.46%  (n=395)
+  CREATE_REMINDER real           50.00% /  44.44%  (n=18)
+  CREATE_REMINDER synthetic      99.01% /  98.52%  (n=405)
+
+reject threshold on top-class confidence (real speech):
+  threshold  rejected  acc of accepted  errors caught  correct lost
+       0.00      0.0%           75.68%           0.0%          0.0%
+       0.40      4.5%           77.90%          13.2%          1.3%
+       0.50      8.8%           79.97%          24.9%          2.7%
+       0.60     14.4%           82.86%          39.7%          4.8%
+       0.70     19.4%           84.98%          50.3%          7.2%
+       0.80     26.1%           88.33%          64.6%         10.4%
+       0.90     34.1%           91.99%          78.3%         15.1%
+       0.95     40.5%           94.59%          86.8%         19.4%
+
+=== checkpoints/exp43t_e150_s1.pt (test split)
+all:          93.83% (n=4443)
+real speech:  73.49% (n=777)
+all, macro (mean of per-class): 90.43% over 20 classes
+real speech, macro (mean of per-class): 69.09% over 19 classes
+synthetic:    98.62% (n=3619)
+by source:
+  CommonVoice_en            100.00% (n=14)
+  FluentSpeechCommands      83.33% (n=144)
+  SLURP                     65.51% (n=403)
+  SNIPS                     73.77% (n=61)
+  TimersAndSuch             100.00% (n=2)
+  group_synthetic           99.03% (n=3590)
+  group_synthetic_oos       48.28% (n=29)
+  real_voice                74.86% (n=179)
+  xela_Multi-Sensor         100.00% (n=11)
+  xela_SET_TEMPERATURE_REAL 100.00% (n=10)
+by accent_group:
+  Filipino (group)          76.19% (n=189)
+  Filipino (open-source)    100.00% (n=14)
+  Native English            78.12% (n=224)
+  Other / non-native        66.15% (n=384)
+  Synthetic                 98.62% (n=3619)
+  Unknown                   100.00% (n=13)
+by variation_match:
+  (none)                    56.58% (n=76)
+  close                     69.12% (n=544)
+  exact                     98.09% (n=3823)
+
+per-class (all / real speech):
+  PLAY_MUSIC           87.94% (n=141)         33.33% (n=21)
+  WEATHER              88.65% (n=141)         46.15% (n=26)
+  TIME                 92.91% (n=141)         82.00% (n=50)
+  LIGHT_ON             85.11% (n=141)         33.33% (n=24)
+  LIGHT_OFF            87.94% (n=141)         64.58% (n=48)
+  PAUSE                93.62% (n=141)         84.00% (n=50)
+  STOP                 90.07% (n=141)         87.50% (n=72)
+  NEXT                 96.45% (n=141)         90.00% (n=40)
+  VOLUME_UP            74.47% (n=141)         47.83% (n=69)
+  VOLUME_DOWN          84.40% (n=141)         66.13% (n=62)
+  CALL                 92.91% (n=141)         43.75% (n=16)
+  MESSAGE              93.43% (n=137)         33.33% (n=12)
+  LIST_REMINDERS       95.74% (n=141)         78.57% (n=28)
+  TIMER                99.05% (n=423)         94.74% (n=19)
+  ALARM                98.58% (n=423)         92.16% (n=51)
+  TEMPERATURE          98.82% (n=423)         100.00% (n=28)
+  BRIGHTNESS           99.05% (n=423)         92.00% (n=25)
+  COLOR                94.56% (n=423)         82.20% (n=118)
+  CREATE_REMINDER      98.35% (n=423)         61.11% (n=18)
+  OUT_OF_SCOPE         56.58% (n=76)          n/a (n=0)
+
+confusable groups (correct / within-group confusion / other-wrong):
+  VOLUME_UP/VOLUME_DOWN/TEMPERATURE    91.1% / 2.4% / 6.5% (n=705)
+  LIGHT_ON/LIGHT_OFF                   86.5% / 4.3% / 9.2% (n=282)
+
+top confusions:
+  VOLUME_DOWN -> VOLUME_UP: 11
+  VOLUME_UP -> OUT_OF_SCOPE: 9
+  COLOR -> OUT_OF_SCOPE: 9
+  MESSAGE -> OUT_OF_SCOPE: 8
+  LIGHT_ON -> LIGHT_OFF: 7
+  OUT_OF_SCOPE -> LIGHT_ON: 7
+  VOLUME_UP -> COLOR: 6
+  PLAY_MUSIC -> OUT_OF_SCOPE: 5
+  LIGHT_OFF -> LIGHT_ON: 5
+  VOLUME_UP -> VOLUME_DOWN: 5
+
+slot values (slot-head accuracy / intent+slot joint accuracy):
+  TIMER       real          100.00% /  94.74%  (n=19)
+  TIMER       synthetic      99.50% /  98.76%  (n=404)
+  ALARM       real           74.51% /  70.59%  (n=51)
+  ALARM       synthetic     100.00% /  99.46%  (n=372)
+  BRIGHTNESS  real           84.00% /  76.00%  (n=25)
+  BRIGHTNESS  synthetic      98.74% /  98.74%  (n=398)
+  COLOR       real           87.29% /  73.73%  (n=118)
+  COLOR       synthetic      99.02% /  98.36%  (n=305)
+  TEMPERATURE real           64.29% /  64.29%  (n=28)
+  TEMPERATURE synthetic      98.23% /  97.22%  (n=395)
+  CREATE_REMINDER real           94.44% /  55.56%  (n=18)
+  CREATE_REMINDER synthetic      99.51% /  99.51%  (n=405)
+
+reject threshold on top-class confidence (real speech):
+  threshold  rejected  acc of accepted  errors caught  correct lost
+       0.00      0.0%           73.49%           0.0%          0.0%
+       0.40      3.1%           75.03%           8.7%          0.8%
+       0.50      9.1%           78.19%          25.2%          2.4%
+       0.60     16.1%           81.44%          41.3%          5.1%
+       0.70     21.1%           84.67%          54.4%          6.7%
+       0.80     27.0%           86.07%          61.7%         10.7%
+       0.90     35.0%           89.70%          74.8%         15.2%
+       0.95     45.2%           93.66%          86.9%         22.1%
+
+=== checkpoints/exp43t_e150_s2.pt (test split)
+all:          93.65% (n=4443)
+real speech:  73.10% (n=777)
+all, macro (mean of per-class): 91.01% over 20 classes
+real speech, macro (mean of per-class): 67.83% over 19 classes
+synthetic:    98.45% (n=3619)
+by source:
+  CommonVoice_en            92.86% (n=14)
+  FluentSpeechCommands      84.72% (n=144)
+  SLURP                     64.76% (n=403)
+  SNIPS                     68.85% (n=61)
+  TimersAndSuch             100.00% (n=2)
+  group_synthetic           98.64% (n=3590)
+  group_synthetic_oos       75.86% (n=29)
+  real_voice                76.54% (n=179)
+  xela_Multi-Sensor         100.00% (n=11)
+  xela_SET_TEMPERATURE_REAL 100.00% (n=10)
+by accent_group:
+  Filipino (group)          77.78% (n=189)
+  Filipino (open-source)    92.86% (n=14)
+  Native English            78.57% (n=224)
+  Other / non-native        64.84% (n=384)
+  Synthetic                 98.45% (n=3619)
+  Unknown                   100.00% (n=13)
+by variation_match:
+  (none)                    68.42% (n=76)
+  close                     68.57% (n=544)
+  exact                     97.72% (n=3823)
+
+per-class (all / real speech):
+  PLAY_MUSIC           85.82% (n=141)         19.05% (n=21)
+  WEATHER              89.36% (n=141)         46.15% (n=26)
+  TIME                 91.49% (n=141)         80.00% (n=50)
+  LIGHT_ON             91.49% (n=141)         50.00% (n=24)
+  LIGHT_OFF            83.69% (n=141)         52.08% (n=48)
+  PAUSE                95.74% (n=141)         90.00% (n=50)
+  STOP                 91.49% (n=141)         87.50% (n=72)
+  NEXT                 95.74% (n=141)         85.00% (n=40)
+  VOLUME_UP            80.85% (n=141)         62.32% (n=69)
+  VOLUME_DOWN          84.40% (n=141)         66.13% (n=62)
+  CALL                 92.91% (n=141)         37.50% (n=16)
+  MESSAGE              91.97% (n=137)         33.33% (n=12)
+  LIST_REMINDERS       94.33% (n=141)         82.14% (n=28)
+  TIMER                96.93% (n=423)         68.42% (n=19)
+  ALARM                96.69% (n=423)         80.39% (n=51)
+  TEMPERATURE          97.40% (n=423)         100.00% (n=28)
+  BRIGHTNESS           97.40% (n=423)         76.00% (n=25)
+  COLOR                95.51% (n=423)         83.90% (n=118)
+  CREATE_REMINDER      98.58% (n=423)         88.89% (n=18)
+  OUT_OF_SCOPE         68.42% (n=76)          n/a (n=0)
+
+confusable groups (correct / within-group confusion / other-wrong):
+  VOLUME_UP/VOLUME_DOWN/TEMPERATURE    91.5% / 2.1% / 6.4% (n=705)
+  LIGHT_ON/LIGHT_OFF                   87.6% / 2.5% / 9.9% (n=282)
+
+top confusions:
+  VOLUME_DOWN -> VOLUME_UP: 11
+  LIGHT_OFF -> OUT_OF_SCOPE: 8
+  VOLUME_UP -> OUT_OF_SCOPE: 8
+  MESSAGE -> OUT_OF_SCOPE: 8
+  TEMPERATURE -> OUT_OF_SCOPE: 8
+  LIGHT_OFF -> COLOR: 7
+  COLOR -> OUT_OF_SCOPE: 7
+  BRIGHTNESS -> OUT_OF_SCOPE: 6
+  PLAY_MUSIC -> OUT_OF_SCOPE: 5
+  PLAY_MUSIC -> PAUSE: 5
+
+slot values (slot-head accuracy / intent+slot joint accuracy):
+  TIMER       real          100.00% /  68.42%  (n=19)
+  TIMER       synthetic     100.00% /  98.27%  (n=404)
+  ALARM       real           80.39% /  68.63%  (n=51)
+  ALARM       synthetic      98.12% /  97.58%  (n=372)
+  BRIGHTNESS  real           92.00% /  68.00%  (n=25)
+  BRIGHTNESS  synthetic      99.25% /  98.49%  (n=398)
+  COLOR       real           87.29% /  76.27%  (n=118)
+  COLOR       synthetic      98.36% /  98.36%  (n=305)
+  TEMPERATURE real           57.14% /  57.14%  (n=28)
+  TEMPERATURE synthetic      98.73% /  96.96%  (n=395)
+  CREATE_REMINDER real          100.00% /  88.89%  (n=18)
+  CREATE_REMINDER synthetic      99.26% /  98.27%  (n=405)
+
+reject threshold on top-class confidence (real speech):
+  threshold  rejected  acc of accepted  errors caught  correct lost
+       0.00      0.0%           73.10%           0.0%          0.0%
+       0.40      3.0%           75.07%          10.0%          0.3%
+       0.50      8.8%           77.57%          23.9%          2.3%
+       0.60     15.4%           81.13%          40.7%          4.5%
+       0.70     19.0%           83.15%          49.3%          5.8%
+       0.80     25.1%           86.77%          63.2%          8.1%
+       0.90     31.9%           89.79%          74.2%         12.0%
+       0.95     40.0%           92.70%          83.7%         17.5%

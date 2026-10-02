@@ -1,0 +1,17 @@
+no test-split noise clips: mixing train-split noise (11 clips) for the noisy check
+model: checkpoints/exp43w_wake_s2.pt
+positives: 391 held-out 'hey kiwi' clips (test voices), 10 real recorded takes; negative stream: 4743 clips, 2.94 h
+
+threshold  false reject (clean)  false reject (10dB noise)  false reject (real voice)  false wake-ups  per hour
+     0.50                  4.6%                       6.9%                       0.0%              63     21.45
+     0.60                  5.9%                       7.9%                       0.0%              37     12.60
+     0.70                  7.7%                       9.7%                       0.0%              24      8.17
+     0.80                 10.2%                      11.8%                       0.0%              23      7.83
+     0.85                 11.8%                      12.5%                       0.0%              22      7.49
+     0.90                 14.1%                      15.1%                       0.0%              17      5.79
+     0.95                 18.9%                      22.0%                      20.0%               8      2.72
+     0.98                 31.5%                      42.7%                      20.0%               4      1.36
+     0.99                 54.7%                      66.8%                      60.0%               2      0.68
+
+suggested threshold: 0.99 (lowest real false-reject rate with <= 1.0 false wake-ups/hour)
+false wake-ups at that threshold, by clip: [(('/mnt/jfs_hpc/home/quiel.andrew.quiwa/quielq-vcm/data/external/wakeword_synth/audio/NOT_WAKE/NOT_WAKE_test_0268.wav', 'near-miss'), 1), (('/mnt/jfs_hpc/home/quiel.andrew.quiwa/quielq-vcm/data/external/wakeword_synth/audio/NOT_WAKE/NOT_WAKE_test_0129.wav', 'near-miss'), 1)]
