@@ -19,10 +19,21 @@ dataset (Experiments 1–36), is on the branch
 
 ## Submission summary
 
-Every value the ME2 deck asks for. Details and sources are in the linked
-docs.
+Every value the ME2 deck asks for, with a short account of what each
+component does and why it was chosen. The evidence behind each choice is
+in the linked docs.
 
 ### Model
+
+The task is framed as **closed-set spoken language understanding (SLU)**,
+not speech recognition. The model maps an utterance directly to one of 20
+intent labels and, for six intents, a slot value, without producing a
+transcript. Giving up the open vocabulary of an ASR → text-classifier
+cascade makes the model about 200 times smaller than Whisper `base` alone,
+small enough to run on the Raspberry Pi's CPU. Recognition has two stages.
+A small streaming wake-word detector runs continuously and gates a larger,
+non-causal command classifier, so the larger model runs once per utterance
+and only after a likely wake event.
 
 ```
 Mic · 16 kHz → log-mel 40 × 501 (5.0 s, silence-trimmed) → CRNN encoder → intent head (20) + 6 slot heads (3 values each) → actuator (home server) on the Raspberry Pi
@@ -30,34 +41,79 @@ Mic · 16 kHz → log-mel 40 × 501 (5.0 s, silence-trimmed) → CRNN encoder �
 
 | Item | Value |
 |---|---|
-| Input | 16 kHz mono → 40-band log-mel, 10 ms hop, **40 × 501** frames (5.0 s window after silence trim) |
-| Encoder | Conv 10×4 stride 2 + 4 depthwise-separable conv blocks (80 channels) → 2-layer bidirectional GRU, 96 per direction (192-dim frame features) → 4-head attention pooling. Not causal: the command is recognized once it ends (the wake word handles streaming) |
-| Intent head | Linear → 20 classes (19 intents + `OUT_OF_SCOPE`) |
-| Slot heads | 6 heads, each with its own attention pooling → 3 schema values (TIMER, ALARM, TEMPERATURE, BRIGHTNESS, COLOR, CREATE_REMINDER) |
+| Input representation | 16 kHz mono audio, trimmed of leading and trailing silence (30 dB below peak) and padded or cut to 5.0 s, then a 40-band **log-mel spectrogram** (25 ms window, 10 ms hop): **40 × 501**. The mel scale follows the ear's coarser resolution at high frequencies, and the log compresses loudness differences, giving a compact time–frequency image. Features are standardized with a fixed mean and variance from the training set. Trimming silence makes training clips look like live recordings, which start right after the wake word |
+| Encoder: convolutional front end | A 10×4 convolution with stride 2, then 4 **depthwise-separable** blocks (80 channels; blocks 2 and 4 stride by 2). Each block splits a 3×3 convolution into a per-channel spatial filter and a 1×1 channel mixer (as in MobileNet), using about 8 times fewer parameters. The strides grow the receptive field geometrically and shorten the time axis to 63 steps of ~80 ms. A 1×1 projection then folds the remaining frequency axis into a 96-dim vector per step |
+| Encoder: recurrent layers | **2-layer bidirectional GRU**, 96 units per direction (192-dim per step). The gated recurrence models word order, so commands that differ by one word ("volume up" / "volume down") separate. Running in both directions gives every step context from the whole utterance. This is the main difference from purely convolutional keyword spotters (DS-CNN, BC-ResNet), which average over time and lose order. The encoder is therefore **non-causal**: it classifies once the command ends, and the wake word handles streaming |
+| Temporal pooling | **4-head attention pooling.** Each head learns a relevance score for every time step, normalizes the scores with a softmax over time, and returns the weighted mean of the steps; the 4 results are concatenated (768-dim). Unlike global average pooling, this lets the few frames carrying the deciding word dominate the summary. Replacing it with mean pooling costs 5.6 points of real-speech validation accuracy ([Exp 39h](docs/EXPERIMENTS.md)) |
+| Intent head | Dropout 0.1, then a linear layer → **20 classes** (19 intents + `OUT_OF_SCOPE`). The explicit reject class, together with a 0.6 softmax-confidence threshold at run time, lets the closed-set classifier decline speech that is not a command |
+| Slot heads | **Multi-task learning:** 6 heads (TIMER, ALARM, TEMPERATURE, BRIGHTNESS, COLOR, CREATE_REMINDER) share the encoder. Each has its own single-head attention pooling and a 3-way classifier over the schema's values. Separate pooling lets each head attend to where the value is said ("thirty seconds", "blue") instead of the words that identify the intent. Slots are classified over a fixed vocabulary rather than tagged as spans, and a value is used only when its intent is predicted |
 | Actuator | `vcm.home` server: lamp, thermostat, timers, alarms, reminders, Spotify/local music, volume, weather, calls/messages via phone bridge; spoken reply |
-| Parameters / weights | **0.372 M** parameters · **1.46 MB** fp32 ONNX (`models/vcm_intent.onnx`); the wake word adds 0.025 M · 0.11 MB (`models/kiwi_wakeword.onnx`) |
-| Wake word ("Hey Kiwi") | Small CRNN: 32 channels, 1-layer GRU of 32, 25,475 params, 107 KB fp32, 5.3M multiply-adds per 1.5 s window, scored every 100 ms. Retrained with the master dataset as its "not the wake word" examples (Experiment 42); same architecture and size as before |
+| Parameters / weights | **0.372 M** parameters · **1.46 MB** fp32 ONNX (`models/vcm_intent.onnx`) · 91.7 M multiply-adds per command; three quarters of the parameters are in the GRU. Kept at fp32 because dynamic int8 quantization cost 6.8 points of real-speech accuracy and was no faster ([Exp 32](docs/EXPERIMENTS.md)). The wake word adds 0.025 M · 0.11 MB (`models/kiwi_wakeword.onnx`) |
+| Wake word ("Hey Kiwi") | The same CRNN design at a smaller width: 32 channels, a 1-layer bidirectional GRU of 32, **25,475 parameters**, 107 KB fp32, 5.3 M multiply-adds per 1.5 s window. It scores a sliding window every 100 ms as a binary classifier. Near-miss phrases ("hey kitty") are hard negatives; since Experiment 42 the master dataset's speech and noise are the background negatives. Same architecture and size as before |
 
 ### Dataset
 
+The class master dataset combines real speech, recorded by the class or
+taken from public SLU and keyword-spotting corpora, with synthetic
+(voice-cloned) readings of the schema's 93 phrasings. Its splits are
+**speaker-disjoint**, so test accuracy measures how well the model
+generalizes to voices it has never heard, not how well it remembers
+speakers. Synthetic voices are 76% of the test set and score ~99.5%, so
+we also report **real-speech accuracy** on its own as the more realistic
+estimate. We pick every setting on a validation split carved from train
+by speaker; test and holdout are only used for reporting.
+
 | Item | Value |
 |---|---|
-| Source | Class master dataset: [huggingface.co/datasets/airimonda/ai231-me2-voice-commands](https://huggingface.co/datasets/airimonda/ai231-me2-voice-commands) (group recordings, Xela's recordings, SLURP, FSC, SNIPS, Timers and Such, Common Voice, Speech Commands, group synthetic set) |
-| Hours / utterances | train 6.34 h / 10,682 · test 2.57 h / 4,418 · holdout 0.17 h / 196 · numerals 21.8 h / 66,390 |
+| Source | Class master dataset: [huggingface.co/datasets/airimonda/ai231-me2-voice-commands](https://huggingface.co/datasets/airimonda/ai231-me2-voice-commands). Real speech: class recordings, SLURP, Fluent Speech Commands, SNIPS, Timers and Such, Common Voice; synthetic: the group synthetic set; noise and numerals: Speech Commands, MLEnd |
+| Hours / utterances | train 6.34 h / 10,682 · test 2.57 h / 4,418 · holdout 0.17 h / 196 · numerals 21.8 h / 66,390 (not command data: 1,500 clips sampled as out-of-scope examples for the intent model) |
 | Speakers (incl. synthetic voices) | train 315 · test 121 · holdout 5 · numerals 2,547. No speaker in two splits |
-| Labels | **19 intents + OUT_OF_SCOPE · 6 slots** (3 values each, 18 in all), from the final Dataset Schema (Option B, 93 phrases) |
+| Labels | **19 intents + OUT_OF_SCOPE · 6 slots** (3 values each, 18 in all), from the final Dataset Schema (Option B, 93 phrases). The classes are imbalanced (OUT_OF_SCOPE has 187 train clips), which the class-weighted loss corrects for |
 
 ### Training on the A100 cluster
 
+The final model is trained with a **composite objective**. Each term
+addresses a specific weakness found in earlier experiments:
+
+```
+L = CE_w(intent) + α · p(confusable classes) + 0.3 · Σ CE(slot) + T² · KL(teacher_T ‖ student_T)
+```
+
+- **Class-weighted cross-entropy** (inverse class frequency) keeps rare
+  classes such as OUT_OF_SCOPE from being ignored.
+- The **confusable-pair penalty** (α = 2.0) adds the probability the model
+  puts on classes known to be confused with the true one
+  (VOLUME_UP / VOLUME_DOWN / TEMPERATURE, LIGHT_ON / LIGHT_OFF). This
+  pushes the decision boundary between them further apart.
+- **Slot cross-entropy** (weight 0.3) trains the slot heads on clips that
+  carry a schema value. It shares the encoder with the intent task and
+  acts as an auxiliary signal for it.
+- **Knowledge distillation** (Hinton et al., 2015): the student matches
+  the temperature-softened (T = 3) averaged predictions of an ensemble of
+  9 of our own CRNNs trained on the same split. The soft targets carry how
+  similar the classes are to each other, and pass most of the ensemble's
+  advantage (92.0% vs 89.3% on val) to a single model at no extra cost on
+  the device. There is no CTC or ASR term; the teacher is not an ASR model.
+
 | Item | Value |
 |---|---|
-| Cluster | UP DGX `ai-n002`, **1 × A100-40GB** (GPU 6), shared node. ~34 min per seed with 6 runs sharing the GPU |
-| Objective | Class-weighted cross-entropy on the intent + confusable-pair penalty (alpha 2.0) + slot cross-entropy (weight 0.3) + distillation (KL, T=3) toward an ensemble of 9 of our own CRNNs. No CTC |
-| Optimizer | Adam, lr 1e-3, 5 warm-up epochs then cosine decay, batch 128 |
-| Steps / loss | 80 epochs × 85 steps = **6,800 steps**; final train loss 0.64 (incl. distillation term), best val loss 0.50 at epoch 62 (seed 0) |
-| Seeds | 3 (0, 1, 2); shipped seed 0 |
+| Cluster | UP DGX `ai-n002`, **1 × A100-40GB** (GPU 6), shared node. Training the final model takes **~34 min** (80 epochs at ~25 s each, with other runs sharing the GPU) |
+| Objective | Class-weighted cross-entropy + confusable-pair penalty (α 2.0) + slot cross-entropy (weight 0.3) + distillation (KL, T = 3, weight 1), as above |
+| Optimizer | Adam, lr 1e-3, batch 128. A 5-epoch linear warm-up keeps the first updates small while Adam's moment estimates and BatchNorm statistics settle, then cosine decay anneals the learning rate towards zero |
+| Regularization | Waveform augmentation (background noise at 5–25 dB SNR, speed 0.9–1.1×, room reverb, 0–0.3 s shift), **SpecAugment with frequency masks only** (time masks can erase the single word that decides the class), dropout 0.1 |
+| Steps / loss | 80 epochs × 85 steps = **6,800 steps**; final train loss 0.64 (incl. distillation term), best val loss 0.50 at epoch 62. The checkpoint is chosen by validation accuracy |
+| Seeds | The final configuration was trained with 3 seeds (0, 1, 2) to measure run-to-run variance (up to 2 points on real speech); seed 0, the best on val, is shipped |
 
 ### Validation on the Raspberry Pi
+
+**Intent accuracy** is top-1 classification accuracy; there is no
+transcript, so no word error rate. **False accepts** are measured at both
+stages: wake-word triggers per hour on a long stream that contains no
+"hey kiwi", and the share of out-of-scope clips the command model would
+act on. **Latency** is reported at the 95th percentile, which bounds the
+delay a user actually notices better than the mean. The **real-time
+factor** (RTF) is processing time divided by audio duration: 0.008 means a
+5 s command is processed about 125 times faster than real time.
 
 | Item | Value |
 |---|---|
@@ -72,7 +128,7 @@ Mic · 16 kHz → log-mel 40 × 501 (5.0 s, silence-trimmed) → CRNN encoder �
 |---|---|
 | GitHub repository | [github.com/quielq/quielq-vcm](https://github.com/quielq/quielq-vcm), public, MIT ([LICENSE](LICENSE)) |
 | Dataset location | Hugging Face `airimonda/ai231-me2-voice-commands`; each source keeps its own license (CC BY 4.0, CC0, FSC non-commercial academic, …, see the dataset card). DOI: not minted yet (the dataset owner can create one from the Hugging Face dataset settings or Zenodo) |
-| A100 cluster | `ai-n002`, 1 × A100-40GB, ~34 min per seed, seeds 0/1/2 |
+| A100 cluster | `ai-n002`, 1 × A100-40GB; ~34 min to train the final model |
 | Model weights | `models/vcm_intent.onnx`, `models/vcm_intent.pt` (this repo) · release to be created (GitHub release with the two files) · licence: MIT (code and weights); the training data's own terms apply to its use |
 
 ### Reviewer checklist
@@ -96,7 +152,7 @@ rate.
   4,418 clips, 47 per Option B variation plus 47 out-of-scope clips. 76% of
   it is the group's synthetic voices and 24% real people. No test speaker
   is in training.
-- **Real speech** = the 1,003 test clips spoken by real people (group
+- **Real speech** = the 1,003 test clips spoken by real people (class
   recordings, SLURP, FSC, SNIPS, …). It is the harder, more honest number:
   synthetic voices score ~99%.
 - **Holdout** = 196 clips the class set aside for the live test on the
@@ -228,7 +284,7 @@ in [docs/TESTING.md](docs/TESTING.md).
 | Synthetic voices | 99.50% | 3,368 |
 | Exact Option B wording (the demo phrases) | 99.06% | 3,601 |
 | Same command in other words | 67.66% | 770 |
-| Filipino group recordings | 87.30% | 189 |
+| Filipino speakers (class recordings) | 87.30% | 189 |
 | Macro average over 20 classes | 88.06% | |
 | **Holdout (Pi live-test set)** | **94.90%** (real 94.19%) | 196 |
 
