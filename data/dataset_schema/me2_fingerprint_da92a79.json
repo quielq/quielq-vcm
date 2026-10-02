@@ -15,5 +15,9 @@
   "numerals": {
     "clips": 66390,
     "sha1": "54026aff0420ebd3fafd59eb689dda52cc5068b7"
+  },
+  "supplemental_synth": {
+    "clips": 5856,
+    "sha1": "ee0ac7ee4f511f233e9d507511277199d1b6bd19"
   }
 }

@@ -19,7 +19,7 @@ benchmark's false-wake check does (it uses 10; this uses all of them).
 Usage:
     git clone https://github.com/airimonda/vcm-benchmark /path/to/vcm-benchmark
     python scripts/class_benchmark_offline.py --bench-dir /path/to/vcm-benchmark \\
-        --holdout data/me2/hf/data/holdout-00000-of-00001.parquet --out results/class_benchmark_offline
+        --out results/class_benchmark_offline
 """
 
 from __future__ import annotations
