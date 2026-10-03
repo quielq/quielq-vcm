@@ -128,7 +128,7 @@ real time.
 | GitHub repository | [github.com/quielq/quielq-vcm](https://github.com/quielq/quielq-vcm), public, MIT ([LICENSE](LICENSE)) |
 | Dataset location | Hugging Face `airimonda/ai231-me2-voice-commands`, revision `da92a79` (also on the DGX at `/data/ai231`, verified identical clip for clip by `scripts/verify_shared_dataset.py`); each source keeps its own license (CC BY 4.0, CC0, FSC non-commercial academic, …, see the dataset card). DOI: [10.57967/hf/10723](https://doi.org/10.57967/hf/10723) |
 | A100 cluster | `ai-n002`, 1 × A100-40GB; ~54 min to train the final model |
-| Model weights | `models/vcm_intent.onnx`, `models/vcm_intent.pt` (this repo) · release to be created (GitHub release with the two files) · licence: MIT (code and weights); the training data's own terms apply to its use |
+| Model weights | `models/vcm_intent.onnx`, `models/vcm_intent.pt`, and the optional `models/vcm_intent_small.onnx` (this repo) · GitHub release [v1.0](https://github.com/quielq/quielq-vcm/releases/tag/v1.0) with all three files and their SHA-256 checksums · licence: MIT (code and weights); the training data's own terms apply to its use |
 
 ### Reviewer checklist
 
