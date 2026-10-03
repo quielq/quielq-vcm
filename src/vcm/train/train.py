@@ -247,7 +247,7 @@ def main() -> None:
         type=Path,
         default=None,
         help="Train slot-value heads (vcm.slots, EXPERIMENTS.md Experiment 32) from this "
-        "scripts/build_slot_labels.py output. CRNN only. Default: intent only.",
+        "data/me2/slot_labels.csv (scripts/build_me2_manifest.py). CRNN only. Default: intent only.",
     )
     parser.add_argument(
         "--freeze-from",
@@ -302,18 +302,18 @@ def main() -> None:
         "--distill-weight",
         type=float,
         default=0.0,
-        help="Knowledge-distillation weight: adds a KL-divergence term against the "
-        "ASR-cascade's soft labels (scripts/generate_distillation_labels.py) on top of the "
-        "normal hard-label loss. The cascade is a training-time-only teacher, never part of "
-        "the deployed model — this is how ASR is used without violating the assignment's "
-        "no-ASR-on-device constraint. 0.0 (default) disables this. See EXPERIMENTS.md "
-        "Experiment 27.",
+        help="Knowledge-distillation weight: adds a KL-divergence term against a teacher's "
+        "soft labels (--distill-labels) on top of the normal hard-label loss. The final model "
+        "uses 1.0 with an ensemble of 9 CRNNs as the teacher (scripts/generate_ensemble_labels.py); "
+        "the teacher only produces training targets and never runs on the device. "
+        "0.0 (default) disables this.",
     )
     parser.add_argument(
         "--distill-labels",
         type=Path,
         default=Path("data/distillation_labels.csv"),
-        help="Teacher soft-labels produced by scripts/generate_distillation_labels.py. Only "
+        help="Teacher soft-labels CSV (audio_path + one probability per label), e.g. "
+        "data/me2/ensemble43_labels.csv from scripts/generate_ensemble_labels.py. Only "
         "read when --distill-weight > 0.",
     )
     parser.add_argument(

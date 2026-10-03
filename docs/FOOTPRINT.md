@@ -87,7 +87,7 @@ This puts numbers on the assignment's point that "ASR models are not
 desirable for on-device computing because of footprint". The cascade was
 built on the project's earlier dataset and not rebuilt for the master
 dataset, so this compares footprint, not accuracy (the accuracy comparison
-is in [EXPERIMENTS.md](EXPERIMENTS.md#asr-cascade-experiment-26)).
+is in [EXPERIMENTS.md](legacy/EXPERIMENTS.md#asr-cascade-experiment-26)).
 
 | | Pipeline | What runs per command |
 |---|---|---|
@@ -118,7 +118,7 @@ scipy: importing and using it once added **+186 MB**, and the whole
 pipeline peaked at ~330 MB. A numpy re-implementation (`vcm/audio/dsp.py`,
 tested to match librosa exactly) brought that to ~100 MB. A stage-by-stage
 breakdown, measured with an earlier model, is in
-[EXPERIMENTS.md](EXPERIMENTS.md#footprint-with-the-experiment-36-models-2026-09-29).
+[EXPERIMENTS.md](legacy/EXPERIMENTS.md#footprint-with-the-experiment-36-models-2026-09-29).
 
 ### ASR cascade (faster-whisper base, laptop)
 

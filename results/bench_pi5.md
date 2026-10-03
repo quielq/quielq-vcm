@@ -25,4 +25,4 @@ played music; 47 MB before any music had played).
 `vcm_intent_small.onnx` (Experiment 43c) has not been re-timed with its final weights;
 with earlier weights of the same architecture it took 11.1 ms p50 / 12.1 ms p95
 (RTF 0.0048, 7.2 ms model). Measurements of earlier models are in
-[docs/EXPERIMENTS.md](../docs/EXPERIMENTS.md#raspberry-pi-5-earlier-weights).
+[docs/legacy/EXPERIMENTS.md](../docs/legacy/EXPERIMENTS.md#raspberry-pi-5-earlier-weights).

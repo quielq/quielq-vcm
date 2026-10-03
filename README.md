@@ -126,7 +126,7 @@ real time.
 | Item | Value |
 |---|---|
 | GitHub repository | [github.com/quielq/quielq-vcm](https://github.com/quielq/quielq-vcm), public, MIT ([LICENSE](LICENSE)) |
-| Dataset location | Hugging Face `airimonda/ai231-me2-voice-commands`, revision `da92a79` (also on the DGX at `/data/ai231`, verified identical clip for clip by `scripts/verify_shared_dataset.py`); each source keeps its own license (CC BY 4.0, CC0, FSC non-commercial academic, …, see the dataset card). DOI: not minted yet (the dataset owner can create one from the Hugging Face dataset settings or Zenodo) |
+| Dataset location | Hugging Face `airimonda/ai231-me2-voice-commands`, revision `da92a79` (also on the DGX at `/data/ai231`, verified identical clip for clip by `scripts/verify_shared_dataset.py`); each source keeps its own license (CC BY 4.0, CC0, FSC non-commercial academic, …, see the dataset card). DOI: [10.57967/hf/10723](https://doi.org/10.57967/hf/10723) |
 | A100 cluster | `ai-n002`, 1 × A100-40GB; ~54 min to train the final model |
 | Model weights | `models/vcm_intent.onnx`, `models/vcm_intent.pt` (this repo) · release to be created (GitHub release with the two files) · licence: MIT (code and weights); the training data's own terms apply to its use |
 
@@ -135,7 +135,7 @@ real time.
 | # | Item | Status |
 |---|---|---|
 | 1 | Repo public, one-command reproduction | `bash scripts/reproduce.sh` (data → train → evaluate → ONNX → benchmark); on the DGX it reads the class's shared copy `/data/ai231` after checking it against the committed dataset fingerprint |
-| 2 | Dataset licensed and citable (DOI) | Licensed per source on the dataset card; DOI pending, to be minted by the dataset owner |
+| 2 | Dataset licensed and citable (DOI) | Licensed per source on the dataset card; DOI [10.57967/hf/10723](https://doi.org/10.57967/hf/10723) |
 | 3 | Training logs + final checkpoint committed | [`results/`](results/) (training logs, evaluations and launchers; the final model's are `exp43b_supplemental_s*`) and `models/vcm_intent.pt` |
 | 4 | Pi latency reproduced by the posted script | `python scripts/benchmark_pi.py --json bench_pi.json` on the Pi 5: 15.2 ms p95 with the shipped weights ([results/bench_pi5.md](results/bench_pi5.md)) |
 | 5 | Held-out test set, unseen speakers | Class-fixed test split (4,443 clips, 144 speakers) and holdout (202); no speaker or synthetic voice in two splits |
@@ -203,7 +203,7 @@ to the listener; it costs 1 point on test and 2.6 on real speech.
 
 The path from the first DS-CNN to this model, every experiment, and the
 earlier models are in the project journal,
-[docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
+[docs/legacy/EXPERIMENTS.md](docs/legacy/EXPERIMENTS.md).
 
 ## Dataset
 
@@ -367,8 +367,9 @@ plays. Details: [docs/TESTING.md](docs/TESTING.md#wake-word-modelskiwi_wakewordo
 │   ├── vcm_intent.pt            ★ its PyTorch checkpoint
 │   ├── kiwi_wakeword.onnx       ★ shipped wake word (Experiment 43), and kiwi_wakeword.pt
 │   ├── vcm_intent_small.onnx    smaller intent model (Experiment 43c, 722 KB), optional
-│   └── *_exp36, *_exp34, *_frozen.onnx   earlier models, kept for the project history only
-├── results/                   training logs, evaluation outputs, launchers and Pi measurements
+│   └── legacy/                  earlier models (history only)
+├── results/                   the final experiment's logs, evaluations and launcher; Pi and class benchmarks
+│   └── legacy/                  Experiments 37–42 (history only)
 ├── src/vcm/                   the Python package
 │   ├── audio/                 microphone capture, log-mel features, numpy DSP, resampling
 │   ├── wakeword/              "Hey Kiwi" streaming detector
@@ -379,13 +380,17 @@ plays. Details: [docs/TESTING.md](docs/TESTING.md#wake-word-modelskiwi_wakewordo
 │   ├── tts/                   spoken replies (Piper, espeak-ng, macOS say)
 │   ├── hal/                   hardware layer: GPIO button, Sense HAT temperature
 │   ├── config.py              settings loading, platform detection
-│   ├── dataset/               manifest format, schema, loaders for the old sources
+│   ├── dataset/               manifest format, the class schema, the wake word's synthetic phrase lists
+│   │   └── legacy/              loaders for the project's earlier dataset (history only)
 │   └── train/                 architectures, training loop, losses, augmentation
 ├── scripts/                   command-line tools (see the table below)
+│   └── legacy/                  earlier-dataset, ASR-cascade and wake-word-selection scripts (history only)
 ├── tests/                     unit tests (pytest), no hardware needed
+│   └── legacy/                  tests of the legacy loaders (still run)
 ├── deploy/                    systemd services and audio-device rules for the Pi
-├── data/dataset_schema/       the final class schema (CSV); other data is downloaded, not in git
-└── docs/                      all documentation (see below)
+├── data/dataset_schema/       the final class schema (CSV) and dataset fingerprint; other data is downloaded, not in git
+└── docs/                      documentation of the final system (see below)
+    └── legacy/                  the project journal (EXPERIMENTS.md) and archived records
 ```
 
 | Stage | Scripts |
@@ -394,7 +399,9 @@ plays. Details: [docs/TESTING.md](docs/TESTING.md#wake-word-modelskiwi_wakewordo
 | **Laptop** | `deploy_pi.sh` (deploy to the Pi), `mac_phone_bridge.py`, `spotify_auth.py`, `record_wakeword.py` |
 | **Data** (DGX) | `build_me2_manifest.py` (master dataset → manifest, slot labels, metadata; `--shared-cache /data/ai231` for the class's copy), `verify_shared_dataset.py` (checks a copy against the committed fingerprint) |
 | **Train and evaluate** (DGX) | `reproduce.sh` (all steps), `python -m vcm.train.train`, `generate_ensemble_labels.py` (distillation teacher), `evaluate_checkpoint.py`, `summarize_experiments.py`, `export_onnx.py`, `train_wakeword.py`, `evaluate_wakeword.py` |
-| **Earlier dataset** (history only, not needed for the final model) | `build_manifest.py`, `fetch_*.py`, `process_fsc.py`, `qa_filter_option_b.py`, `generate_targeted_synthetic.py`, `build_slot_labels.py`, cascade scripts; see [EXPERIMENTS.md](docs/EXPERIMENTS.md#appendix-a-the-projects-own-dataset-experiments-136) |
+| **Wake-word data** (laptop / DGX) | `record_wakeword.py` (your own "hey kiwi" takes), `generate_targeted_synthetic.py --batch wakeword` (the synthetic "hey kiwi" positives and near-misses) |
+
+Every `legacy/` folder is history only: nothing the final model, its training or the device uses imports from one. The project's history is in [docs/legacy/EXPERIMENTS.md](docs/legacy/EXPERIMENTS.md).
 
 ## Quick start
 
@@ -584,7 +591,8 @@ systemctl status raspotify
 | [FOOTPRINT.md](docs/FOOTPRINT.md) | SD card and RAM use on the Pi, and our pipeline vs. an ASR cascade |
 | [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Setting up a Raspberry Pi from a blank SD card |
 | [RUNBOOK.md](docs/RUNBOOK.md) | Starting, testing and demoing the system, and troubleshooting |
-| [EXPERIMENTS.md](docs/EXPERIMENTS.md) | **Project history** (our journal): every experiment, the earlier models, and how they compare with the final one |
+| [CODE_GUIDE.md](docs/CODE_GUIDE.md) | **Study guide to the code**: how the mel spectrogram, CRNN, intent and slot heads, wake word, ONNX runtime, Raspberry Pi hardware and home server are implemented, with links to the exact lines |
+| [legacy/EXPERIMENTS.md](docs/legacy/EXPERIMENTS.md) | **Project history** (our journal): every experiment, the earlier models, and how they compare with the final one |
 
 ## Future enhancements
 

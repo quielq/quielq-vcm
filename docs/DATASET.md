@@ -9,12 +9,13 @@ is collated into one dataset with one fixed test set.
 Dataset development is a **collective effort**. See
 [Acknowledgments](#acknowledgments) at the end of this document. The
 dataset this project built for itself before the master dataset existed is
-documented in [EXPERIMENTS.md, Appendix A](EXPERIMENTS.md#appendix-a-the-projects-own-dataset-experiments-136).
+documented in [EXPERIMENTS.md, Appendix A](legacy/EXPERIMENTS.md#appendix-a-the-projects-own-dataset-experiments-136).
 
 ## The class master dataset
 
 - **Where:** [huggingface.co/datasets/airimonda/ai231-me2-voice-commands](https://huggingface.co/datasets/airimonda/ai231-me2-voice-commands),
-  revision **`da92a79`** (2026-10-02), pinned in every download command
+  revision **`da92a79`** (2026-10-02), pinned in every download command.
+  DOI: [10.57967/hf/10723](https://doi.org/10.57967/hf/10723)
   (also on the class Google Drive as `ai231-me2-gold-dataset`, and on the
   DGX as a shared `datasets` cache at **`/data/ai231`**, see below).
   Collated by Ailene (`airimonda` on Hugging Face). Audit and

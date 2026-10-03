@@ -10,7 +10,7 @@ aren't comparable. This script reports the direct-audio model on the
 same basis as the cascade, plus the per-class and confusable-group
 breakdowns previously computed by ad hoc scratch scripts.
 
-"Real speech" matches scripts/train_cascade_classifier.py's real-only
+"Real speech" matches scripts/legacy/train_cascade_classifier.py's real-only
 filter: is_synthetic == False, excluding the non-command class
 (unknown_background, which has no transcript, so the cascade was never
 scored on it; OUT_OF_SCOPE from Experiment 37).
@@ -157,7 +157,7 @@ def main() -> None:
         "--slot-labels",
         type=Path,
         default=None,
-        help="scripts/build_slot_labels.py output; adds slot-value accuracy for models with slot heads.",
+        help="data/me2/slot_labels.csv (scripts/build_me2_manifest.py); adds slot-value accuracy for models with slot heads.",
     )
     parser.add_argument(
         "--exclude-source",

@@ -72,7 +72,7 @@ class _MacSpacebarButton:
 
 
 class _RpiGpioButton:
-    """Real pushbutton on GPIO 17, per Section 10's wiring diagram."""
+    """Real pushbutton between GPIO 17 and ground (internal pull-up)."""
 
     def __init__(self, gpio_pin: int = 17) -> None:
         from gpiozero import Button
