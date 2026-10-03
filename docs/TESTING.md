@@ -251,6 +251,47 @@ What the live run needs from us, and its risks:
   holds the microphone, use the `default` input (PipeWire), as the
   benchmark suggests.
 
+### The class live benchmark (live run, 2026-10-03)
+
+The full test (202 holdout clips + 16 without the wake word, seed 87436),
+run live on the Pi 5 with the benchmark at commit `ab39857`: laptop speaker
+about 1 m from the USB microphone, the Pi's soundbar muted so PLAY_MUSIC
+trials couldn't play over later ones
+([results/class_benchmark_live/report.md](../results/class_benchmark_live/report.md)).
+
+| Benchmark metric | overall | real voice | synthetic voice |
+|---|---:|---:|---:|
+| Intent accuracy (19) | **90.6%** [86–94%] | 86.5% | 94.3% |
+| Command accuracy (93: intent and slot) | 87.6% | 80.2% | 94.3% |
+| False accept (out-of-scope clip acted on) | 18.8% (3/16) [7–43%] | 20.0% (2/10) | 16.7% (1/6) |
+| False reject (command ignored) | 7.0% | 9.3% | 5.0% |
+| False wake (command without "Hey Kiwi" acted on) | 0% (0/16) | 0% | 0% |
+| Slot exact (intent right) | 94.1% | 85.7% | 100% |
+| Latency p50 / p95 (end of command to our line) | 0.59 / 0.69 s | | |
+
+Wake detection was 100%, and the model took 16 ms per command (RTF 0.010).
+Against the rehearsal, accuracy drops 5.4 points, almost all of it as
+false rejects (1.1% to 7.0%): the room and speaker make Kiwi answer
+`OUT_OF_SCOPE` more often rather than pick the wrong command (misfires
+1.6%).
+
+Setup the newer benchmark needs:
+
+- **Point it at a log file.** It no longer follows `journalctl` from the
+  saved settings. For the run, a systemd drop-in
+  (`~/.config/systemd/user/vcm.service.d/benchmark-log.conf` with
+  `StandardOutput=append:%h/vcm_benchmark/kiwi.log`) sent the listener's
+  output to a file, passed as `--log '/home/quielq/vcm_benchmark/kiwi.log'`
+  (quoted, so the laptop doesn't expand `~`). Remove the drop-in afterwards.
+- **Read only the JSON line.** The benchmark otherwise parses our
+  human-readable `-> TEMPERATURE (1.00) …` line first and reports the
+  timing fields as missing. In the sound check, `x` with
+  `^\{"intent": "(?P<intent>[^"]+)"(?:, "slot": "(?P<slot>[^"]*)")?.*?"infer_ms": (?P<infer_ms>[0-9.]+), "audio_ms": (?P<audio_ms>[0-9.]+)`
+  fixes it.
+- **One listener only.** A `vcm_listen.py` started by hand next to the
+  service answers every command twice; `pgrep -af vcm_listen` must show
+  just the service.
+
 ## 2. On-device and live tests
 
 **Speed and memory** (`scripts/benchmark_pi.py`, no microphone needed;
