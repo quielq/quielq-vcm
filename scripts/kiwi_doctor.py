@@ -29,7 +29,7 @@ import wave
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_MIC = "USB_PnP"  # part of the input device name (deploy/wireplumber/51-kiwi-audio.lua)
+EXPECTED_MIC = "alsa_input.usb-"  # any USB mic but the soundbar's, as in deploy/wireplumber/51-kiwi-audio.lua
 EXPECTED_SPEAKER = "SoundBar"
 SERVER = "http://127.0.0.1:8000"
 
@@ -78,7 +78,7 @@ def check_audio(beep: bool, fix: bool) -> None:
     if not shutil.which("pactl"):
         return report("FAIL", "audio", "pactl not found (PipeWire/PulseAudio not running?)")
     source, sink = run(["pactl", "get-default-source"]), run(["pactl", "get-default-sink"])
-    report("OK" if EXPECTED_MIC in source and not source.endswith(".monitor") else "FAIL", "microphone device", source or "none")
+    report("OK" if source.startswith(EXPECTED_MIC) and EXPECTED_SPEAKER not in source else "FAIL", "microphone device", source or "none")
     report("OK" if EXPECTED_SPEAKER in sink else "FAIL", "speaker device", sink or "none")
 
     volume = run(["pactl", "get-sink-volume", "@DEFAULT_SINK@"])

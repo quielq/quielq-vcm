@@ -419,13 +419,15 @@ run without an SSH login. They:
 Every `deploy_pi.sh` run (with or without `--services`) also installs the
 audio device rules, `deploy/wireplumber/51-kiwi-audio.lua`, into
 `~/.config/wireplumber/main.lua.d/` and restarts WirePlumber:
-- the USB PnP mic is the input and the soundbar the output whenever plugged in;
+- a USB mic (any model) is the input and the soundbar the output whenever
+  plugged in;
 - the soundbar's own mic is disabled, so it can't become the input;
 - stream volumes aren't restored, so a music duck that never ended can't
   carry over to new streams.
 
-The device names in that file are for this hardware (C-Media USB PnP mic,
-Dell AC511 soundbar); edit them for other devices (`pactl list short
+The mic rule matches any USB input, so a replacement mic needs no change;
+the soundbar names are for this hardware (Dell AC511); edit them for other
+devices (`pactl list short
 sources` / `sinks`).
 
 Then, on the Pi:
