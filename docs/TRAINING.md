@@ -37,7 +37,7 @@ free. For the final model, 9 runs and another user's small job shared one
 A100 at ~40 s per epoch each; with fewer runs sharing it, ~25 s. Packing
 11 runs onto one GPU earlier in the project pushed it to 99% utilization,
 and every run slowed down (the measurements are in
-[EXPERIMENTS.md](EXPERIMENTS.md#training-runs-on-the-shared-dgx-earlier-experiments)).
+[EXPERIMENTS.md](legacy/EXPERIMENTS.md#training-runs-on-the-shared-dgx-earlier-experiments)).
 
 Rules of thumb:
 - **3–5 runs per GPU** for models under ~1M params. Watch

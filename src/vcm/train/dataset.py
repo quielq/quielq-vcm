@@ -43,7 +43,7 @@ DEFAULT_FEATURE_CONFIG = {"window_s": WINDOW_S, "trim": False}
 
 
 def load_distillation_labels(csv_path: Path) -> dict[str, torch.Tensor]:
-    """Load scripts/generate_distillation_labels.py's output: audio_path ->
+    """Load teacher soft labels (scripts/generate_ensemble_labels.py's output): audio_path ->
     a (len(LABELS),) teacher probability vector, remapped from the cascade
     classifier's own label order into this module's LABELS order.
     unknown_background always gets probability 0 (the cascade never

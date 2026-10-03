@@ -10,7 +10,7 @@ Runs the same way on the Raspberry Pi (USB mic, over SSH) and on a laptop
 
 After the wake word fires, it plays a short chime (--no-chime to turn off),
 asks the home server to turn the music down while you speak, and records
-until you stop talking (0.7 s below the speech level, or 5 s max), then
+until you stop talking (0.6 s below the speech level, or 5 s max), then
 classifies. If you start the command during the chime ("Hey Kiwi, stop"
 without a pause), the audio heard during the chime is kept, so short
 commands aren't cut off. --save-commands DIR saves every recorded command

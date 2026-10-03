@@ -7,7 +7,7 @@ master-dataset train split (different seeds and recipes), so no outside
 data or model is involved. Each clip's teacher probabilities are computed
 on clean audio (no augmentation), for the train split only.
 
-Output format matches scripts/generate_distillation_labels.py:
+Output format matches scripts/legacy/generate_distillation_labels.py:
 audio_path, then one probability column per label.
 
 Usage:

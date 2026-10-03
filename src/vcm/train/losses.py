@@ -160,7 +160,7 @@ class DistillationLoss(nn.Module):
     desirable for on-device computing because of footprint"). That
     constraint is about what runs at inference time; it says nothing
     about how training data/signal is produced. The teacher's
-    predictions are generated once, offline (scripts/generate_distillation_labels.py),
+    predictions are generated once, offline (scripts/legacy/generate_distillation_labels.py),
     and never touch the deployed model — only this tiny student
     (DS-CNN) is ever exported/run on-device. See EXPERIMENTS.md
     Experiment 27.

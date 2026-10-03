@@ -182,7 +182,7 @@ On a GPU machine, from a fresh clone: `bash scripts/reproduce.sh`. Or, with
 python scripts/evaluate_checkpoint.py models/vcm_intent.onnx \
   --manifest data/me2/manifest.csv --slot-labels data/me2/slot_labels.csv \
   --metadata data/me2/metadata.csv --split test        # or --split holdout
-python scripts/summarize_experiments.py --logs results/eval --glob '4*'
+python scripts/summarize_experiments.py --logs results/eval --glob '43*'
 python scripts/evaluate_wakeword.py models/kiwi_wakeword.onnx --intent-manifest data/me2/manifest.csv \
   --extra-wake-manifest data/wakeword_real/manifest.csv
 ```
@@ -333,7 +333,8 @@ come first on `PATH` and run against the wrong interpreter.
 | Area | Test files | Covers |
 |---|---|---|
 | Audio | `test_dsp`, `test_features`, `test_resample` | numpy log-mel matches librosa; feature shapes; silence doesn't produce NaN; 48 → 16 kHz resampling |
-| Dataset | `test_dataset_manifest`, `test_dataset_schema_loader`, `test_slurp_coverage`, `test_fsc_coverage`, `test_option_b`, `test_gsc_background`, `test_snips_lights`, `test_timers_and_such`, `test_targeted_synth`, `test_synthetic_check` | Each source's label mapping and splits, the common manifest format, the synthetic-audio QA gate |
+| Dataset | `test_dataset_manifest`, `test_dataset_schema_loader`, `test_targeted_synth` | The common manifest format, the class schema matches its CSV, the wake word's synthetic phrase lists |
+| Legacy (`tests/legacy/`) | `test_slurp_coverage`, `test_fsc_coverage`, `test_option_b`, `test_gsc_background`, `test_snips_lights`, `test_timers_and_such`, `test_synthetic_check` | The earlier dataset's loaders and QA gate (history only, kept passing) |
 | Training | `test_train_architectures`, `test_train_dataset`, `test_train_augment`, `test_train_wave_augment`, `test_losses`, `test_train_transcripts`, `test_slots` | Model output shapes and slot heads, class weights, augmentation, the confusable-pair loss, slot-value parsing |
 | Deployment | `test_deploy`, `test_wakeword`, `test_listen` | ONNX export matches PyTorch and carries its metadata; the streaming wake-word detector; the listener's endpointing, music ducking and microphone-loss handling |
 | Home server | `test_home` | Every intent has an action; music, ducking, lights, thermostat, timers, alarms, reminders, phone bridge; failing integrations don't crash; an HTTP round trip |

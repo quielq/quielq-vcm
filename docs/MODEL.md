@@ -204,7 +204,7 @@ the CRNN's ~2.5 GB, because the CRNN's strided blocks shrink the map early.
 The final CRNN's extra parameters (wider, a second GRU layer, four
 attention heads) and its distillation recipe add the remaining 8 points of
 real speech. Every intermediate model, and the earlier architectures with
-their diagrams, are in [EXPERIMENTS.md](EXPERIMENTS.md#part-0-from-the-first-model-to-the-final-one).
+their diagrams, are in [EXPERIMENTS.md](legacy/EXPERIMENTS.md#part-0-from-the-first-model-to-the-final-one).
 
 ## 5. Training recipe (final model)
 
@@ -240,7 +240,7 @@ flowchart LR
 ```
 
 Full commands are in [TRAINING.md](TRAINING.md#reproducing-the-final-model);
-results for every run are in [EXPERIMENTS.md](EXPERIMENTS.md). Every choice
+results for every run are in [EXPERIMENTS.md](legacy/EXPERIMENTS.md). Every choice
 below was made on our validation split, never on test.
 
 | Setting | Value | Why |
@@ -256,7 +256,7 @@ below was made on our validation split, never on test.
 | Features | Silence trim + 5.0 s window | Training clips then look like live recordings, which start right after the wake word |
 | Checkpoint selection | Best validation accuracy | Val is speaker-disjoint from train and test |
 | Seeds | 3; shipped seed 1, the best on val | Seeds differ by up to 2 points on real speech |
-| Tried and dropped | EMA of weights (−3.6 real on val), numerals as background talk (−2.5), label smoothing, wider speed range, more epochs, repeating real clips | [EXPERIMENTS.md](EXPERIMENTS.md) |
+| Tried and dropped | EMA of weights (−3.6 real on val), numerals as background talk (−2.5), label smoothing, wider speed range, more epochs, repeating real clips | [EXPERIMENTS.md](legacy/EXPERIMENTS.md) |
 
 ## 6. The wake word
 
@@ -358,7 +358,7 @@ the Pi, and is far too slow to listen continuously, so it would still need
 a separate wake-word model. The full comparison is in
 [FOOTPRINT.md](FOOTPRINT.md#part-2-our-pipeline-vs-an-asr-cascade), and the
 accuracy comparison (on the earlier dataset) in
-[EXPERIMENTS.md](EXPERIMENTS.md#asr-cascade-experiment-26).
+[EXPERIMENTS.md](legacy/EXPERIMENTS.md#asr-cascade-experiment-26).
 
 Published results put our number in context: SLURP, the dataset closest to
 ours, tops out at 87–88% intent accuracy even with large pretrained speech

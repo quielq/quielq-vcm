@@ -1,0 +1,3874 @@
+# Project history: experiments and earlier models
+
+This is the project's journal: every experiment we ran, every model we
+shipped before the final one, and every comparison between them. The
+rest of the documentation describes only the final system; start with the
+[README](../../README.md) and [MODEL.md](../MODEL.md) for that.
+
+**The final system** is the Experiment 43b intent + slot model (seed 1,
+`models/vcm_intent.onnx`) and the Experiment 43 "Hey Kiwi" wake word
+(seed 1, `models/kiwi_wakeword.onnx`), both trained on the class master
+dataset, revision `da92a79`.
+
+How this file is organized:
+
+| Part | What |
+|---|---|
+| [Part 0](#part-0-from-the-first-model-to-the-final-one) | The short story: model lineage, progress tables, the earlier models compared with the final one, and measurements made with earlier models |
+| [Part 1](#part-1-the-projects-own-dataset-experiments-136) | Experiments 1–36, on the dataset this project built for itself |
+| [Part 2](#part-2-the-class-master-dataset-experiment-37-on) | Experiments 37–43, on the class master dataset |
+| [Appendix A](#appendix-a-the-projects-own-dataset-experiments-136) | The project's own dataset (Experiments 1–36): sources, build steps, label audits |
+| [Appendix B](#appendix-b-other-records) | Detailed reports, the original plans, the audit of what was not shipped, and the archive branch |
+
+Real results from actual training runs on the DGX (`ai-n002`, A100-40GB).
+Every number is copied from a log file, not estimated; log paths are given
+so any entry can be re-checked. Logs for Experiments 37–43 are in
+[`results/`](../../results/); earlier logs live on the DGX.
+
+# Part 0: from the first model to the final one
+
+## Lineage
+
+| Stage | Experiments | Model | Data | Result | Status |
+|---|---|---|---|---|---|
+| Keyword-spotting baselines | 1–27 | DS-CNN (24–26K params), BC-ResNet (10–26K) | Own dataset | Best 75.5% val (DS-CNN, Exp 15); 70.6% real-speech test (Exp 25) | Replaced by the CRNN |
+| ASR cascade | 26 | Whisper `base` + TF-IDF / logistic regression (~74M params, 149 MB) | Own dataset | 90.6% real-speech test | Not shipped: footprint |
+| CRNN | 28–31 | CRNN, ~96K params | Own dataset | +11 points of real speech over DS-CNN (Exp 28) | Became the architecture |
+| CRNN + slot heads | 32–36 | CRNN, 107,887 params, 432 KB | Own dataset, 70,641 clips | 84.84% real-speech test on the old test set | **Shipped until 2026-10-01** (`models/legacy/vcm_intent_exp36.onnx`); wake word from Exp 34 (`models/legacy/kiwi_wakeword_exp34.onnx`) |
+| The same recipe on the master dataset | 37 | CRNN, 99,373 params | Master dataset, first revision | 90.09% test, 63.58% real (first revision) | Starting point for Part 2 |
+| Comparable-size baselines | 38 | DS-CNN 99.6K, BC-ResNet 89.4K | Master dataset, first revision | Below the CRNN | Checklist item |
+| One change at a time, then combined | 39–41 | CRNN up to 372,096 params | Master dataset, first revision | Exp 41d: 92.92% test, 73.21% real (first revision) | **Shipped 2026-10-02** (41d seed 0) |
+| Wake word on master-dataset negatives | 42 | Wake CRNN, 25,475 params | Master dataset, first revision | 4.1% missed, 12.3 false wake-ups/h | Replaced by 43 |
+| Retrain on the current revision | 43 | CRNN 372,096 params (43b), 182K (43c); wake word | Master dataset, `da92a79` | 43b seed 1: 95.50% test, 78.64% real, 96.04% holdout | **Final** |
+
+## Progress, all on the current test set
+
+Mean of 3 seeds, on the class test set of revision `da92a79` (4,443 clips).
+Models marked \* were trained on the dataset's first revision; none of the
+current test or holdout clips were in that train split (checked by audio
+hash), so the scores are fair.
+
+| Model | Params | val real | test all | test real | holdout |
+|---|---:|---:|---:|---:|---:|
+| BC-ResNet baseline, same size (38)\* | 89K | — | 81.29% | 41.57% | — |
+| DS-CNN baseline, same size (38)\* | 100K | — | 89.50% | 57.06% | — |
+| CRNN, same size and recipe as the baselines (37a)\* | 99K | — | 92.41% | 69.71% | — |
+| CRNN, the Experiment 36 recipe (43t, 80 epochs) | 99K | 71.72% | 93.06% | 70.27% | 92.90% |
+| + 2-layer GRU, 4-head attention pooling, frequency-only SpecAugment, numerals as out-of-scope, distillation (43c) | 182K | 75.76% | 94.64% | 75.93% | 94.22% |
+| + wider: 80 channels, GRU 96 (43a) | 372K | 74.95% | 95.03% | 77.52% | 94.88% |
+| + the dataset's supplemental synthetic clips (**43b, final**) | 372K | **77.07%** | **95.27%** | **77.57%** | **95.38%** |
+| Previous shipped model (41d seed 0)\* | 372K | — | 94.80% | 79.15% | 93.07% |
+
+The final file is seed 1 of 43b, the best seed on val: 95.50% / 78.64% /
+96.04%.
+
+**The previous shipped models.** 41d (trained on the first revision) is
+about level with 43b on intents (+0.7 overall, −0.5 real speech for 43b,
+within one seed's spread), but labels only 31.6% of the out-of-scope test
+clips OUT_OF_SCOPE, against 69.7% for 43b: the current train split has
+synthetic near-miss sentences the first one lacked. The Experiment 36
+model (`models/legacy/vcm_intent_exp36.onnx`, our own dataset) trained on most of
+the class test set's source clips, so it can't be scored fairly on it
+(`results/legacy/eval/exp37_baseline_exp36onnx_*.txt`,
+`results/legacy/eval/exp37_eval_test_unseen_by_exp36.txt`).
+
+**What helped and what didn't** (Experiments 39–41, one change at a time,
+on the first revision):
+
+- **Helped:** a 2-layer GRU; 4-head attention pooling; SpecAugment with
+  frequency masks only; bare numbers from the numerals set as
+  out-of-scope examples. All four together added 9.7 points of real speech
+  on the first revision's test set (Experiment 40a). Distillation from an
+  ensemble of our own CRNNs (40b) and a wider model (41d) then raised
+  real-speech accuracy on val further.
+- **Attention pooling is needed:** plain mean pooling loses 5.6 points of
+  real speech on val and 5.2 on test (39h).
+- **Hurt:** numerals as background talk (−2.5 real on val), an EMA of the
+  weights (−3.6). Label smoothing, a wider speed range, more epochs
+  (150, 37b) and repeating real clips did nothing.
+- **Supplemental synthetic clips** (43b vs 43a): +2.1 real speech on val.
+
+**Before the master dataset** (Experiments 1–36, our own data): the CRNN
+beat DS-CNN and BC-ResNet by 11 points of real speech (Experiment 28),
+silence trimming with a 5 s window removed a train/live mismatch (29a),
+waveform augmentation added about 5 points (29b), the confusable-pair loss
+at α = 2.0 was the best setting (14–16), joint slot training at weight 0.3
+beat a frozen encoder on slots (34), and dynamic int8 quantization cost 6.8
+points of real speech (82.1% → 75.3%) while saving 134 KB and running no
+faster (32).
+
+## Why a CRNN: the earlier architectures
+
+The first 27 experiments used DS-CNN ("Hello Edge", Zhang et al. 2017). It
+plateaued at 68% to 71% on real speech. Each of its outputs sees only about
+24 frames, or 240 ms. That is shorter than the word "temperature". It then
+averages everything, so word order is lost. It classified a command like a
+bag of quarter-second snippets.
+
+**Figure H1. How DS-CNN and the CRNN hear the same command.** DS-CNN cuts
+the command into short pieces and averages them, so it cannot tell which
+word came first. The CRNN keeps every step in order, so the last word
+("up") can decide the answer.
+
+```mermaid
+---
+title: Figure H1. How DS-CNN and the CRNN summarize "turn the volume up"
+---
+flowchart TB
+    subgraph DS["DS-CNN: a bag of short windows"]
+        direction TB
+        W["[turn] [the] [vol] [ume] [up]<br/>each output sees ~240 ms"] --> GAP["Global average pooling<br/>every position weighted equally,<br/>word order discarded"]
+        GAP --> Y1["'up' vs 'down' is a small share<br/>of the average → often confused"]
+    end
+    subgraph CR["CRNN: an ordered sequence"]
+        direction TB
+        SEQ["turn → the → volume → up<br/>bidirectional GRU: each step sees<br/>the whole command, in order"] --> ATT["Attention pooling<br/>learned weights, highest on 'up'"]
+        ATT --> Y2["the deciding word<br/>dominates the summary"]
+    end
+```
+
+That is why DS-CNN kept confusing commands that differ by one word, like
+volume up and down, or lights on and off. The CRNN fixes this with three
+small changes: strided blocks that widen what each step sees, a GRU that
+reads the whole command in order, and attention pooling so the important
+word decides the answer. It was the largest single gain in the project:
+**+11 points on real speech** (Experiment 28), the same across three seeds.
+
+### DS-CNN (Experiments 1 to 27)
+
+The standard keyword-spotting model from "Hello Edge". Shown at the
+"matched capacity" size from Experiment 11, with the 3 s input used then.
+
+**Figure H2. DS-CNN: convolutions, then one big average.** It uses the same
+kind of blocks as the CRNN's front end. Its blocks never stride, so each
+output only hears about 240 ms. Global average pooling then mixes all
+positions into one summary, and word order is lost.
+
+```mermaid
+---
+title: Figure H2. DS-CNN (26,300 parameters; old dataset, Experiments 1–27)
+---
+flowchart LR
+    IN["Log-mel<br/>1 × 40 × 301<br/>(3 s)"] --> C1["Conv 10×4, stride 2<br/>60 filters<br/>→ 60 × 20 × 150"]
+    C1 --> D["5 depthwise-separable blocks<br/>no striding<br/>→ 60 × 20 × 150<br/>each output sees ~240 ms"]
+    D --> G["Global average pooling<br/>averages all 3,000 positions<br/>→ 60 numbers"]
+    G --> L["Linear<br/>→ 20 classes"]
+```
+
+26,300 parameters. Best results: **75.5% validation** (Experiment 15) and
+**70.6% real-speech test** (Experiment 25). Same building blocks as the
+CRNN's front end. The difference is what happens after: DS-CNN averages
+immediately, while the CRNN strides, keeps the time order and reads it with
+a GRU.
+
+### BC-ResNet (Experiments 3 to 6, and 10)
+
+"Broadcasted residual learning" (Kim et al. 2021). The original plan
+recommended it because it beat DS-CNN on Google Speech Commands.
+
+**Figure H3. One BC-ResNet block: a frequency path and a time path, added
+together.** The frequency path keeps all 20 mel bands. The time path first
+averages the bands away, which makes it cheap, and then looks along time.
+Its result is copied ("broadcast") back to every band and added in. The
+model stacks 8 of these blocks and still ends with a global average, like
+DS-CNN.
+
+```mermaid
+---
+title: Figure H3. One BC-ResNet block (the model stacks 8; old dataset, Experiments 3–10)
+---
+flowchart TB
+    X["Block input<br/>48 × 20 × 301"] --> FP["Frequency path<br/>depthwise conv 3×1 over mel bands<br/>+ BatchNorm"]
+    FP --> AVG["Average over the 20 mel bands<br/>→ 48 × 1 × 301"]
+    AVG --> TP["Temporal path<br/>depthwise conv 1×3 over time<br/>+ BatchNorm, 1×1 conv, ReLU, dropout"]
+    FP --> ADD(("+"))
+    TP -->|"broadcast back<br/>over all 20 bands"| ADD
+    X -->|"residual"| ADD2(("+"))
+    ADD --> R["ReLU"] --> ADD2
+    ADD2 --> OUT["Block output<br/>48 × 20 × 301"]
+```
+
+The full model is a 5×5 stem convolution (48 channels), 8 of these blocks,
+global average pooling and a linear classifier. 25,748 parameters. **67.5%
+validation**, below DS-CNN at the same size (72.4%). It also ends with a
+global average, so it has the same word-order problem as DS-CNN. We stopped
+testing it before real-speech test accuracy became our main measure.
+
+### ASR cascade (Experiment 26)
+
+**Figure H4. The ASR cascade: speech to text, then text to intent.** Whisper
+writes down what was said. A small text classifier then counts the words
+and phrases and picks the intent. It was the most accurate option, but
+Whisper alone is about 145 MB.
+
+```mermaid
+---
+title: Figure H4. ASR cascade (about 74M parameters, 149 MB; Experiment 26)
+---
+flowchart LR
+    AU["Audio"] --> W["Whisper base<br/>speech-to-text<br/>74M parameters, 145 MB"]
+    W --> T["Text<br/>'turn the volume up'"]
+    T --> TF["TF-IDF<br/>word and phrase counts"]
+    TF --> LOG["Logistic regression<br/>2 MB"]
+    LOG --> O["20 classes"]
+```
+
+**90.6% real-speech test** on our own dataset's test set, 5.8 points above
+the Experiment 36 CRNN (84.8%) on the same clips, because text makes
+one-word differences easy. It was never rebuilt for the master dataset.
+Its footprint is in [FOOTPRINT.md](../FOOTPRINT.md#part-2-our-pipeline-vs-an-asr-cascade).
+Its Whisper transcripts were also used to label slot values on real speech
+in the old dataset and to pick the wake word.
+
+### Side by side, on the old dataset
+
+| | DS-CNN | BC-ResNet | CRNN (Exp 36, shipped then) | ASR cascade |
+|---|---|---|---|---|
+| Parameters | 26,300 | 25,748 | 107,887 | ~74M + classifier |
+| Weights (fp32) | ~105 KB | ~103 KB | 432 KB | ~149 MB |
+| Input | 3 s log-mel | 3 s log-mel | 5 s log-mel, silence trimmed | raw audio |
+| What one output sees | ~240 ms | a short local window | the whole command | the whole command |
+| Keeps word order? | No | No | Yes (GRU) | Yes (text) |
+| How it summarizes | Global average | Global average | Attention pooling | Text classifier |
+| Slot values | No | No | 6 heads | Not built |
+| Best result | 75.5% val, 70.6% real-speech test | 67.5% val | 84.8% real-speech test | 90.6% real-speech test |
+| Runs on the Pi in real time? | Yes | Yes | Yes, 9.9 ms | Too slow to listen always |
+
+The Experiment 36 CRNN was 64 filters, one GRU layer of 64 units and one
+attention head. The Experiment 37 model, the same recipe on the master
+dataset, had 99,373 parameters (its slot heads shrank to 3 values each).
+
+### What else changed from the earlier models
+
+- **Slot vocabularies.** Through Experiment 36 the TIMER, ALARM,
+  BRIGHTNESS and COLOR heads had 24, 28, 12 and 14 values. Since
+  Experiment 37 each head has exactly the class schema's 3 values.
+- **The non-command class.** Models before Experiment 37 output
+  `unknown_background` (noise only) as their 20th class; it is now
+  `OUT_OF_SCOPE`, mostly speech that is not a command. The home server
+  still accepts the old label, so `vcm_intent_exp36.onnx` can be run for
+  comparison:
+  ```bash
+  cd ~/quielq-vcm && .venv/bin/python scripts/vcm_listen.py --intent-model models/legacy/vcm_intent_exp36.onnx --server http://127.0.0.1:8000 --show-scores
+  ```
+- **The wake word.** The Experiment 34 detector used the project's old
+  dataset for its negatives; since Experiment 42 they come only from the
+  master dataset (retrained on the current revision in 43). Same
+  architecture and size throughout (25,475 parameters, 107 KB).
+- **`models/legacy/vcm_intent_frozen.onnx`** is the Experiment 34 frozen-encoder
+  variant, not used.
+
+## Measurements made with earlier models
+
+These were measured before the final model existed. They are kept as
+records; the current numbers are in [TESTING.md](../TESTING.md) and
+[FOOTPRINT.md](../FOOTPRINT.md).
+
+### Wake word, earlier detectors
+
+On the current test stream (master test split plus 300 near-miss phrases,
+2.94 h) at threshold 0.6, the Experiment 42 detector misses 4.1% clean /
+4.9% in noise / 0 of 10 real takes with 12.3 false wake-ups per hour; the
+final (43) one 3.8% / 7.2% / 0 / 12.9. About level; 43 was shipped for
+consistency with the current revision.
+
+The Experiment 34 detector on its own (old dataset) test set; the
+`--wake-threshold` help text in `scripts/vcm_listen.py` still quotes these:
+
+| Threshold | Missed, clean | Missed, 10 dB noise | Missed, author's real takes | False wake-ups per hour |
+|---:|---:|---:|---:|---:|
+| **0.6** | 3.1% | 5.6% | 0/10 | 12.7 |
+| 0.7 | 3.6% | 8.2% | 0/10 | 9.2 |
+| 0.85 | 6.9% | 11.5% | 0/10 | 4.3 |
+| 0.95 | 14.1% | 21.5% | 0/10 | 1.3 |
+
+### Reject threshold, Experiment 34 model
+
+On validation, the 0.6 confidence threshold rejected ~11% of commands and
+raised accuracy on the accepted ones from 86% to 92%.
+
+### Raspberry Pi 5, earlier weights
+
+`scripts/benchmark_pi.py`, 1 thread, both services running, 2026-10-02.
+Repo at master `11fc1d5`; intent `exp41d_combo_wide_distill_s0.pt`, wake
+word `exp42_wake_me2_s1.pt`.
+
+| Intent model | Size | p50 ms | p95 ms | RTF p95 | Features ms | Model ms | Wake word, share of 1 core | Wake hop p95 ms | Peak RSS MB |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `vcm_intent.onnx` (Exp 41d), run 2 | 1,463 KB | 13.93 | 15.78 | 0.0063 | 3.75 | 9.98 | 1.85% | 1.90 | 99.6 |
+| `vcm_intent.onnx`, run 1 | 1,463 KB | 14.25 | 14.97 | 0.0060 | 3.93 | 10.27 | 1.94% | — | 99.3 |
+| `vcm_intent_small.onnx` (Exp 40b) | 722 KB | 11.07 | 12.06 | 0.0048 | 3.93 | 7.21 | 1.98% | 2.01 | 98.3 |
+
+Memory with both services running: 604 MB used of 8,063 MB;
+`vcm_listen.py` 95.3 MB RSS, `vcm.home.server` 47.0 MB RSS. The final
+43b and 43c models have the same architectures and operations as 41d and
+40b; 43b measured the same as 41d within run-to-run noise
+([results/bench_pi5.md](../../results/bench_pi5.md)), and 43c has not been
+re-timed.
+
+The Experiment 36 intent model (432 KB) took 9.9 ms per command (3.7 ms
+features + 6.2 ms model) on the same Pi, its wake word 2% of one core, and
+the listener peaked at 94 MB.
+
+### Footprint with the Experiment 36 models (2026-09-29)
+
+Measured on the demo Pi with both services running: models 539 KB
+(intent 432 + wake word 107), project folder 303 MB, voice loop 103 MB peak
+(94 MB in `benchmark_pi.py`), home server with Piper 185 MB.
+
+Our pipeline stage by stage on the laptop (1 thread), measured with the
+Experiment 31 intent model (int8) and a same-size toy wake word; the fp32
+Experiment 32 / 33 files measured the same, 88–89 MB peak and 3.1 ms per
+command:
+
+| Stage | Memory in use | Added |
+|---|---:|---:|
+| Python starts | 12.0 MB | +12.0 |
+| + numpy | 23.6 MB | +11.6 |
+| + onnxruntime | 42.0 MB | +18.4 |
+| + sounddevice (microphone library) | 47.6 MB | +5.6 |
+| + our runtime code | 48.4 MB | +0.8 |
+| + intent model loaded | 56.0 MB | +7.6 |
+| + wake-word model loaded | 57.0 MB | +0.9 |
+| Running: 30 s of wake-word listening + commands | 86–96 MB | +29–39 |
+
+Turning off ONNX Runtime's memory arena made no measurable difference
+(84.7–86.0 MB vs 85.8–94.8 MB). Compared with the ASR cascade at the time:
+~280× the disk (149 MB vs 539 KB), 5–7× the memory and 150–300× the latency
+(440–950 ms vs 3.1–3.4 ms per command on the laptop), for +5.8 points of
+real speech.
+
+**Checked on the Mac before the first Pi deploy** (Experiment 34 models, a
+clean venv with only `requirements-pi.txt`): `benchmark_pi.py` 3.2 ms per
+command, wake word 1% of one core, 82 MB peak; all 30 of the author's
+"hey kiwi" takes triggered at 0.95 (23 of 30 at 0.98) and none of the 12
+near-misses did.
+
+### Live phrasings with the Experiment 36 model (2026-09-28)
+
+From the author's 137 saved live commands, transcribed offline with
+Whisper. "right / tried" counts a command only if it was acted on (right
+intent, confidence ≥ 0.6). Several of these slot values (5 minutes, 7 AM,
+"buy milk") are not in the final schema, and several phrasings this model
+missed ("Power on the lights", "Kill the lights", "Pause audio", "Brightness
+level") are schema phrasings the final model gets right 99% of the time on
+test.
+
+| Command | Phrasing 1 | Phrasing 2 | Phrasing 3 | Avoided then |
+|---|---|---|---|---|
+| PLAY_MUSIC | Play music (7/7) | Start the music (3/3) | Play some music (1/1) | |
+| STOP | Stop the music (4/4, with "Stop music") | Stop (6/8) | Stop playing music *untested* | |
+| PAUSE | Pause (1/1) | Pause the music (1/1) | Pause song (1/1) | Pause audio (1/3) |
+| NEXT | Next song (1/1) | Skip song (1/1) | Go to the next song (1/1) | bare "Next" |
+| VOLUME_UP | Volume up (3/3, with "Turn the volume up") | Increase the volume (1/1) | Turn the volume up | |
+| VOLUME_DOWN | Volume down (2/2, with "Turn the volume down") | Decrease the volume (1/1) | Lower the volume (1/1) | |
+| WEATHER | Weather (1/1) | What's the weather (1/1) | Tell me the weather (1/1) | |
+| TIME | Time (2/2) | What time is it (1/1) | Tell me the time (1/1) | |
+| LIGHT_ON | Lights on (1/1) | Turn on the lights (2/3) | Switch on the lights *untested* | Power on the lights (0/4) |
+| LIGHT_OFF | Lights off (2/2) | Switch off the lights (2/2) | Turn off the lights (1/1) | Kill the lights (0/1) |
+| BRIGHTNESS | Brightness to 60 percent (5/7) | Adjust brightness to 60 percent (4/5) | Set the brightness to 60 percent *untested* | Brightness level 60 percent (0/2) |
+| COLOR | Color red (3/4) | Change color to red (1/1) | Set the lights to red *untested* | |
+| TEMPERATURE | Temperature 18 degrees (1/1) | Change the temperature to 22 degrees (1/1) | Set the temperature to 26 degrees (2/3) | |
+| ALARM | Set an alarm for 7 AM (6/6) | Wake me up at 6 AM *untested* | Alarm 8 AM *untested* | |
+| TIMER | Set a timer for 5 minutes *untested* | Timer 30 seconds *untested* | Countdown for 1 minute *untested* | |
+| CREATE_REMINDER | Reminder to drink water (3/3) | Remind me to study (2/2) | Create a reminder to exercise (2/2) | "run" |
+| LIST_REMINDERS | Reminders (2/2) | Show my reminders *untested* | List my reminders *untested* | |
+| CALL | Make a call (1/1) | Call (2/4) | *none reliable* | Make a phone call (0/2), Call mom (0/2) |
+| MESSAGE | Send a message (1/1) | Message *untested* | Send my message *untested* | |
+
+## Dataset revisions
+
+The master dataset changed once after we started. Experiments 37–42 used
+the 2026-10-01 revision `25111444`; Experiment 43 and the final model use
+the 2026-10-02 revision `da92a79`. Compared clip by clip, by audio hash; no
+kept clip changed label or slot value:
+
+| | Train | Test | Holdout |
+|---|---:|---:|---:|
+| Clips (old → new) | 10,682 → 10,733 | 4,418 → 4,443 | 196 → 202 |
+| Removed | 517: fixed commands that also carried a value ("play purple haze", "turn on the kitchen lights", "is it sunny today"); 371 SLURP, 80 SNIPS, 37 FSC, 29 class recordings | 226 of the same kind (171 SLURP, 46 SNIPS, 9 FSC) | 57 (45 class recordings, 11 FSC, 1 Common Voice) |
+| Added | 499 synthetic commands of train voices, 69 synthetic out-of-scope | 222 synthetic commands of test voices, 29 synthetic out-of-scope | 56 class recordings, 6 synthetic out-of-scope |
+| Out of scope | 201 → 270 | 47 → 76 | 10 → 16 |
+
+The removed clips were real people phrasing commands their own way, the
+hardest part of the old test set. On the new test set the same model
+scores about 2 points higher overall and 6 higher on real speech, so
+numbers from the two revisions are not comparable. The new revision also
+added `supplemental_synth`; `variations.csv` and the numerals set did not
+change.
+
+**Old dataset vs. master dataset:**
+
+| | Old (Experiments 1–36) | Master dataset (37 on) |
+|---|---|---|
+| Size | 70,641 clips (64% real) | 10,733 train + val clips (22% real), plus optional 3,461 supplemental synthetic |
+| Test set | Each source's own split; real speech only (6,577 clips) | Class-fixed, 4,443 clips, real and synthetic, balanced per variation |
+| Non-command class | `unknown_background`, 600 noise clips | `OUT_OF_SCOPE`, mostly speech |
+| Slot values | 24 timers, 28 alarm times, 12 brightness levels, 14 colors, 3 + 3 | 3 per slot, the schema's |
+| Filipino voices | Only in 16 of Option B's cloned reference speakers | Class recordings (Filipino speakers) in every split |
+| CALL, NEXT, LIST_REMINDERS | Synthetic only | Class recordings too |
+
+## Training runs on the shared DGX, earlier experiments
+
+Measured during Experiments 28–30 on GPU 2 (the practices that came out of
+this are in [TRAINING.md](../TRAINING.md)):
+
+| What was running on GPU 2 | Per-epoch time | GPU utilization |
+|---|---:|---|
+| 5 CRNN runs, no augmentation (Exp 28) | ~34 s | not saturated |
+| 5 CRNN runs, with waveform augmentation (Exp 30) | ~63–66 s | CPU-bound on augmentation |
+| **11 runs at once** (Exps 28 + 29 overlapping) | ~60–130 s | **99%, GPU-bound, runs slow each other down** |
+
+Before threads were pinned, 5 runs × 12 workers created ~24,000 threads on
+~200 cores; with one thread per process, ~1,350 threads, ~40 cores, and
+epochs about 2× faster. The Experiment 37 model took ~18 s per epoch with
+6 runs sharing GPU 6 (~25 min a run). The Experiment 36 training commands
+are on the archive branch.
+
+# Part 1: the project's own dataset (Experiments 1–36)
+
+20 classes (19 intents + `unknown_background`). The manifest grew over the
+project, from 64,665 rows (Experiment 1) to 70,641 (Experiment 36); each
+entry names the one it used. The pre-training technology survey these
+experiments started from is
+[original_model_plan.md](original_model_plan.md) (the
+"MODEL.md Section N" references below point there). Scripts named below
+that were later archived (`demo_infer.py`, `demo_infer_cascade.py`,
+`record_real_examples.py`) are in
+[code/scripts/](code/scripts/). "DATASET.md
+step N" below refers to [Appendix A](#appendix-a-the-projects-own-dataset-experiments-136).
+
+over all clips. From Experiment 28 on, the comparable number is
+*real-speech test* accuracy (see "Evaluation change from Experiment 28
+onward").
+
+**Methodological note**: Experiments 1 and 2 below were run before
+`--seed` existed in `train.py` — neither run fixed a random seed, so
+some of the differences between them are run-to-run noise (weight
+init, batch shuffling), not purely the effect being tested. Experiment
+3 onward all pin `--seed 0` for cleaner comparisons.
+
+## Summary table
+
+| # | Architecture | Augmentation | Epochs | Best val acc | Log |
+|---|---|---|---:|---:|---|
+| 1 | DS-CNN (24,276 params) | none | 30 | **65.29%** (epoch 28) | `logs/train_dscnn_run1.log` |
+| 2 | DS-CNN (24,276 params) | SpecAugment | 30 | 63.21% (epoch 28) | `logs/train_dscnn_augment_run2.log` |
+| 3 | BC-ResNet (10,196 params) | none | 30 | 44.16% (epoch 30) | `logs/train_bcresnet_run3.log` |
+| 4 | BC-ResNet (10,196 params), lr=3e-4 | none | 30 | 38.79% (epoch 28) | `logs/train_bcresnet_lowlr_run4.log` |
+| 5 | BC-ResNet (10,196 params), lr=1e-3 + 3-epoch warmup + cosine decay | none | 30 | 47.41% (epoch 25) | `logs/train_bcresnet_warmup_run5.log` |
+| 6 | BC-ResNet (10,196 params), lr=1e-3 + 5-epoch warmup + cosine decay | none | 80 | 58.99% (epoch 65) | `logs/train_bcresnet_warmup80_run6.log` |
+| 7 | DS-CNN (24,276 params), lr=1e-3 + 3-epoch warmup + cosine decay | none | 30 | 65.96% (epoch 26) | `logs/train_dscnn_warmup_run7.log` |
+| 8 | DS-CNN (24,276 params), lr=1e-3 + 3-epoch warmup + cosine decay | SpecAugment | 30 | 57.77% (epoch 30) | `logs/train_dscnn_warmup_augment_run8.log` |
+| 9a | DS-CNN, same config as #7, `--train-fraction 0.25` | none | 30 | 44.06% (epoch 29) | `logs/train_dscnn_warmup_frac25_run9.log` |
+| 9b | DS-CNN, same config as #7, `--train-fraction 0.50` | none | 30 | 54.77% (epoch 29) | `logs/train_dscnn_warmup_frac50_run10.log` |
+| 9c | DS-CNN, same config as #7, `--train-fraction 0.75` | none | 30 | 60.72% (epoch 28) | `logs/train_dscnn_warmup_frac75_run11.log` |
+| 10 | BC-ResNet, channels=48/blocks=8 (25,748 params), lr=1e-3 + 5-epoch warmup + cosine decay | none | 80 | 67.54% (epoch 53) | `logs/train_bcresnet_bigcap_run10.log` |
+| 11 | DS-CNN, num_filters=60/num_blocks=5 (26,300 params), lr=1e-3 + 5-epoch warmup + cosine decay | none | 80 | 72.39% (epoch 63) | `logs/train_dscnn_bigcap_run11.log` |
+| 12 | Same as #11, on the SLURP-quality-fixed manifest (62,405 rows, was 64,665) | none | 80 | 74.10% (epoch 46) | `logs/train_dscnn_bigcap_cleaned_run12.log` |
+| 13 | Resumed from #12's checkpoint, on the Timers-and-Such-added manifest (63,476 rows) | none | 20 | **75.04%** (epoch 12) — best overall | `logs/train_dscnn_timers_finetune_run13.log` |
+| 14 | Resumed from #13's checkpoint, ConfusablePairLoss (alpha=1.0) targeting VOLUME_UP/DOWN/TEMPERATURE + LIGHT_ON/OFF | none | 15 | 75.54% (epoch 10) — mixed result, see writeup | `logs/exp14_confusable.log` |
+| 15 | Same as #14, alpha=2.0 (resumed from #13 directly, not #14) | none | 15 | **75.45%** (epoch 10) — best checkpoint overall, adopted as default | `logs/exp15_confusable_alpha2.log` |
+| 16 | Same as #15, alpha=3.0 (resumed from #13 directly) | none | 15 | 75.36% (epoch 14) — overshoot, worse than #15 on the targeted metric too, see writeup | `logs/exp16_confusable_alpha3.log` |
+| 17 | Same as #15, adds a 3rd confusable group (COLOR, BRIGHTNESS), alpha=2.0 unchanged | none | 15 | 75.30% (epoch 15) — real tradeoff, not a clean win, see writeup | `logs/exp17_confusable_colorfix.log` |
+| 18 | Same as #15, adds effective-number class weights (beta=0.999, a real config mistake — weaker than baseline) + focal loss (gamma=2.0) | none | 15 | 75.29% (**epoch 1** — never improved on the starting checkpoint) | `logs/exp18_classbalanced_focal.log` |
+| 19 | Same as #18 with the beta mistake removed (plain weights + focal gamma=2.0 only) | none | 15 | 74.86% (**epoch 1** again — same failure mode, ruling out the beta mistake as the cause) | `logs/exp19_focal_only.log` |
+| 20 | Same as #15, adds `--max-per-class 2000` (resumed from #13) | none | 15 | 75.49% (**epoch 1** again) | `logs/exp20_max_per_class.log` |
+| 21 | Same as #20, lr=1e-4 instead of 1e-3 (testing whether LR was the cause) | none | 15 | 75.23% (**epoch 1** again — ruled out LR as the cause) | `logs/exp21_max_per_class_lowlr.log` |
+| 22 | Same as #20's cap, **from scratch** (not resumed) — isolates whether the resume-from setup itself was the problem | none | 80 | 70.57% (epoch 57) — real per-class tradeoff, see writeup | `logs/exp22_capped_scratch.log` |
+| 23 | Same as #22, `--max-per-class 3000` (gentler cap) | none | 80 | 73.16% (epoch 60) — better tradeoff, still below #15 overall | `logs/exp23_capped3000_scratch.log` |
+| 24 | QA-filtered Option B data (17,658→16,500) + dropout=0.2 + weight-decay=1e-4 + label-smoothing=0.1, all from scratch | none | 80 | 70.60% (epoch 76) — broad regression, over-regularization not the data, see writeup | `logs/exp24_qafiltered_tweaked.log` |
+| 25 | Same as #24, QA-filtered data only (no dropout/weight-decay/label-smoothing) — isolates the QA filter's effect | none | 80 | 73.98% (epoch ~65) — confirms the QA filter itself isn't harmful; #24's regression was the regularization stack | `logs/exp25_qafiltered_only.log` |
+| 26 | **ASR-cascade** (Whisper-base transcript → TF-IDF + logistic regression), a different architecture entirely — see writeup | n/a | n/a | **90.62%** test accuracy, real audio only — but not deployable, see writeup | `scripts/legacy/train_cascade_classifier.py` |
+| 27 | DS-CNN + confusable-pair loss (alpha=2.0), **plus knowledge distillation** from #26's cascade (teacher, training-time only) | none | 80 | 75.78% val (epoch 55) — real mixed per-class tradeoff, see writeup | `logs/exp27_distillation.log` |
+| 28 | **CRNN** (96,277 params: strided DS-conv front end + BiGRU + attention pooling), confusable-pair loss alpha=2.0, 3 seeds; plus DS-CNN baseline seeds 1/2 | none | 80 | 84.00 / 84.91 / 84.00% val; **79.8–80.8% real-speech test** (DS-CNN: 68.4–70.6%) | `logs/exp28_*.log` |
+| 29a | Same as #28 + trim silence + 5.0s window, 3 seeds | none | 80 | 84.20 / 83.75 / 84.88% val; 80.7–80.8% real-speech test (≈ #28) | `logs/exp29a_*.log` |
+| 29b | Same as #29a + **waveform augmentation** (noise, speed, reverb, start shift), 3 seeds | waveform | 80 | 88.29 / 88.51 / 88.46% val; **85.1–85.7% real-speech test** — best deployable model | `logs/exp29b_*.log` |
+| 30 | Same as #29b + auxiliary word-level CTC head on the Whisper transcripts (training only); weight 0.5 × 3 seeds, 0.2 and 1.0 × seed 0 | waveform | 80 | 88.31 / 88.44 / 88.40% val; 84.6–84.8% real-speech test (weight 0.5) — **slightly worse than #29b, not adopted** | `logs/exp30_*.log` |
+| 31 | Same recipe as #29b on the base manifest **+ 4,357 targeted synthetic clips** (Chatterbox, cloned FSC/Timers speakers; schema phrasings + extra phrasings for PAUSE/STOP/PLAY_MUSIC/TIMER/COLOR/BRIGHTNESS), 3 seeds | waveform | 80 | 88.22 / 88.70 / 88.75% val; 84.9–85.3% real-speech test (≈ #29b); **98–99% on held-out targeted clips** (29b: 70–73%) | `logs/exp31_*.log`, `logs/exp31_report.md` |
+| 32 | #31 recipe + **slot heads** (timer/alarm/brightness/color values) + slots2 clips + Snips speaker re-split, 3 seeds | waveform | 80 | 84.36 / 84.43 / 84.88% val; **81.4–82.1% real-speech test (no Snips), −3.5pp vs #31**; slot values ALARM 98%, COLOR 87%, TIMER 74%, BRIGHTNESS 74%; int8 −6.8pp | `logs/exp32_*.log` (DGX), `reports/exp32_33_report.md` |
+| 33 | **"Hey Kiwi" wake word**, 25K-param CRNN, 2 seeds | waveform | 30 | seed 1 at threshold 0.95: 6.7% clean / 16.4% noisy false rejects, 0.67 false wake-ups/h | `logs/exp33_*.log` (DGX) |
+| 34 | Slot heads on the **frozen** Exp 31 encoder (3 seeds) vs. **joint** training at slot weight 0.3 (1 seed); **wake word v2** (all plausible positives + the author's recordings) | waveform | 30 / 80 | Frozen: 85.48% real speech, slot mean 77.6%. Joint w0.3: 84.80%, slot mean 83.4%. Wake v2 at 0.95: 14.1% missed (was 27.4%), 0/10 real takes missed — **wake word shipped** | `reports/exp34_report.md` |
+| 35 | Joint w0.3 + **TEMPERATURE and CREATE_REMINDER slot heads** (107,887 params), 3 seeds | waveform | 80 | 85.15 / 85.19 / 85.24% real speech; new heads 100% (synthetic clips only); third reminder value was the stale "call home" | `reports/exp35_report.md` |
+| 36 | Same as #35 with the reminder value corrected to **"exercise"**, 3 seeds | waveform | 80 | 84.86 / **84.84** / 84.46% real speech; slots TIMER 73.9, ALARM 98.1, BRIGHTNESS 74.9, COLOR 86.7, TEMPERATURE 100, CREATE_REMINDER 100% — **seed 1 shipped** | `reports/exp36_report.md` |
+
+## Parked / to-do
+
+*Historical list, written during Experiments 9–27 and kept as it was. The
+DS-CNN ranking items were superseded by the CRNN (Experiment 28). Current
+open work is under "Future enhancements" in the
+[README](../../README.md#future-enhancements); what was dropped, and why, is
+in [AUDIT.md](AUDIT.md).*
+
+Not yet run. Recorded here so they aren't lost, not because they're
+scheduled — pick back up when there's a reason to chase more accuracy
+again.
+
+- ~~Data-scaling (learning-curve) test~~ — **done, see Experiment 9
+  below.** Result: more data would meaningfully help — the curve has
+  not plateaued at 100%.
+- **Targeted (non-random) time masking** to protect the one
+  distinguishing word in polarity-confused commands (VOLUME_UP/DOWN,
+  LIGHT_ON/OFF) instead of SpecAugment's random masking (ruled out in
+  Experiment 8). Needs word-level time alignment, which the pipeline
+  doesn't have yet — a bigger lift than the other items here.
+- ~~Confusable-pair loss tuning~~ — **done, see Experiments 14-16.**
+  alpha=2.0 (`dscnn_bigcap_confusable2_best.pt`, the repo default) is
+  a real peak — alpha=1.0 undershoots (barely moves the VOLUME/
+  TEMPERATURE confusion) and alpha=3.0 overshoots (regresses
+  VOLUME/TEMPERATURE back to baseline and pushes LIGHT's other-wrong
+  rate above baseline too). Closed out, not paused — a different
+  mechanism (per-group alpha, or a different penalty formulation),
+  not more of the same knob, would be needed to improve on this
+  further.
+- ~~BC-ResNet with more channels/blocks~~ — **done, see Experiment 10
+  below.** Result: matching DS-CNN's param count (channels=48,
+  blocks=8) closed the gap and then some — 67.54%, the new best model
+  overall.
+- ~~DS-CNN with matched capacity (close the fair-comparison gap)~~ —
+  **done, see Experiment 11 below.** Result: the gap was real — DS-CNN
+  at matched capacity (72.39%) beats BC-ResNet at matched capacity
+  (67.54%) by a solid +4.85pp. The Experiment 10 conclusion ("BC-ResNet
+  is the new best model") is now superseded: DS-CNN was simply never
+  given a fair shot at the same capacity bump. **DS-CNN is the best
+  architecture found so far on this dataset**, at any capacity tried.
+- **When the final/converged class dataset lands, don't assume today's
+  ranking (DS-CNN-bigcap best) carries over — re-run and re-compare.**
+  Two reasons this specific ranking could still change: (1) it's from
+  a single seeded run each, not multiple seeds, so some of the +4.85pp
+  gap over BC-ResNet-bigcap could still be run-to-run variance rather
+  than a pure architecture effect (worth a repeat-seed check before
+  fully trusting the margin); (2) DS-CNN's edge is tied to how it
+  handles the polarity-word confusion and general phrase structure of
+  *this* dataset's sources — a different dataset could shift which
+  architecture's inductive bias fits best. The training pipeline is
+  dataset-agnostic (reads whatever's in `data/dataset_manifest.csv`),
+  so re-running the known configs (DS-CNN default and matched-capacity,
+  BC-ResNet default and matched-capacity) is cheap — just don't skip
+  it once the dataset changes.
+- **ARCHIVED, not dropped: real-recording tool for CALL/NEXT/LIST_REMINDERS**
+  (now `code/scripts/record_real_examples.py`, see DATASET.md step 8). Built,
+  tested, ready to use — paused pending course-adviser confirmation on
+  recording new personal voice data for this project. Left in the repo
+  rather than removed so it can be picked back up the moment that's
+  cleared.
+
+## Experiment 1 — DS-CNN baseline, no augmentation
+
+**Setup**: `python -m vcm.train.train --epochs 30 --batch-size 128`,
+DS-CNN (Zhang et al., "Hello Edge", arXiv:1711.07128), class-weighted
+cross-entropy, Adam lr=1e-3, no data augmentation. Chosen as the first
+architecture specifically for simplicity — validating the pipeline
+mattered more than the best architecture on the first attempt.
+
+**Result**: best val accuracy **65.29%** at epoch 28/30 (~13x random
+baseline for 20 classes). Train loss fell steadily to 0.57; val loss
+plateaued around 1.0-1.1 from epoch ~18 onward while train loss kept
+falling — an early overfitting signal, though not yet severe by epoch
+30.
+
+**Per-class accuracy** (computed from the saved checkpoint against the
+val split):
+
+| Label | Acc | n | | Label | Acc | n |
+|---|---:|---:|---|---|---:|---:|
+| unknown_background | 100.0% | 68 | | LIGHT_OFF | 61.3% | 511 |
+| CALL | 92.6% | 54 | | COLOR | 60.6% | 322 |
+| PAUSE | 88.8% | 80 | | BRIGHTNESS | 60.0% | 395 |
+| STOP | 88.0% | 108 | | LIST_REMINDERS | 53.8% | 249 |
+| TIMER | 86.5% | 178 | | VOLUME_DOWN | 53.8% | 442 |
+| ALARM | 82.9% | 333 | | PLAY_MUSIC | 51.8% | 658 |
+| LIGHT_ON | 77.1% | 562 | | MESSAGE | 51.1% | 282 |
+| TEMPERATURE | 73.8% | 1166 | | WEATHER | 42.3% | 534 |
+| VOLUME_UP | 70.9% | 477 | | | | |
+| NEXT | 68.5% | 54 | | | | |
+| CREATE_REMINDER | 63.2% | 280 | | | | |
+| TIME | 71.4% | 360 | | | | |
+
+**Top confusions** (count of val examples with true label → predicted label):
+
+| True → Predicted | Count |
+|---|---:|
+| TEMPERATURE → VOLUME_UP | 167 |
+| VOLUME_DOWN → VOLUME_UP | 134 |
+| WEATHER → TIME | 106 |
+| VOLUME_UP → VOLUME_DOWN | 70 |
+| LIGHT_OFF → LIGHT_ON | 65 |
+| TEMPERATURE → VOLUME_DOWN | 59 |
+| PLAY_MUSIC → TIME | 58 |
+| WEATHER → LIST_REMINDERS | 57 |
+| WEATHER → PLAY_MUSIC | 56 |
+| PLAY_MUSIC → VOLUME_UP | 55 |
+
+**Finding, not just noise**: the dominant failure mode is confusing
+labels that share an identical carrier phrase and differ only in one
+polarity/direction word — `"turn {up/down} the volume"` vs `"turn
+{up/down} the temperature"` (FSC's TEMPERATURE commands literally use
+volume-style "turn up/down" phrasing), `VOLUME_UP` vs `VOLUME_DOWN`
+themselves, `LIGHT_ON` vs `LIGHT_OFF`. DS-CNN's global-average-pooling
+at the end likely discards exactly the fine-grained temporal
+information needed to reliably catch a single distinguishing word.
+This is the concrete motivation for trying BC-ResNet next (below) —
+its dual 1D-temporal/2D time-frequency path is designed to retain more
+of that structure than a plain 2D-conv-then-pool architecture.
+
+## Experiment 2 — DS-CNN + SpecAugment
+
+**Setup**: `python -m vcm.train.train --model dscnn --augment --epochs
+30 --batch-size 128` — same DS-CNN architecture, same class-weighted
+cross-entropy, same Adam lr=1e-3, only change is SpecAugment (Park et
+al., arXiv:1904.08779: 2 frequency masks up to 8 bins, 2 time masks up
+to 40 frames) applied to training data only. **Caveat**: this run
+predates `--seed` in `train.py`, so unlike later experiments it is not
+seed-pinned — see the methodological note above.
+
+**Result**: best val accuracy **63.21%** at epoch 28/30 — **2.08
+points below Experiment 1's 65.29% baseline**, a real negative result
+within this 30-epoch budget. Train loss ended noticeably higher than
+Experiment 1's (1.01 vs 0.57), as expected — augmentation makes the
+training task itself harder — but val loss did not correspondingly
+improve past baseline, so this run shows augmentation making learning
+harder without yet buying back generalization in the epochs available.
+
+**Per-class accuracy**:
+
+| Label | Acc | n | | Label | Acc | n |
+|---|---:|---:|---|---|---:|---:|
+| unknown_background | 100.0% | 68 | | VOLUME_DOWN | 66.3% | 442 |
+| NEXT | 100.0% | 54 | | TIME | 59.7% | 360 |
+| TIMER | 94.9% | 178 | | CREATE_REMINDER | 59.6% | 280 |
+| CALL | 92.6% | 54 | | MESSAGE | 55.3% | 282 |
+| PAUSE | 86.3% | 80 | | BRIGHTNESS | 54.9% | 395 |
+| TEMPERATURE | 85.2% | 1166 | | PLAY_MUSIC | 52.1% | 658 |
+| ALARM | 80.8% | 333 | | LIGHT_OFF | 49.5% | 511 |
+| STOP | 74.1% | 108 | | LIST_REMINDERS | 43.4% | 249 |
+| LIGHT_ON | 70.8% | 562 | | VOLUME_UP | 38.8% | 477 |
+| COLOR | 69.3% | 322 | | WEATHER | 34.8% | 534 |
+
+**Top confusions**:
+
+| True → Predicted | Count |
+|---|---:|
+| VOLUME_UP → VOLUME_DOWN | 145 |
+| PLAY_MUSIC → MESSAGE | 101 |
+| WEATHER → TIME | 88 |
+| WEATHER → PLAY_MUSIC | 83 |
+| WEATHER → MESSAGE | 82 |
+| LIGHT_OFF → LIGHT_ON | 80 |
+| PLAY_MUSIC → TIME | 74 |
+| TEMPERATURE → VOLUME_DOWN | 74 |
+| TIME → PLAY_MUSIC | 54 |
+| LIST_REMINDERS → PLAY_MUSIC | 49 |
+
+**Analysis — a genuinely mixed result, not a clean win or loss**:
+some labels improved substantially over Experiment 1 — TEMPERATURE
+(73.8%→85.2%), TIMER (86.5%→94.9%), NEXT (68.5%→100%) — consistent
+with SpecAugment's usual effect of forcing the model to rely on more
+of the signal instead of one fragile cue. But VOLUME_UP collapsed
+(70.9%→38.8%, now confused with VOLUME_DOWN even more than before),
+and WEATHER (42.3%→34.8%) and LIGHT_OFF (61.3%→49.5%) also got worse.
+The net effect was a small overall regression. Two plausible,
+non-exclusive explanations: (1) time/frequency masking can erase the
+one distinguishing word in short command phrases — exactly the
+polarity words (VOLUME_UP vs VOLUME_DOWN) flagged as the baseline's
+weak point in Experiment 1 — actively hurting the cases it was hoped
+to help; (2) with the same 30-epoch budget, the harder augmented
+training task may simply need more epochs to pay off, and this run
+was cut off before that happened (train loss was still falling at
+epoch 30 with no sign of plateauing, unlike Experiment 1).
+
+**Confound to flag honestly**: neither this run nor Experiment 1 fixed
+a random seed, so part of the -2.08pp gap could be ordinary run-to-run
+variance (weight init, batch order) rather than a pure SpecAugment
+effect. This is exactly why `--seed` was added to `train.py`
+immediately after this run — Experiment 3 onward isolates the variable
+under test more cleanly. Given the mixed per-class picture, the next
+useful test isn't "is SpecAugment good or bad" in isolation, but
+whether it changes conclusions once combined with BC-ResNet, whose
+architecture is specifically meant to retain the fine temporal detail
+that masking may currently be erasing.
+
+## Experiment 3 — BC-ResNet, no augmentation
+
+**Setup**: `python -m vcm.train.train --model bcresnet --epochs 30
+--batch-size 128 --seed 0`, on GPU 0 (idle at launch time; GPUs 6/7
+were running someone else's job and were avoided). BC-ResNet (Kim et
+al., "Broadcasted Residual Learning", arXiv:2106.04140), 10,196
+params — less than half of DS-CNN's 24,276 — same class-weighted
+cross-entropy, Adam lr=1e-3, no augmentation, first seed-pinned run
+(`--seed 0`) so this is directly comparable to future experiments.
+Intent: isolate the architecture change on its own, since MODEL.md's
+own recommendation was BC-ResNet, and Experiment 1's confusion
+analysis motivated it specifically for its dual time/frequency path.
+
+**Result**: best val accuracy **44.16%** at epoch 30/30 — well below
+both DS-CNN runs (65.29% and 63.21%). This is a real, honest negative
+result: the architecture MODEL.md recommended as the efficiency-
+accuracy sweet spot underperformed the simpler baseline by over 19
+points in this setup.
+
+**Training was visibly unstable throughout**, unlike either DS-CNN
+run: val_loss repeatedly spiked far above its recent trend (2.3→5.47
+at epoch 6, →15.64 at epoch 11, →9.62 at epoch 19, →14.29 at epoch 25,
+→6.63 at epoch 29) with val_acc collapsing in lockstep each time,
+before partially recovering the following epoch. Train loss, by
+contrast, fell smoothly and monotonically the entire run (2.55→0.995,
+never spiking) — the instability is specific to generalization, not a
+symptom of a broken forward/backward pass. The best epochs (14, 21,
+28, 30) all coincide with a val_loss trough, meaning the final
+"best" checkpoint may simply have gotten lucky landing on a trough at
+epoch 30 rather than reflecting genuine convergence — a run cut off a
+few epochs earlier or later could plausibly report a meaningfully
+different number.
+
+**Per-class accuracy**:
+
+| Label | Acc | n | | Label | Acc | n |
+|---|---:|---:|---|---|---:|---:|
+| unknown_background | 97.1% | 68 | | CALL | 57.4% | 54 |
+| TIMER | 83.7% | 178 | | VOLUME_DOWN | 55.0% | 442 |
+| PAUSE | 81.3% | 80 | | COLOR | 53.4% | 322 |
+| ALARM | 76.3% | 333 | | BRIGHTNESS | 49.9% | 395 |
+| NEXT | 74.1% | 54 | | TEMPERATURE | 38.3% | 1166 |
+| LIGHT_ON | 69.9% | 562 | | MESSAGE | 37.9% | 282 |
+| STOP | 66.7% | 108 | | CREATE_REMINDER | 29.6% | 280 |
+| LIST_REMINDERS | 65.5% | 249 | | LIGHT_OFF | 27.8% | 511 |
+| TIME | 58.6% | 360 | | PLAY_MUSIC | 26.9% | 658 |
+| | | | | WEATHER | 13.5% | 534 |
+| | | | | VOLUME_UP | 12.2% | 477 |
+
+**Top confusions**:
+
+| True → Predicted | Count |
+|---|---:|
+| TEMPERATURE → VOLUME_DOWN | 220 |
+| VOLUME_UP → VOLUME_DOWN | 189 |
+| LIGHT_OFF → LIGHT_ON | 189 |
+| PLAY_MUSIC → TIME | 153 |
+| CREATE_REMINDER → LIST_REMINDERS | 131 |
+| TEMPERATURE → TIME | 128 |
+| TEMPERATURE → PLAY_MUSIC | 127 |
+| WEATHER → TIME | 120 |
+| WEATHER → LIST_REMINDERS | 112 |
+| PLAY_MUSIC → LIST_REMINDERS | 100 |
+
+**Analysis**: BC-ResNet did *not* fix the polarity-word confusion
+Experiment 1 flagged as motivation for trying it — VOLUME_UP↔VOLUME_DOWN
+and LIGHT_OFF→LIGHT_ON are still top confusions here, and VOLUME_UP's
+per-class accuracy (12.2%) is far worse than DS-CNN's baseline (70.9%
+in Experiment 1). WEATHER is also now the weakest class at 13.5%
+(down from 42.3% in Experiment 1). The larger classes with many
+labels sharing vocabulary (PLAY_MUSIC, TEMPERATURE, WEATHER) collapsed
+into each other more than before, suggesting the model never
+stabilized enough in 30 epochs to learn fine-grained distinctions —
+consistent with the recurring val_loss spikes never fully damping out.
+Two labels *did* do reasonably well relative to their Experiment 1
+numbers only by coincidence of overall lower accuracy elsewhere
+(TIMER, PAUSE, ALARM stayed in a similar range), not because
+BC-ResNet handled them specially.
+
+**Working hypothesis, not yet confirmed**: lr=1e-3 with plain Adam may
+simply be too aggressive for BC-ResNet's frequency-pooled residual
+path (`BCResBlock` in `architectures.py`) — the repeated sharp
+val_loss spikes with a smoothly-decreasing train_loss are a classic
+signature of a learning rate that's too high for a specific
+architecture's loss landscape, not of a data or implementation bug.
+The original BC-ResNet paper (arXiv:2106.04140) trains with a warmup +
+cosine LR schedule rather than a flat rate, which this implementation
+doesn't yet have. **Recommended next experiment**: re-run BC-ResNet
+with a lower learning rate (e.g. 3e-4) and/or gradient clipping before
+concluding the architecture itself underperforms DS-CNN on this
+dataset — the current -19pp gap may be an optimization artifact rather
+than a genuine architecture-vs-data mismatch. This has not been tested
+yet; treat the 44.16% figure as provisional until that follow-up runs.
+
+## Experiment 4 — BC-ResNet, lower learning rate (lr=3e-4)
+
+**Setup**: `python -m vcm.train.train --model bcresnet --epochs 30
+--batch-size 128 --lr 3e-4 --seed 0`, on GPU 0. Identical to
+Experiment 3 except `--lr 3e-4` instead of the default `1e-3` (a
+~3.3x reduction), to directly test the LR-instability hypothesis
+raised there.
+
+**Result**: best val accuracy **38.79%** at epoch 28/30 — this is
+*worse* than Experiment 3's 44.16%, not better. The hypothesis that a
+lower learning rate alone would fix BC-ResNet's underperformance is
+**not confirmed** by this run.
+
+**What the lower LR did and didn't fix**: instability was reduced but
+not eliminated — the worst val_loss spike this run peaked at 5.29
+(epoch 21), versus 15.64 in Experiment 3, and spikes were somewhat
+less frequent. But the tradeoff was slower learning: at epoch 14 (the
+point Experiment 3 first reached its 40%+ plateau), this run was only
+at 25.46% val_acc, and it never fully caught up in the remaining 16
+epochs. In other words, the lower LR bought some stability at the cost
+of convergence speed, and 30 epochs wasn't enough for the more
+cautious run to reach where the noisier one landed.
+
+**Per-class accuracy**:
+
+| Label | Acc | n | | Label | Acc | n |
+|---|---:|---:|---|---|---:|---:|
+| unknown_background | 100.0% | 68 | | COLOR | 33.5% | 322 |
+| PAUSE | 98.8% | 80 | | LIST_REMINDERS | 33.3% | 249 |
+| CALL | 81.5% | 54 | | PLAY_MUSIC | 31.9% | 658 |
+| NEXT | 75.9% | 54 | | LIGHT_OFF | 31.5% | 511 |
+| TIMER | 71.4% | 178 | | TIME | 30.0% | 360 |
+| TEMPERATURE | 67.8% | 1166 | | CREATE_REMINDER | 29.3% | 280 |
+| STOP | 65.7% | 108 | | VOLUME_UP | 20.1% | 477 |
+| BRIGHTNESS | 50.4% | 395 | | LIGHT_ON | 14.1% | 562 |
+| ALARM | 41.7% | 333 | | MESSAGE | 11.7% | 282 |
+| VOLUME_DOWN | 41.0% | 442 | | WEATHER | 11.1% | 534 |
+
+**Top confusions**:
+
+| True → Predicted | Count |
+|---|---:|
+| WEATHER → PLAY_MUSIC | 186 |
+| TEMPERATURE → VOLUME_DOWN | 185 |
+| LIGHT_ON → VOLUME_DOWN | 154 |
+| LIGHT_ON → LIGHT_OFF | 132 |
+| VOLUME_UP → VOLUME_DOWN | 120 |
+| PLAY_MUSIC → PAUSE | 113 |
+| PLAY_MUSIC → TIME | 102 |
+| LIGHT_ON → TEMPERATURE | 101 |
+| TIME → PLAY_MUSIC | 100 |
+| LIGHT_OFF → TEMPERATURE | 91 |
+
+**Analysis**: TEMPERATURE improved a lot relative to Experiment 3
+(38.3%→67.8%) and PAUSE is now almost perfect (81.3%→98.8%), but
+LIGHT_ON collapsed badly (69.9%→14.1%, now mostly confused with
+VOLUME_DOWN and TEMPERATURE rather than its natural pair LIGHT_OFF) and
+WEATHER stayed the weakest class (13.5%→11.1%). The confusion pattern
+looks less like "the same errors, smaller" and more like a different,
+still-unconverged model — consistent with 30 epochs simply not being
+enough training budget at this LR for a network this size to settle.
+
+**Conclusion for this pair of runs**: across Experiments 3 and 4,
+BC-ResNet has not beaten DS-CNN on this dataset within a 30-epoch
+budget at either learning rate tried, and neither run reproduces the
+polarity-word fix it was chosen for. The instability is real and
+LR-related (lower LR measurably reduced spike severity), but simply
+lowering LR trades one problem (instability) for another (slow
+convergence) rather than resolving the underlying regression. The
+warmup + cosine-decay schedule the original BC-ResNet paper
+(arXiv:2106.04140) uses — not yet implemented in `train.py` — remains
+untested and is the most promising next lever, since it targets
+exactly this instability-vs-convergence-speed tradeoff (aggressive
+learning once training has stabilized, gentle learning early on)
+rather than picking one flat rate for the whole run. Until that's
+tried, DS-CNN (Experiment 1, 65.29%) remains the best model on this
+dataset by a wide margin.
+
+## Experiment 5 — BC-ResNet, warmup + cosine LR decay
+
+**Setup**: `python -m vcm.train.train --model bcresnet --epochs 30
+--batch-size 128 --lr 1e-3 --warmup-epochs 3 --seed 0`, on GPU 0.
+Same peak LR as Experiment 3 (1e-3), but reached via a 3-epoch linear
+warmup from ~1e-5, then cosine decay to ~0 over the remaining 27
+epochs — the schedule `--warmup-epochs` was added to `train.py`
+specifically to test, following the original BC-ResNet paper's own
+recipe (arXiv:2106.04140) rather than a flat rate.
+
+**Result**: best val accuracy **47.41%** at epoch 25/30 — clearly
+better than both prior BC-ResNet attempts (44.16% flat lr=1e-3,
+38.79% flat lr=3e-4), confirming the schedule helps. Still well below
+DS-CNN's 65.29% baseline, though — a real improvement over BC-ResNet's
+prior showing, not a win overall.
+
+**Instability was reduced but only partly, and correlates visibly
+with LR level**: spikes still occurred at epoch 7 (val_loss 3.75),
+13 (3.89), 15 (6.14), and 19 (4.13) — all while LR was still
+relatively high (roughly 7e-4 to 1e-3). From epoch 20 onward, as LR
+decayed below ~3.5e-4, val_loss and val_acc both stabilized
+completely: epochs 24-30 form a smooth, monotonically-settling curve
+around 46-47% with no further spikes. This is a clean confirmation of
+the original hypothesis from Experiment 3 — **the instability is an
+LR-magnitude effect specific to this architecture**, not a symptom of
+a data or implementation bug, since decaying the LR down eliminates it
+predictably rather than it dying out randomly.
+
+**Per-class accuracy**:
+
+| Label | Acc | n | | Label | Acc | n |
+|---|---:|---:|---|---|---:|---:|
+| unknown_background | 97.1% | 68 | | CREATE_REMINDER | 46.4% | 280 |
+| CALL | 92.6% | 54 | | LIST_REMINDERS | 42.2% | 249 |
+| PAUSE | 88.8% | 80 | | VOLUME_UP | 38.0% | 477 |
+| NEXT | 87.0% | 54 | | TIME | 37.8% | 360 |
+| STOP | 78.7% | 108 | | LIGHT_OFF | 33.7% | 511 |
+| TIMER | 75.8% | 178 | | MESSAGE | 32.3% | 282 |
+| TEMPERATURE | 69.5% | 1166 | | VOLUME_DOWN | 31.7% | 442 |
+| ALARM | 62.5% | 333 | | LIGHT_ON | 31.0% | 562 |
+| COLOR | 56.5% | 322 | | PLAY_MUSIC | 22.2% | 658 |
+| BRIGHTNESS | 49.1% | 395 | | WEATHER | 46.6% | 534 |
+
+**Top confusions**:
+
+| True → Predicted | Count |
+|---|---:|
+| TEMPERATURE → VOLUME_UP | 128 |
+| LIGHT_ON → LIGHT_OFF | 125 |
+| PLAY_MUSIC → WEATHER | 120 |
+| PLAY_MUSIC → TIME | 107 |
+| TIME → WEATHER | 100 |
+| VOLUME_DOWN → VOLUME_UP | 81 |
+| PLAY_MUSIC → MESSAGE | 76 |
+| LIGHT_OFF → LIGHT_ON | 69 |
+| VOLUME_UP → VOLUME_DOWN | 67 |
+| TEMPERATURE → VOLUME_DOWN | 67 |
+
+**Analysis**: this is the first BC-ResNet run where the model reliably
+separates its strongest classes (CALL, PAUSE, NEXT, STOP, TIMER all
+75-93%) rather than the noisier, less-structured per-class picture in
+Experiments 3-4. WEATHER recovered substantially (13.5% in Exp 3,
+11.1% in Exp 4 → 46.6% here) — the worst-performing class in both
+earlier runs is now mid-pack. PLAY_MUSIC is now the weakest class
+(22.2%), and the polarity confusions (VOLUME_UP/DOWN, LIGHT_ON/OFF)
+are still present but no longer dominate the confusion list the way
+they did for DS-CNN — they're now roughly on par with several other,
+unrelated confusions (TEMPERATURE↔VOLUME_UP, PLAY_MUSIC↔WEATHER),
+suggesting the model hasn't yet learned fine-grained distinctions
+broadly, not that it has a specific blind spot for polarity words.
+
+**Conclusion across Experiments 3-5**: the LR schedule was the right
+lever — it fixed the instability cleanly and improved BC-ResNet's
+accuracy by +3.25pp over its best prior flat-LR attempt — but 30
+epochs still isn't enough for BC-ResNet to reach, let alone beat,
+DS-CNN's baseline on this dataset. Given the loss curve was still
+descending smoothly and hadn't plateaued by epoch 30 (train_loss
+1.163→1.161 over the last 3 epochs, but val_acc still crept up to its
+final best at epoch 25 with no sign of overfitting yet — val_loss
+never rose again after the last spike), **more epochs is the most
+likely next lever to close the remaining gap**, not a further
+architecture or optimizer change. The next test worth running is the
+same warmup+cosine config extended to 60-80 epochs before concluding
+anything final about BC-ResNet vs. DS-CNN on this dataset.
+
+## Experiment 6 — BC-ResNet, warmup + cosine LR decay, 80 epochs
+
+**Setup**: `python -m vcm.train.train --model bcresnet --epochs 80
+--batch-size 128 --lr 1e-3 --warmup-epochs 5 --seed 0`, on GPU 0.
+Direct follow-up to Experiment 5's own recommendation: same schedule
+shape (linear warmup then cosine decay to ~0), extended from 30 to 80
+total epochs (warmup lengthened from 3→5 epochs, keeping it roughly
+proportional) since Experiment 5's loss curve hadn't plateaued and
+showed no overfitting signal by epoch 30.
+
+**Result**: best val accuracy **58.99%** at epoch 65/80 — a real
++11.58pp jump over Experiment 5's 47.41%, confirming more training
+time was the right next lever, not a further architecture or
+optimizer change. Still below DS-CNN's 65.29% (Experiment 1), a
+-6.3pp gap, but far closer than any prior BC-ResNet run.
+
+**Instability recurred at high LR just as before, at the same
+absolute epochs proportionally**: a severe spike at epoch 10 (val_loss
+8.37, matching the LR level `Experiment 5` was at around its own
+epoch ~4, since the cosine schedule here decays over 75 epochs instead
+of 27) and continued bumpiness through roughly epoch 35, tracking
+LR staying above ~6e-4. From epoch 45 onward, as LR dropped below
+~5e-4, the curve settled into smooth, steady improvement with no
+further spikes — val_loss fell monotonically from 1.38 (epoch 45) to
+1.22 (epoch 75/80), and val_acc climbed from 54% to a 59% plateau.
+This is the same LR-magnitude-driven pattern as Experiment 5, just
+stretched over more epochs because the cosine schedule here decays
+more slowly in absolute terms — further evidence the instability is
+tied to LR magnitude specifically, not epoch count.
+
+**Per-class accuracy**:
+
+| Label | Acc | n | | Label | Acc | n |
+|---|---:|---:|---|---|---:|---:|
+| unknown_background | 97.1% | 68 | | MESSAGE | 55.0% | 282 |
+| PAUSE | 95.0% | 80 | | CREATE_REMINDER | 51.1% | 280 |
+| CALL | 94.4% | 54 | | BRIGHTNESS | 50.6% | 395 |
+| NEXT | 90.7% | 54 | | PLAY_MUSIC | 42.4% | 658 |
+| TEMPERATURE | 85.8% | 1166 | | WEATHER | 41.8% | 534 |
+| STOP | 83.3% | 108 | | LIGHT_OFF | 40.3% | 511 |
+| TIMER | 82.6% | 178 | | VOLUME_UP | 38.8% | 477 |
+| ALARM | 67.9% | 333 | | LIST_REMINDERS | 37.4% | 249 |
+| LIGHT_ON | 64.2% | 562 | | | | |
+| COLOR | 62.4% | 322 | | | | |
+| TIME | 56.1% | 360 | | | | |
+| VOLUME_DOWN | 55.0% | 442 | | | | |
+
+**Top confusions**:
+
+| True → Predicted | Count |
+|---|---:|
+| VOLUME_UP → VOLUME_DOWN | 115 |
+| LIGHT_OFF → LIGHT_ON | 110 |
+| WEATHER → TIME | 100 |
+| PLAY_MUSIC → WEATHER | 87 |
+| WEATHER → PLAY_MUSIC | 72 |
+| WEATHER → MESSAGE | 69 |
+| PLAY_MUSIC → MESSAGE | 66 |
+| PLAY_MUSIC → TIME | 65 |
+| VOLUME_UP → TEMPERATURE | 63 |
+| LIGHT_ON → TEMPERATURE | 61 |
+
+**Analysis**: this is the strongest BC-ResNet result so far by a wide
+margin, and its per-class profile now looks much more like DS-CNN's
+(Experiment 1) than its own earlier attempts — TEMPERATURE (85.8%),
+CALL (94.4%), TIMER (82.6%), PAUSE (95.0%) are all close to or above
+DS-CNN's numbers for the same classes. But the polarity confusions
+DS-CNN struggled with are **back at the top of the list** here
+(VOLUME_UP→VOLUME_DOWN, LIGHT_OFF→LIGHT_ON), which BC-ResNet's dual
+time/frequency path was originally chosen to fix — at this accuracy
+level it has *not* solved that specific problem any better than
+DS-CNN did. LIST_REMINDERS (37.4%) and VOLUME_UP (38.8%) are now the
+weakest classes.
+
+**Conclusion across Experiments 3-6**: with enough training (80
+epochs, correct LR schedule), BC-ResNet gets close to DS-CNN
+(58.99% vs 65.29%, a 6.3pp gap that has been closing steadily with
+more epochs: 44%→47%→59% across Experiments 3/5/6) but still hasn't
+matched or beaten it on this dataset, and it has not resolved the
+polarity-confusion problem that motivated trying it in the first
+place. Given DS-CNN reaches a higher number in 30 epochs (roughly 8.5
+GPU-minutes) than BC-ResNet needs 65+ epochs (roughly 65 GPU-minutes)
+to approach, **DS-CNN remains the recommended model for this dataset**
+under the current setup — both on accuracy and on training-time
+efficiency, which also matters for MODEL.md's stated goal of keeping
+the whole pipeline (not just inference) practical on available
+compute. BC-ResNet's smaller size (10,196 vs DS-CNN's 24,276 params)
+remains a real advantage for the on-device deployment target, so it
+isn't ruled out — but closing the remaining accuracy gap would need a
+different lever than epochs or LR schedule alone (e.g., augmentation
+combined with the now-stable schedule, or more channels/blocks), not
+yet tested.
+
+## Experiment 7 — DS-CNN, warmup + cosine LR decay
+
+**Setup**: `python -m vcm.train.train --model dscnn --epochs 30
+--batch-size 128 --lr 1e-3 --warmup-epochs 3 --seed 0`, on GPU 0.
+The same schedule that helped BC-ResNet (Experiments 5-6), applied to
+DS-CNN for the first time — Experiment 1's baseline used a flat LR
+throughout, so this checks whether the schedule is a general win or
+something specific to fixing BC-ResNet's instability.
+
+**Result**: best val accuracy **65.96%** at epoch 26/30 — a modest but
+real +0.67pp improvement over Experiment 1's 65.29% flat-LR baseline,
+and the **best result across all 7 experiments so far**. Unlike
+BC-ResNet, DS-CNN showed no instability at any point in this run —
+val_loss decreased smoothly and monotonically the entire time
+(2.98→1.06), confirming the spiking behavior in Experiments 3, 5, and
+6 was specific to BC-ResNet's architecture, not a general property of
+training on this dataset at lr=1e-3.
+
+**Convergence was also much faster**: this run reached 64.81% by
+epoch 20, matching Experiment 1's final epoch-28 result 8 epochs
+earlier, and continued to a new best by epoch 26. The warmup phase
+(epochs 1-3, ramping to peak LR) cost some early-epoch accuracy
+relative to Experiment 1's immediate flat-1e-3 start, but the
+subsequent cosine decay more than made up for it.
+
+**Per-class accuracy**:
+
+| Label | Acc | n | | Label | Acc | n |
+|---|---:|---:|---|---|---:|---:|
+| unknown_background | 100.0% | 68 | | CREATE_REMINDER | 63.9% | 280 |
+| CALL | 92.6% | 54 | | BRIGHTNESS | 62.0% | 395 |
+| NEXT | 87.0% | 54 | | TIME | 60.8% | 360 |
+| TIMER | 86.5% | 178 | | VOLUME_UP | 57.7% | 477 |
+| PAUSE | 85.0% | 80 | | WEATHER | 54.1% | 534 |
+| TEMPERATURE | 84.1% | 1166 | | MESSAGE | 53.6% | 282 |
+| ALARM | 80.5% | 333 | | PLAY_MUSIC | 50.9% | 658 |
+| STOP | 77.8% | 108 | | VOLUME_DOWN | 50.0% | 442 |
+| LIGHT_ON | 70.8% | 562 | | LIST_REMINDERS | 47.0% | 249 |
+| COLOR | 67.1% | 322 | | | | |
+| LIGHT_OFF | 64.0% | 511 | | | | |
+
+**Top confusions**:
+
+| True → Predicted | Count |
+|---|---:|
+| VOLUME_DOWN → VOLUME_UP | 120 |
+| VOLUME_UP → VOLUME_DOWN | 72 |
+| WEATHER → TIME | 68 |
+| TIME → WEATHER | 65 |
+| TEMPERATURE → VOLUME_UP | 63 |
+| PLAY_MUSIC → MESSAGE | 61 |
+| PLAY_MUSIC → TIME | 57 |
+| WEATHER → PLAY_MUSIC | 52 |
+| PLAY_MUSIC → WEATHER | 50 |
+| LIGHT_ON → LIGHT_OFF | 45 |
+
+**Analysis**: this is the same DS-CNN architecture and confusion
+pattern from Experiment 1 (polarity words still dominate: VOLUME_UP/
+DOWN and LIGHT_ON/OFF are still top confusions) but with meaningfully
+fewer errors overall — VOLUME_DOWN→VOLUME_UP dropped from 134 to 120,
+LIGHT_OFF→LIGHT_ON from 65 to 45. The schedule improved general
+convergence without resolving the specific polarity-word weak point
+Experiment 1 flagged — consistent with the schedule improving how well
+the model fits the data it's given, not what it's structurally capable
+of distinguishing.
+
+**Current standing recommendation**: this checkpoint
+(`checkpoints/dscnn_warmup_best.pt`) is now the best model produced
+across this project's experiments, and warmup+cosine LR scheduling
+looks like a good default going forward for any future run of either
+architecture, at negligible extra cost (`--warmup-epochs 3` on top of
+an otherwise-identical run). The polarity-word confusion remains the
+dataset's dominant unsolved failure mode across every architecture and
+schedule tried so far — the strongest untested next step for
+addressing it specifically is not a new architecture or schedule, but
+augmenting/re-weighting the training data itself to emphasize the
+distinguishing word in commands that otherwise share a carrier phrase
+(e.g. targeted time-masking that preserves the polarity word instead
+of SpecAugment's random masking, which Experiment 2 showed can erase
+exactly that word).
+
+## Experiment 8 — DS-CNN, warmup + cosine LR decay + SpecAugment
+
+**Setup**: `python -m vcm.train.train --model dscnn --augment --epochs
+30 --batch-size 128 --lr 1e-3 --warmup-epochs 3 --seed 0`, on GPU 0.
+Retests SpecAugment (the negative result from Experiment 2) on top of
+Experiment 7's now-proven warmup+cosine schedule, to check whether
+Experiment 2's regression was itself an artifact of the old flat-LR,
+unseeded setup rather than a real property of SpecAugment on this
+dataset.
+
+**Result**: best val accuracy **57.77%** at epoch 30/30 — **8.19
+points below Experiment 7's 65.96%** (same config, no augmentation),
+and even below Experiment 1's original flat-LR baseline (65.29%). The
+regression is confirmed, not explained away: SpecAugment is a genuine
+net-negative for this dataset/architecture combination, independent of
+the LR schedule or seeding used underneath it. Training was still
+gradually improving at epoch 30 but had clearly begun to plateau
+(val_acc 57.7-57.8% across the last 5 epochs) — more epochs alone is
+unlikely to close an 8pp gap the way it helped BC-ResNet's much larger,
+still-descending gap in Experiment 6.
+
+**Per-class accuracy**:
+
+| Label | Acc | n | | Label | Acc | n |
+|---|---:|---:|---|---|---:|---:|
+| unknown_background | 98.5% | 68 | | WEATHER | 56.7% | 534 |
+| CALL | 94.4% | 54 | | CREATE_REMINDER | 56.1% | 280 |
+| TIMER | 89.3% | 178 | | LIGHT_OFF | 49.9% | 511 |
+| NEXT | 88.9% | 54 | | LIST_REMINDERS | 45.4% | 249 |
+| PAUSE | 88.8% | 80 | | MESSAGE | 44.0% | 282 |
+| TEMPERATURE | 81.1% | 1166 | | TIME | 35.3% | 360 |
+| STOP | 76.9% | 108 | | PLAY_MUSIC | 28.0% | 658 |
+| ALARM | 74.5% | 333 | | VOLUME_UP | 23.3% | 477 |
+| LIGHT_ON | 66.6% | 562 | | | | |
+| COLOR | 60.3% | 322 | | | | |
+| BRIGHTNESS | 59.2% | 395 | | | | |
+| VOLUME_DOWN | 58.8% | 442 | | | | |
+
+**Top confusions**:
+
+| True → Predicted | Count |
+|---|---:|
+| VOLUME_UP → VOLUME_DOWN | 167 |
+| PLAY_MUSIC → WEATHER | 132 |
+| TIME → WEATHER | 119 |
+| LIGHT_OFF → LIGHT_ON | 84 |
+| PLAY_MUSIC → MESSAGE | 76 |
+| TEMPERATURE → VOLUME_DOWN | 74 |
+| PLAY_MUSIC → TIME | 70 |
+| LIST_REMINDERS → WEATHER | 68 |
+| WEATHER → TIME | 65 |
+| VOLUME_UP → TEMPERATURE | 62 |
+
+**Analysis**: VOLUME_UP is now the weakest class by far (23.3%, worse
+than any prior experiment for this label), and its top confusion
+(VOLUME_UP→VOLUME_DOWN, 167 — the single largest confusion count seen
+in any experiment) confirms the theory from Experiment 2: masking a
+short command's one distinguishing word (here, "up" vs "down") is
+actively harmful, not neutral, for exactly the classes that already
+depend on a single word to disambiguate. WEATHER is heavily involved
+in confusions again too (both as source and target), similar to its
+behavior without the schedule.
+
+**Conclusion — SpecAugment is now ruled out for this dataset**: across
+two independent tests (Experiment 2 at flat LR, Experiment 8 at the
+proven warmup+cosine schedule), SpecAugment produced a real,
+substantial regression both times. This isn't a schedule or seeding
+artifact — it's specific to how random time/frequency masking
+interacts with short, single-distinguishing-word commands. **DS-CNN +
+warmup+cosine LR schedule, no augmentation (Experiment 7, 65.96%)
+remains the best and recommended configuration** for this dataset.
+Any future augmentation attempt should be targeted (protect the
+distinguishing word) rather than random, per the note at the end of
+Experiment 7 — but that requires word-level alignment infrastructure
+not yet built, and is not a small follow-up.
+
+## Experiment 9 — Data-scaling (learning-curve) test
+
+**Motivation**: after 8 experiments, accuracy had settled around
+65-66% regardless of architecture or LR schedule, prompting the
+question of whether the dataset itself is the limiting factor. Indirect
+evidence at the time (small classes like CALL/PAUSE/NEXT already
+scoring 80-95%+, the dominant confusion looking like a phrasing overlap
+baked into the source data) pointed toward "probably structural, not
+data-limited" — but that was inference, not a direct test. This
+experiment is the direct test: added `--train-fraction` to `train.py`
+(randomly subsamples the training split, seeded/reproducible, val/test
+untouched) and trained the winning config (DS-CNN + 3-epoch warmup +
+cosine decay, seed 0) at 25%, 50%, 75%, and 100% (= Experiment 7,
+reused rather than rerun) of the training data.
+
+**Setup**: `python -m vcm.train.train --model dscnn --epochs 30
+--batch-size 128 --lr 1e-3 --warmup-epochs 3 --seed 0 --train-fraction
+{0.25,0.50,0.75}`, three runs launched in parallel on GPUs 0/1/2.
+
+**Result — the curve has not plateaued**:
+
+| Train fraction | Train rows | Best val acc |
+|---:|---:|---:|
+| 25% | 12,151 | 44.06% |
+| 50% | 24,302 | 54.77% |
+| 75% | 36,453 | 60.72% |
+| 100% | 48,605 | **65.96%** (Experiment 7) |
+
+Looking at gain per *doubling* of data (the natural unit for a learning
+curve): 25%→50% gained +10.71pp, and 50%→100% gained +11.19pp — nearly
+identical. A curve that was running out of headroom would show
+shrinking gains per doubling; this one hasn't started to bend yet.
+**Direct answer to "could the dataset be insufficient": yes — more
+data would very likely raise accuracy further**, which revises the
+earlier indirect-evidence-based read toward "probably structural."
+
+**Per-class comparison (25% vs. 100%/Experiment 7) — the gain is
+concentrated exactly where it's needed most**: the classes that
+improve the most from 4x more data are the ones already flagged as the
+dataset's hardest, most-confused classes — VOLUME_UP (18.7%→57.7%,
++39.0pp), LIGHT_OFF (26.0%→64.0%, +38.0pp), PLAY_MUSIC
+(15.4%→50.9%, +35.5pp), TIME (26.4%→60.8%, +34.4pp), COLOR
+(34.8%→67.1%, +32.3pp). Meanwhile the classes that were already easy at
+25% data (CALL, TEMPERATURE, NEXT, TIMER, ALARM, STOP, PAUSE — all
+66%+ even with a quarter of the data) only gained 9-19pp, since they
+had much less room to grow.
+
+**Reconciling this with Experiments 1-8's confusion findings**: both
+things are true at once. The polarity/carrier-phrase confusion
+(VOLUME_UP/DOWN, LIGHT_ON/OFF, TEMPERATURE overlapping VOLUME phrasing)
+is a real structural property of how the source data phrases these
+commands — more of the same phrasing pattern won't teach the model a
+*new* distinguishing cue. But this experiment shows those exact classes
+are also the most data-hungry — they need more examples than the easy
+classes to reach the same accuracy, and they hadn't saturated even at
+the full current dataset size. So the practical, actionable conclusion
+is: **growing the dataset further (more real+synthetic examples for
+the already-covered labels, not necessarily new sources) is a
+legitimate, evidence-backed lever**, not a dead end — it just won't by
+itself eliminate the confusion the way a truly new source of
+information (e.g. protecting the distinguishing word specifically)
+might.
+
+## Experiment 10 — BC-ResNet, capacity matched to DS-CNN
+
+**Motivation**: Experiments 5-6 fixed BC-ResNet's training instability
+(warmup+cosine schedule) and closed most of its gap to DS-CNN with more
+epochs (58.99% at 80 epochs), but it still trailed DS-CNN's 65.96%
+(Experiment 7). BC-ResNet's default config (channels=32, blocks=6) is
+only 10,196 params — less than half of DS-CNN's 24,276 — so the
+remaining gap could be an under-capacity model, not an architecture
+that's inherently worse for this task. Added `--width`/`--depth` CLI
+overrides to `train.py` (map to each model's own constructor kwargs)
+specifically to test this without code changes.
+
+**Setup**: `python -m vcm.train.train --model bcresnet --epochs 80
+--batch-size 128 --lr 1e-3 --warmup-epochs 5 --seed 0 --width 48
+--depth 8`, on GPU 0. `channels=48, blocks=8` gives **25,748 params** —
+closely matched to DS-CNN's 24,276, a fair capacity comparison rather
+than a much bigger model.
+
+**Result — new best model overall**: best val accuracy **67.54%** at
+epoch 53/80, beating DS-CNN's 65.96% (Experiment 7) by **+1.58pp**.
+This is the first BC-ResNet run to beat DS-CNN on this dataset, after
+Experiments 3-6 all fell short at the smaller default capacity.
+
+**The same instability-then-settle pattern recurred, and capacity
+didn't make it worse**: spikes still occurred while LR was high
+(epochs 8, 17, 28 all had a val_loss jump followed by a partial or
+full recovery the next epoch), consistent with Experiments 5-6's
+finding that this is LR-magnitude-driven, not capacity-driven. Once
+LR dropped below ~3e-4 around epoch 50, the curve settled into a
+smooth, low-variance plateau in the 63-68% range for the rest of the
+run (epochs 50-80) — the same settling behavior seen at the smaller
+capacity, just reaching a higher plateau.
+
+**Convergence was also much faster than the smaller BC-ResNet**: this
+run matched Experiment 6's final 58.99% by epoch ~24 (Experiment 6
+needed all 80 epochs to get there), and crossed DS-CNN's 65.96%
+benchmark by epoch ~45 — roughly half the epoch budget Experiment 6
+needed just to get close.
+
+**Per-class accuracy**:
+
+| Label | Acc | n | | Label | Acc | n |
+|---|---:|---:|---|---|---:|---:|
+| unknown_background | 100.0% | 68 | | LIGHT_OFF | 61.8% | 511 |
+| NEXT | 96.3% | 54 | | VOLUME_UP | 59.3% | 477 |
+| PAUSE | 95.0% | 80 | | TIME | 53.6% | 360 |
+| TEMPERATURE | 93.8% | 1166 | | PLAY_MUSIC | 52.9% | 658 |
+| CALL | 88.9% | 54 | | MESSAGE | 51.8% | 282 |
+| TIMER | 88.2% | 178 | | WEATHER | 50.2% | 534 |
+| STOP | 85.2% | 108 | | LIST_REMINDERS | 49.4% | 249 |
+| ALARM | 76.6% | 333 | | VOLUME_DOWN | 48.0% | 442 |
+| CREATE_REMINDER | 73.6% | 280 | | | | |
+| LIGHT_ON | 70.5% | 562 | | | | |
+| COLOR | 69.3% | 322 | | | | |
+| BRIGHTNESS | 62.8% | 395 | | | | |
+
+**Top confusions**:
+
+| True → Predicted | Count |
+|---|---:|
+| VOLUME_DOWN → VOLUME_UP | 89 |
+| WEATHER → PLAY_MUSIC | 72 |
+| LIGHT_OFF → TEMPERATURE | 66 |
+| VOLUME_UP → TEMPERATURE | 63 |
+| TIME → PLAY_MUSIC | 61 |
+| VOLUME_UP → VOLUME_DOWN | 60 |
+| LIGHT_ON → LIGHT_OFF | 56 |
+| WEATHER → TIME | 53 |
+| VOLUME_DOWN → TEMPERATURE | 53 |
+| PLAY_MUSIC → MESSAGE | 49 |
+
+**Analysis**: TEMPERATURE jumped to 93.8% — the strongest large class
+by far, well above DS-CNN's 84.1% for the same label (Experiment 7).
+But this came with a new, previously-minor confusion pattern:
+LIGHT_OFF→TEMPERATURE (66) and VOLUME_DOWN/UP→TEMPERATURE (63, 53) are
+now prominent, where they barely registered in DS-CNN's confusion
+list. This reads as the model becoming very confident about
+TEMPERATURE specifically (likely because it's the largest class by
+far, 1,166 val examples) at the expense of pulling in some borderline
+VOLUME/LIGHT cases that share its "turn up/down X" carrier phrase —
+the classic pattern of a class-imbalance-driven bias, only partly
+offset by the class-weighted loss. The core VOLUME_UP/DOWN and
+LIGHT_ON/OFF polarity confusion is still present (89, 60, 56 counts)
+but is no longer the single dominant failure mode the way it was for
+DS-CNN.
+
+**Current standing recommendation**: `checkpoints/bcresnet_bigcap_best.pt`
+was the best model produced up through Experiment 10 (67.54% val
+accuracy). **Superseded by Experiment 11 below**, which gave DS-CNN
+the same fair capacity treatment and found it pulls further ahead
+(72.39%) — so this recommendation no longer holds; see Experiment 11's
+own conclusion for the current standing recommendation. Trade-off to
+note for the RPi target: at 25,748 params BC-ResNet is now roughly the
+same size as DS-CNN (24,276), so the "BC-ResNet is much smaller"
+advantage from Experiments 3-6 no longer applies at this capacity —
+the choice between them is purely about accuracy and confusion
+pattern, not model size. Both remaining open items — targeted masking
+for the polarity confusion, and growing the dataset (Experiment 9's
+finding) — apply to whichever architecture is carried forward.
+
+## Experiment 11 — DS-CNN, capacity matched to BC-ResNet's bigcap config
+
+**Motivation**: directly closes the fair-comparison gap flagged after
+Experiment 10 — BC-ResNet was given a capacity bump (10,196→25,748
+params) and beat DS-CNN's default-capacity result, but DS-CNN itself
+had never been tested at a matching capacity. Without this run, "BC-
+ResNet is the better architecture" and "more capacity helps, and we
+only tried it on one side" were indistinguishable.
+
+**Setup**: `python -m vcm.train.train --model dscnn --epochs 80
+--batch-size 128 --lr 1e-3 --warmup-epochs 5 --seed 0 --width 60
+--depth 5`, on GPU 2. `num_filters=60, num_blocks=5` gives **26,300
+params** — within 2% of BC-ResNet's bigcap size (25,748), a close
+capacity match rather than a much bigger model.
+
+**Result — DS-CNN pulls further ahead, decisively**: best val accuracy
+**72.39%** at epoch 63/80, beating BC-ResNet's matched-capacity result
+(67.54%, Experiment 10) by **+4.85pp**, and DS-CNN's own default-
+capacity result (65.96%, Experiment 7) by +6.43pp. This is a much
+larger gap than Experiment 10's narrow +1.58pp BC-ResNet-over-DS-CNN
+margin — DS-CNN's capacity-scaling response is real and substantial,
+not a rounding error. **DS-CNN is the best architecture found on this
+dataset at every capacity level tried so far.**
+
+**No instability at all, at any point in this run** — unlike every
+BC-ResNet run (Experiments 3, 5, 6, 10), DS-CNN's val_loss decreased
+essentially monotonically for all 80 epochs regardless of capacity.
+This reinforces the Experiment 7 finding that the spiking behavior is
+specific to BC-ResNet's broadcasted-residual mechanism, not a general
+property of training on this dataset at higher capacity or higher LR.
+
+**Per-class accuracy**:
+
+| Label | Acc | n | | Label | Acc | n |
+|---|---:|---:|---|---|---:|---:|
+| unknown_background | 100.0% | 68 | | LIGHT_OFF | 72.6% | 511 |
+| NEXT | 94.4% | 54 | | CREATE_REMINDER | 69.3% | 280 |
+| CALL | 94.4% | 54 | | TIME | 65.8% | 360 |
+| TIMER | 92.1% | 178 | | VOLUME_UP | 65.6% | 477 |
+| TEMPERATURE | 87.1% | 1166 | | VOLUME_DOWN | 65.2% | 442 |
+| PAUSE | 86.3% | 80 | | BRIGHTNESS | 64.3% | 395 |
+| ALARM | 83.2% | 333 | | PLAY_MUSIC | 63.5% | 658 |
+| LIGHT_ON | 81.7% | 562 | | MESSAGE | 60.3% | 282 |
+| STOP | 79.6% | 108 | | WEATHER | 56.7% | 534 |
+| COLOR | 73.9% | 322 | | LIST_REMINDERS | 49.4% | 249 |
+
+**Top confusions**:
+
+| True → Predicted | Count |
+|---|---:|
+| VOLUME_UP → VOLUME_DOWN | 67 |
+| VOLUME_DOWN → VOLUME_UP | 63 |
+| WEATHER → TIME | 60 |
+| TIME → WEATHER | 53 |
+| PLAY_MUSIC → WEATHER | 45 |
+| WEATHER → MESSAGE | 37 |
+| PLAY_MUSIC → TIME | 36 |
+| LIGHT_OFF → LIGHT_ON | 36 |
+| WEATHER → LIST_REMINDERS | 35 |
+| WEATHER → PLAY_MUSIC | 35 |
+
+**Analysis**: every class improved over the smaller DS-CNN
+(Experiment 7) except `unknown_background` (already saturated at
+100%). The improvements are broad, not concentrated in a few classes —
+consistent with more capacity generally helping a model fit more of
+the data's real structure, rather than fixing one specific weak point.
+Confusion counts also dropped across the board (e.g.
+VOLUME_UP↔VOLUME_DOWN combined fell from 192 in Experiment 7 to 130
+here) — the polarity confusion persists but is measurably smaller.
+**Directly cross-validating the DATASET.md source-composition
+diagnosis**: LIST_REMINDERS (49.4%) and WEATHER (56.7%) remain the two
+weakest classes even at this much higher overall accuracy, and both
+are the SLURP-dominated labels flagged there (69% and 85% SLURP
+respectively) — real evidence that this is a data-quality ceiling,
+not something more capacity alone fixes.
+
+**DS-CNN is the recommended architecture** going forward — it has now
+won at both default and matched capacity, with zero training
+instability at any setting tried, unlike BC-ResNet. The capacity-
+scaling headroom itself looks promising too (default 24,276→65.96%,
+bigger 26,300→72.39% for only ~2,000 more params) — an even larger
+DS-CNN has not been tried and is a plausible next lever, distinct from
+and complementary to the dataset-quality fix. **Superseded by
+Experiment 12 below**, which applied that dataset-quality fix and
+found a real, further improvement — see there for the current best
+checkpoint.
+
+## Experiment 12 — same config as #11, on the SLURP-quality-fixed dataset
+
+**Motivation**: directly tests whether the SLURP mapping-purity fix
+(DATASET.md's "Known per-label quality signal" — dropped LIST_REMINDERS'
+`lists_query` mapping entirely, filtered pure-date questions out of
+TIME, small junk cleanups for WEATHER/MESSAGE) actually improves
+accuracy, rather than just trusting the diagnosis. Same exact model
+config as Experiment 11, same seed, only the dataset changed — any
+accuracy difference is attributable to the fix, not noise from a
+different setup.
+
+**Setup**: `python -m vcm.train.train --model dscnn --epochs 80
+--batch-size 128 --lr 1e-3 --warmup-epochs 5 --seed 0 --width 60
+--depth 5`, on GPU 1, against the rebuilt `data/dataset_manifest.csv`
+(62,405 rows, down from 64,665 — see DATASET.md for exactly what was
+removed and why).
+
+**Result — the fix works**: best val accuracy **74.10%** at epoch
+46/80, beating Experiment 11's identical-config result (72.39%) by
+**+1.71pp**, purely from the dataset change.
+
+**Per-label impact on the four targeted labels** (Experiment 11 →
+Experiment 12):
+
+| Label | Before | After | Change |
+|---|---:|---:|---:|
+| LIST_REMINDERS | 49.4% | **100.0%** | **+50.6pp** |
+| WEATHER | 56.7% | 62.8% | +6.1pp |
+| TIME | 65.8% | 70.7% | +4.9pp |
+| MESSAGE | 60.3% | 53.9% | **-6.4pp** |
+
+LIST_REMINDERS's jump is the standout: once purified down to only
+Option B's 558 clean, on-taxonomy synthetic examples (val n dropped
+from 249 to 54), the model gets it perfectly right. WEATHER and TIME
+both improved meaningfully, consistent with removing genuinely
+mismatched training signal. **MESSAGE is a real anomaly worth flagging
+honestly**: only 3 sentences (10 rows) were removed from MESSAGE
+specifically — nowhere near enough to directly cause a 6.4pp drop.
+This is more likely a side effect of the overall redistribution
+(inverse-frequency class weights shifted slightly since the total
+label composition changed, and MESSAGE's confusion pattern shows heavy
+bidirectional confusion with PLAY_MUSIC — 38 each way) than a flaw in
+the MESSAGE-specific fix itself. Neither run used multiple seeds, so
+some of this is plausibly run-to-run noise rather than a real
+regression — worth re-checking if MESSAGE remains weak in future runs.
+
+**Per-class accuracy (full)**:
+
+| Label | Acc | n | | Label | Acc | n |
+|---|---:|---:|---|---|---:|---:|
+| unknown_background | 100.0% | 68 | | TIME | 70.7% | 225 |
+| LIST_REMINDERS | 100.0% | 54 | | VOLUME_DOWN | 67.0% | 442 |
+| CALL | 92.6% | 54 | | BRIGHTNESS | 66.6% | 395 |
+| PAUSE | 91.3% | 80 | | PLAY_MUSIC | 63.5% | 658 |
+| TIMER | 89.3% | 178 | | WEATHER | 62.8% | 530 |
+| TEMPERATURE | 87.5% | 1166 | | VOLUME_UP | 62.3% | 477 |
+| ALARM | 82.6% | 333 | | MESSAGE | 53.9% | 282 |
+| STOP | 80.6% | 108 | | | | |
+| NEXT | 79.6% | 54 | | | | |
+| LIGHT_ON | 79.5% | 562 | | | | |
+| LIGHT_OFF | 75.5% | 511 | | | | |
+| COLOR | 74.5% | 322 | | | | |
+| CREATE_REMINDER | 72.5% | 280 | | | | |
+
+**Top confusions**:
+
+| True → Predicted | Count |
+|---|---:|
+| VOLUME_UP → VOLUME_DOWN | 94 |
+| VOLUME_DOWN → VOLUME_UP | 68 |
+| PLAY_MUSIC → WEATHER | 57 |
+| WEATHER → PLAY_MUSIC | 47 |
+| TEMPERATURE → VOLUME_UP | 42 |
+| PLAY_MUSIC → MESSAGE | 38 |
+| MESSAGE → PLAY_MUSIC | 38 |
+| CREATE_REMINDER → PLAY_MUSIC | 35 |
+| BRIGHTNESS → COLOR | 34 |
+| TIME → WEATHER | 33 |
+
+**A few other labels moved by ±2-3pp in either direction** (e.g. NEXT
+94.4%→79.6%, LIGHT_OFF 72.6%→75.5%) despite not being touched by the
+dataset fix at all — consistent with ordinary run-to-run variance at
+these class sizes (several have val n≈54-108), not a systematic
+effect. This is exactly the kind of noise the "multiple seeds" caveat
+in the parked to-do list is meant to eventually rule out.
+
+Was the best model and dataset+config combination through Experiment
+12. **Superseded by Experiment 13 below**, which added real TIMER/ALARM
+audio (Timers and Such) on top of this. The MESSAGE regression and the
+polarity confusion (VOLUME_UP/DOWN) remain open — see Experiment 13's
+own conclusion for the current standing recommendation.
+
+## Experiment 13 — resume from Experiment 12, add Timers and Such (real TIMER/ALARM)
+
+**Motivation**: directly measures whether adding real TIMER/ALARM audio
+(DATASET.md step 9, ~1,071 recordings from Timers and Such) actually
+helps, and does so cheaply — instead of a full 80-epoch retrain from
+scratch, this resumes from Experiment 12's already-trained weights and
+continues training on the updated dataset for only 20 epochs. Training
+on the *full* updated manifest (not just the new rows in isolation)
+avoids the catastrophic-forgetting risk of fine-tuning on a narrow
+subset — every batch still sees all 20 classes, just starting from a
+good initialization instead of random.
+
+**A free, zero-training baseline came first**: before touching the
+DGX, Experiment 12's checkpoint (which had never seen any Timers-and-
+Such audio) was evaluated directly against real Timers-and-Such data —
+pure inference, no training cost. Result: **20.9% on TIMER, 52.3% on
+ALARM** across all 1,071 real recordings — concrete, measured evidence
+of exactly how severe the synthetic-to-real gap was for TIMER
+specifically (100% Chatterbox TTS beforehand), not just theoretical.
+
+**Setup**: `python -m vcm.train.train --model dscnn --epochs 20
+--batch-size 128 --lr 1e-3 --warmup-epochs 2 --seed 0 --width 60
+--depth 5 --resume-from checkpoints/dscnn_bigcap_cleaned_best.pt`, on
+the manifest rebuilt to include Timers and Such (63,476 rows, up from
+62,405). ~20 minutes wall-clock vs. ~80 minutes for a from-scratch run
+at the same epoch-for-epoch cost — roughly 4x cheaper for this check.
+
+**Result**: best val accuracy **75.04%** at epoch 12/20, beating
+Experiment 12's 74.10% by +0.94pp overall (note: this val set isn't
+identical to Experiment 12's — it grew slightly since Timers-and-Such
+contributes its own val rows too, so this overall number isn't a pure
+apples-to-apples delta by itself; the per-label held-out comparison
+below is the rigorous one).
+
+**The real result — a clean, leak-free before/after on data neither
+checkpoint ever trained on** (restricted to Timers-and-Such's val+test
+rows only, 253 recordings, so this isn't contaminated by what
+Experiment 13 just trained on):
+
+| Label | Before (Experiment 12) | After (Experiment 13) | Change |
+|---|---:|---:|---:|
+| TIMER | 31.4% (54/172) | **91.3%** (157/172) | **+59.9pp** |
+| ALARM | 63.0% (51/81) | **88.9%** (72/81) | **+25.9pp** |
+
+This is the cleanest, largest single-fix improvement in the whole
+project so far — real human audio for a previously 100%-synthetic
+label closed the vast majority of the gap in one pass, exactly as the
+synthetic-to-real generalization research predicted.
+
+**Per-class accuracy (full validation split)**:
+
+| Label | Acc | n | | Label | Acc | n |
+|---|---:|---:|---|---|---:|---:|
+| unknown_background | 100.0% | 68 | | CREATE_REMINDER | 69.6% | 280 |
+| LIST_REMINDERS | 98.2% | 54 | | VOLUME_UP | 68.6% | 477 |
+| TIMER | 94.8% | 270 | | VOLUME_DOWN | 66.7% | 442 |
+| CALL | 92.6% | 54 | | TIME | 66.7% | 225 |
+| ALARM | 88.0% | 374 | | MESSAGE | 63.8% | 282 |
+| LIGHT_ON | 86.1% | 562 | | PLAY_MUSIC | 61.6% | 658 |
+| TEMPERATURE | 85.9% | 1166 | | WEATHER | 57.9% | 530 |
+| PAUSE | 83.8% | 80 | | | | |
+| NEXT | 83.3% | 54 | | | | |
+| STOP | 81.5% | 108 | | | | |
+| LIGHT_OFF | 73.2% | 511 | | | | |
+| COLOR | 71.7% | 322 | | | | |
+| BRIGHTNESS | 71.1% | 395 | | | | |
+
+**Top confusions**:
+
+| True → Predicted | Count |
+|---|---:|
+| VOLUME_UP → VOLUME_DOWN | 73 |
+| PLAY_MUSIC → MESSAGE | 66 |
+| VOLUME_DOWN → VOLUME_UP | 61 |
+| WEATHER → MESSAGE | 56 |
+| PLAY_MUSIC → WEATHER | 46 |
+| WEATHER → PLAY_MUSIC | 46 |
+| LIGHT_OFF → LIGHT_ON | 44 |
+| TEMPERATURE → VOLUME_UP | 36 |
+| TIME → WEATHER | 33 |
+| COLOR → BRIGHTNESS | 32 |
+
+**Analysis**: TIMER (94.8%) and ALARM (88.0%) are now both strong
+classes, a complete reversal from before this fix. The polarity
+confusion (VOLUME_UP/DOWN) persists as the top confusion pair, exactly
+as in every prior experiment — real TIMER/ALARM audio fixed the
+problem it was meant to fix and, as expected, did nothing for the
+unrelated carrier-phrase-overlap problem. MESSAGE (63.8%) remains weak
+and now shows new confusion with WEATHER (56 counts) alongside its
+existing PLAY_MUSIC confusion — still an open anomaly, not resolved by
+this change (expected, since this fix didn't touch MESSAGE at all).
+
+**Current standing recommendation**: `checkpoints/dscnn_bigcap_timers_best.pt`
+is now the best model overall. This also validates `--resume-from` as
+a real, reusable technique for cheaply testing future data additions —
+a fraction of the cost of a from-scratch retrain, with a rigorous
+held-out-only evaluation (not the noisier overall val-accuracy delta)
+as the way to honestly measure a specific data addition's effect. The
+polarity confusion and MESSAGE anomaly remain the two clearest open
+threads, unaffected by this fix as expected.
+
+## Experiment 14 — ConfusablePairLoss, targeting the polarity confusion directly
+
+**Motivation**: the polarity confusion (VOLUME_UP/VOLUME_DOWN,
+TEMPERATURE->VOLUME_UP, LIGHT_ON/LIGHT_OFF) has topped every confusion
+matrix from Experiment 1 through 13 and is unaffected by adding more
+data (Experiment 13 confirmed this — these labels already have
+thousands of examples). Research into confusable-pair/minimal-pair
+keyword-spotting literature (Inter-Category Focal Loss-style
+approaches, e.g. arXiv:2304.05922) suggested a loss-level fix instead:
+penalize the probability mass a sample's true class places on classes
+already known (from our own confusion matrices, not guessed) to be
+confusable with it. Implemented in `vcm.train.losses.ConfusablePairLoss`
+(see that module's docstring) — zero new data needed, a strict
+superset of the existing weighted cross-entropy (alpha=0 reduces to
+it exactly).
+
+Two groups defined directly from the top-confusions tables above:
+`(VOLUME_UP, VOLUME_DOWN, TEMPERATURE)` and `(LIGHT_ON, LIGHT_OFF)`.
+
+**Setup**: `python -m vcm.train.train --model dscnn --epochs 15
+--batch-size 128 --lr 1e-3 --warmup-epochs 2 --seed 0 --width 60
+--depth 5 --resume-from checkpoints/dscnn_bigcap_timers_best.pt
+--confusable-alpha 1.0 --out checkpoints/dscnn_bigcap_confusable_best.pt`.
+Same cheap resume-and-continue methodology as Experiment 13 (~15
+minutes vs. a full retrain).
+
+**Result**: best val accuracy **75.54%** at epoch 10/15, +0.50pp over
+Experiment 13's 75.04%. On its own this looks like a small win, but
+the overall number hides what actually happened — a targeted
+within-group-confusion metric (computed directly from
+`vcm.train.losses.CONFUSABLE_GROUPS`, not the generic top-10 list)
+gives the honest picture:
+
+| Group | Metric | #13 (before) | #14 (after) | Change |
+|---|---|---:|---:|---:|
+| VOLUME_UP/DOWN/TEMPERATURE | correct | 77.9% | 80.3% | +2.4pp |
+| | within-group confusion (the targeted problem) | 10.7% | 10.7% | **0.0pp — unchanged** |
+| | other-wrong | 11.4% | 9.0% | -2.4pp |
+| LIGHT_ON/LIGHT_OFF | correct | 80.0% | 79.1% | -0.9pp |
+| | within-group confusion (the targeted problem) | 6.1% | 4.4% | **-1.7pp — improved** |
+| | other-wrong | 14.0% | 16.5% | +2.5pp |
+
+**Analysis — an honest, mixed result, not a clean win**:
+- **LIGHT_ON/LIGHT_OFF**: the loss did what it was designed to do —
+  the specific LIGHT_ON<->LIGHT_OFF confusion dropped 6.1%->4.4%. But
+  that gain was more than offset by a rise in unrelated wrong
+  predictions (14.0%->16.5%), so overall group accuracy actually
+  *fell* slightly (80.0%->79.1%). The penalty term seems to have
+  pushed probability mass off the confusable partner class, but not
+  reliably onto the correct class — sometimes onto a third, unrelated
+  class instead.
+- **VOLUME_UP/VOLUME_DOWN/TEMPERATURE**: the targeted confusion didn't
+  move at all (10.7% both times) — individually, VOLUME_DOWN's
+  within-group confusion got slightly *worse* (16.5%->17.4%) while
+  TEMPERATURE's improved slightly (5.7%->5.3%). The +2.4pp group
+  accuracy gain came entirely from fewer *unrelated* errors
+  (TEMPERATURE's other-wrong dropped 8.4%->5.2%) — a real improvement,
+  but not the one this experiment set out to produce, and not
+  obviously caused by the confusable-pair mechanism rather than just
+  more resumed-training epochs.
+- Overall: the loss is not obviously wrong, but alpha=1.0 does not
+  cleanly fix the polarity confusion it targets. Full evaluation:
+  `python <scratchpad>/eval_confusable_groups.py <ckpt1> <ckpt2>` (ad
+  hoc script, not committed to the repo — logic is short enough to
+  reproduce if needed: for each confusable group, split each class's
+  errors into within-group vs. other-wrong).
+
+**Open follow-ups, not yet tried**: a lower alpha (weaker penalty,
+less likely to overshoot into unrelated classes), a higher alpha
+(stronger push, in case 1.0 undershoots), or restricting the penalty
+to only the LIGHT group (the only one where it worked as intended)
+while leaving VOLUME/TEMPERATURE on plain cross-entropy. Not run yet —
+next step is a decision on whether this line of tuning is worth
+another DGX pass or whether to park it, matching this project's
+efficiency-first approach to training runs.
+
+**Current standing recommendation (superseded below by Experiment 15)**:
+unchanged from Experiment 13 — `checkpoints/dscnn_bigcap_timers_best.pt`
+is still the safer default given this experiment's mixed, not-clearly-
+better result on the LIGHT_ON/LIGHT_OFF group specifically.
+`dscnn_bigcap_confusable_best.pt` is marginally higher on raw val
+accuracy (75.54% vs 75.04%) and genuinely better on the LIGHT confusion
+specifically, so it's a reasonable alternative, not a clear regression
+— this is a "pick one and note the tradeoff" situation, not an obvious
+win either way.
+
+## Experiment 15 — ConfusablePairLoss, alpha=2.0
+
+**Motivation**: Experiment 14 (alpha=1.0) barely moved the targeted
+VOLUME/TEMPERATURE confusion at all (10.7%->10.7%) while working, but
+imperfectly, on LIGHT_ON/LIGHT_OFF (6.1%->4.4%, with some of that gain
+eaten by new unrelated errors). Doubling alpha tests whether the
+mechanism was directionally right but just too weak at 1.0.
+
+**Setup**: identical to Experiment 14 but `--confusable-alpha 2.0`,
+resumed from Experiment 13's checkpoint directly (not Experiment 14's)
+to keep this an apples-to-apples alpha comparison against the same
+starting point, isolating alpha as the only variable.
+
+**Result**: best val accuracy 75.45% at epoch 10/15 — *lower* than
+Experiment 14's 75.54% on raw accuracy. But the same group-level
+breakdown used in Experiment 14 tells a different, more encouraging
+story:
+
+| Group | Metric | #13 (baseline) | #14 (alpha=1.0) | #15 (alpha=2.0) |
+|---|---|---:|---:|---:|
+| VOLUME_UP/DOWN/TEMPERATURE | correct | 77.9% | 80.3% | **81.7%** |
+| | within-group confusion (targeted) | 10.7% | 10.7% | **9.6%** |
+| | other-wrong | 11.4% | 9.0% | **8.7%** |
+| LIGHT_ON/LIGHT_OFF | correct | 80.0% | 79.1% | **80.4%** |
+| | within-group confusion (targeted) | 6.1% | 4.4% | 4.9% |
+| | other-wrong | 14.0% | 16.5% | **14.6%** |
+
+**Analysis**: alpha=2.0 is a clear improvement over alpha=1.0, and
+unlike alpha=1.0 it beats the Experiment 13 baseline on *every* metric
+for the VOLUME/TEMPERATURE group simultaneously (higher correct, lower
+targeted confusion, lower other-wrong) — the first result in this
+whole line of experiments where the confusable-pair mechanism visibly
+moves the metric it was built to move, without the collateral damage
+alpha=1.0 showed. For LIGHT_ON/LIGHT_OFF, alpha=2.0 gives up a little
+of alpha=1.0's targeted-confusion win (4.4%->4.9%) but more than makes
+up for it elsewhere: correct accuracy is now *above* the Experiment 13
+baseline (80.4% vs 80.0%, vs. alpha=1.0's 79.1%), and other-wrong is
+much closer to baseline (14.6% vs. alpha=1.0's 16.5%). Raw overall val
+accuracy is a worse guide here than the targeted breakdown — alpha=2.0
+scores lower on the headline number (75.45% vs 75.54%) while being the
+clearly stronger checkpoint on the actual problem being fixed.
+
+**Current standing recommendation — adopted**: `checkpoints/dscnn_bigcap_confusable2_best.pt`
+(alpha=2.0) is now the repo-wide default (`demo_infer.py`, `TESTING.md`
+updated) — strictly better than the Experiment 13 baseline on the
+polarity-confusion metric this whole line of experiments targets, at a
+negligible (0.09pp) cost in overall val accuracy. **Confirmed by
+Experiment 16 below**: the 1.0->2.0 trend does not continue to 3.0 —
+alpha=2.0 is a real peak, not a point on a still-climbing curve.
+
+## Experiment 16 — ConfusablePairLoss, alpha=3.0 (does the trend continue?)
+
+**Motivation**: Experiment 15 (alpha=2.0) beat alpha=1.0 on every
+group metric simultaneously, with no sign of plateauing. This tests
+whether pushing alpha further keeps helping or starts overshooting.
+
+**Setup**: identical to Experiments 14/15 but `--confusable-alpha 3.0`,
+resumed from Experiment 13's checkpoint directly (same isolation
+methodology — alpha is the only variable that changes between 13, 14,
+15, 16).
+
+**Result**: best val accuracy 75.36% at epoch 14/15 — between
+Experiment 14 (75.54%) and Experiment 15 (75.45%) on the raw number,
+but the group breakdown shows this is a genuine reversal, not noise:
+
+| Group | Metric | #13 (baseline) | #15 (alpha=2.0) | #16 (alpha=3.0) |
+|---|---|---:|---:|---:|
+| VOLUME_UP/DOWN/TEMPERATURE | correct | 77.9% | **81.7%** | 78.0% |
+| | within-group confusion (targeted) | 10.7% | **9.6%** | 9.9% |
+| | other-wrong | 11.4% | **8.7%** | 12.1% |
+| LIGHT_ON/LIGHT_OFF | correct | 80.0% | **80.4%** | 78.0% |
+| | within-group confusion (targeted) | 6.1% | 4.9% | **4.6%** |
+| | other-wrong | 14.0% | **14.6%** | 17.4% |
+
+**Analysis**: the trend broke. alpha=3.0 squeezes the LIGHT group's
+targeted confusion slightly lower than alpha=2.0 (4.9%->4.6%) — the
+mechanism is still doing what it's designed to do — but at a much
+steeper cost: other-wrong jumps to 17.4% (worse than both alpha=2.0
+*and* the no-loss baseline), and the VOLUME/TEMPERATURE group regresses
+on every metric back to roughly baseline levels, wiping out
+Experiment 15's gains there entirely. This is the classic overshoot
+failure mode for this kind of penalty: pushing probability mass hard
+enough off the confusable partner starts dumping it onto unrelated
+classes instead of the correct one, rather than continuing to
+concentrate it on the right answer. alpha=2.0 sits right at the peak
+before that trade-off turns negative.
+
+**Current standing recommendation — unchanged**: `checkpoints/dscnn_bigcap_confusable2_best.pt`
+(alpha=2.0, Experiment 15) remains the best checkpoint and the repo
+default. Alpha tuning is now closed out, not just paused — 1.0, 2.0,
+and 3.0 collectively bracket a real peak at 2.0, so further sweeping
+in either direction is low-value without a different mechanism (e.g.
+per-group alpha, or a different penalty formulation) rather than just
+more of the same knob.
+
+## Experiment 17 — add COLOR/BRIGHTNESS as a 3rd confusable group
+
+**Motivation**: live-voice testing (real speech, not the synthetic val
+split) surfaced COLOR commands as a weak point. Checked against data
+before touching anything: COLOR was already confirmed weak in the
+Experiment 15 checkpoint (63.0% val accuracy) with `COLOR -> BRIGHTNESS`
+as the #5 overall confusion (44 misclassifications) — the same
+carrier-phrase-overlap pattern as the two existing confusable groups
+("set the lights/brightness to X"), so extending the existing loss
+mechanism rather than building something new was the obvious next
+step.
+
+**Setup**: identical to Experiment 15 (`--confusable-alpha 2.0`,
+resumed from Experiment 13's checkpoint) but with `CONFUSABLE_GROUPS`
+extended to include `("COLOR", "BRIGHTNESS")` as a third group,
+alongside the existing two.
+
+**Result**: best val accuracy 75.30% at epoch 15/15 — essentially flat
+vs. Experiment 15's 75.45%. The group breakdown shows why this is a
+genuine three-way tradeoff, not a clean win:
+
+| Group | Metric | #15 (2 groups) | #17 (3 groups) |
+|---|---|---:|---:|
+| COLOR/BRIGHTNESS | correct | 65.8% | **70.7%** (+4.9pp) |
+| | within-group confusion (targeted) | 7.9% | 7.7% (flat) |
+| VOLUME_UP/DOWN/TEMPERATURE | correct | **81.7%** | 77.8% (**-3.9pp**) |
+| LIGHT_ON/LIGHT_OFF | correct | **80.4%** | 78.5% (**-1.9pp**) |
+
+**Analysis**: adding a third simultaneous confusable-pair penalty
+genuinely improved COLOR/BRIGHTNESS's overall accuracy (+4.9pp,
+717 samples) — but at the cost of regressing the two groups
+Experiment 15 had already fixed, most notably VOLUME/TEMPERATURE
+(-3.9pp on 2,085 samples, the largest of the three groups). This reads
+as the three penalty terms competing during training and diluting each
+other, not a mechanism that scales cleanly to more groups at a fixed
+alpha. Also consistent with the pattern seen in Experiments 14/16:
+COLOR/BRIGHTNESS's *targeted* confusion (the thing the loss is
+supposed to fix) barely moved (7.9%->7.7%) — the accuracy gain came
+from fewer unrelated errors, not the mechanism cleanly separating the
+two confusable classes.
+
+Net effect weighted by group size is likely negative overall (the two
+regressed groups are more than 3x the sample count of the one that
+improved), even though the headline val accuracy looks nearly flat.
+
+**Current standing recommendation — unchanged**: `checkpoints/dscnn_bigcap_confusable2_best.pt`
+(2 groups, alpha=2.0) remains the repo default.
+`dscnn_bigcap_confusable_colorfix_best.pt` is not adopted — it's a
+real tradeoff (better COLOR/BRIGHTNESS, worse VOLUME/TEMPERATURE and
+LIGHT), not a strict improvement. If COLOR/BRIGHTNESS is worth fixing
+on its own, a per-group alpha (weighting each group's penalty
+independently rather than sharing one alpha across all three) is the
+logical next experiment rather than adding groups at a fixed shared
+alpha.
+
+## Experiments 18-21 — chasing a majority-class-bias fix, four dead ends with one useful pattern
+
+**Motivation**: a live-voice `--debug` session (real speech, not the
+synthetic val split) found a new pattern distinct from the polarity
+confusion above — the model defaulting to large classes (LIGHT_ON,
+VOLUME_UP, PLAY_MUSIC, WEATHER, TEMPERATURE) at the expense of small
+ones (PAUSE, STOP, CALL, MESSAGE) on real/unfamiliar audio. Training
+set sizes confirmed a real ~22x imbalance (TEMPERATURE 8,691 vs. CALL
+396). Four experiments tried to fix this via the loss function, all
+resumed from Experiment 13's checkpoint:
+
+- **18**: effective-number class weights (Cui et al. 2019, beta=0.999)
+  + focal loss (gamma=2.0), on top of the existing confusable-pair
+  loss. Best result: **epoch 1** (75.29%) — none of the following 14
+  epochs of real training ever beat the barely-touched starting point.
+  Root cause found on inspection: beta=0.999 gave CALL only 3.1x more
+  weight than TEMPERATURE, versus the 21.9x ratio plain inverse-
+  frequency weighting (already in use since Experiment 1) already
+  provided — a real configuration mistake that *weakened* rather than
+  strengthened small-class compensation.
+- **19**: same setup with the beta mistake removed (focal loss alone,
+  gamma=2.0). Still epoch-1-is-best (74.86%) — ruling out the beta
+  mistake as the actual cause.
+- **20**: `--max-per-class 2000` (dataset-level downsampling of
+  oversized classes instead of loss reweighting) at the original
+  lr=1e-3. Still epoch-1-is-best (75.49%).
+- **21**: same as #20 but lr=1e-4 (10x lower, testing whether the peak
+  LR was too disruptive for a resumed checkpoint). Still epoch-1-is-
+  best (75.23%) — ruling out LR magnitude too.
+
+**The real finding**: four different mechanisms (reweighting, focal
+modulation, dataset downsampling), at two different learning rates,
+all show the identical failure mode when resumed from Experiment 13's
+checkpoint — the model never improves past its barely-perturbed
+starting point. The common thread isn't any one technique; it's that
+*any* new mechanism layered on the already-working confusable-pair
+loss, in the resume-from-a-converged-checkpoint pattern, fails to find
+anything better within 15 epochs. Experiment 15 (confusable-pair loss
+*alone*, same starting checkpoint, same warmup/LR shape) genuinely
+improved past epoch 1 by contrast — so the resume-from pattern itself
+still works, just not for stacking a second mechanism on top of it.
+This directly motivated Experiments 22-23 below: test downsampling
+**from scratch** instead, to separate "does downsampling help" from
+"does the resume-from pattern break for a second mechanism."
+
+## Experiment 22 — max-per-class downsampling, from scratch
+
+**Setup**: `--max-per-class 2000`, DS-CNN bigcap, confusable-pair loss
+(alpha=2.0), **from scratch** (not resumed), 80 epochs — matching
+Experiment 12's original from-scratch recipe, isolating the downsample-
+from-scratch question from the resume-from failure mode above. Train
+set: 47,909 → 30,224 rows.
+
+**Result**: 70.57% best (epoch 57) — well below Experiment 15's
+75.45%. But the per-class breakdown shows a real, substantial,
+legible tradeoff, not just "worse":
+
+| Class | Exp 15 (no cap) | Exp 22 (cap 2000) | Change |
+|---|---:|---:|---:|
+| NEXT | 79.6% | **94.4%** | **+14.8pp** |
+| PLAY_MUSIC | 54.6% | **64.3%** | **+9.7pp** |
+| MESSAGE | 57.5% | **62.1%** | +4.6pp |
+| CALL | 92.6% | **96.3%** | +3.7pp |
+| WEATHER | 68.5% | 53.2% | **-15.3pp** |
+| VOLUME_UP | 72.8% | 56.8% | **-15.9pp** |
+| VOLUME_DOWN | 69.9% | 55.9% | **-14.0pp** |
+| LIGHT_OFF | 77.1% | 62.6% | **-14.5pp** |
+
+Confirms the majority-class-bias diagnosis was real — the classes it
+targeted (NEXT, CALL, MESSAGE, PLAY_MUSIC) genuinely improved, some
+dramatically. But capping *everything* over 2,000 at exactly 2,000 was
+too blunt: WEATHER (2,611→2,000), VOLUME_UP (3,524→2,000), VOLUME_DOWN
+(2,965→2,000) all lost 23-43% of their data too, for real cost — they
+weren't the problem classes, but the uniform cap hit them anyway.
+
+## Experiment 23 — max-per-class 3000 (gentler cap), from scratch
+
+**Setup**: identical to #22 but `--max-per-class 3000`. Train set:
+47,909 → 38,927 rows (19% cut vs. #22's 37%).
+
+**Result**: 73.16% best (epoch 60) — better than #22, still below #15.
+The gentler cap recovered most of the mid-sized classes' collateral
+damage while keeping most of the real gains:
+
+| Class | Exp 15 | Exp 22 (cap 2000) | Exp 23 (cap 3000) |
+|---|---:|---:|---:|
+| NEXT | 79.6% | 94.4% | 90.7% (still a real win) |
+| COLOR | 63.0% | 68.6% | **70.2%** (best yet) |
+| CREATE_REMINDER | 66.8% | 67.5% | **72.1%** (best yet) |
+| WEATHER | 68.5% | 53.2% | 65.3% (mostly recovered) |
+| VOLUME_DOWN | 69.9% | 55.9% | 67.0% (mostly recovered) |
+| LIGHT_OFF | 77.1% | 62.6% | 73.8% (mostly recovered) |
+| VOLUME_UP | 72.8% | 56.8% | 63.3% (still down -9.5pp) |
+
+**Conclusion for both 22/23**: real, genuine tradeoffs — every cap
+value trades some classes' strength for others', and no single global
+cap beat Experiment 15's overall accuracy. Superseded by the ASR-
+cascade finding below before a further cap sweep (e.g. 4000, or a
+per-class-targeted cap) was tried.
+
+## Experiment 24 — QA-filtered synthetic data + regularization stack, from scratch
+
+**Motivation**: a separate ML-engineering review (research on
+commercial voice assistants and SOTA SLU accuracy, see MODEL.md
+Section 9) found the project's synthetic-audio QA gate
+(`vcm/dataset/legacy/synthetic_check.py`) had been built but never actually
+run, despite direct published evidence that ASR-based filtering of
+synthetic TTS clips closes real/synthetic accuracy gaps (89%→92.5% in
+a comparable study). Running it (`scripts/legacy/qa_filter_option_b.py`)
+against Option B's 17,658 clips dropped 1,158 (6.6%) — with a striking
+concentration: **BRIGHTNESS alone accounted for 592 of the 1,158 drops
+(51% of all failures, ~33% of BRIGHTNESS's own synthetic data)**, far
+out of proportion to every other label (mostly 1-4%) — something about
+BRIGHTNESS's synthetic generation specifically produces audio that
+doesn't transcribe as intended.
+
+Same review also found DS-CNN had zero regularization (no dropout,
+unlike BCResNet), no weight decay, and no label smoothing — all added
+as opt-in flags (see MODEL.md Section 9), tested together here.
+
+**Setup**: QA-filtered manifest (62,318 rows, was 63,476) +
+`--dropout 0.2 --weight-decay 1e-4 --label-smoothing 0.1` +
+confusable-pair loss (alpha=2.0), from scratch, 80 epochs. Also the
+first experiment under the new (non-opt-in) feature normalization
+added in the same review pass — `extract_log_mel` now normalizes to
+roughly zero-mean/unit-variance using measured dataset constants,
+which is why this couldn't be a `--resume-from` of any earlier
+checkpoint (they were trained on the old, unnormalized features).
+
+**Result**: 70.60% (epoch 76, converged/plateaued for the last ~10
+epochs, not still climbing) — a real 4.85pp regression from Experiment
+15. Per-class breakdown showed a **broad decline across nearly every
+class** (VOLUME_UP -13.2pp, VOLUME_DOWN -11.4pp, WEATHER -10.3pp,
+CREATE_REMINDER -10.5pp, PAUSE -17.6pp), not concentrated on the QA-
+filtered classes specifically (BRIGHTNESS itself only dropped -1.8pp).
+That pattern points at the regularization stack — dropout 0.2 +
+weight decay 1e-4 + label smoothing 0.1, all at once, at their
+"textbook" default strengths — being too aggressive for a 26K-
+parameter model, most likely underfitting it, rather than the QA-
+filtered data being the problem. Even VOLUME_UP/DOWN (which the
+confusable-pair loss targets) got worse, suggesting the extra
+regularization interfered with that mechanism too — the same kind of
+multi-mechanism interference seen in Experiments 17-21.
+
+**Lesson**: standard regularization defaults don't automatically
+transfer to a model this small; worth retesting each of dropout/
+weight-decay/label-smoothing individually, at gentler values, rather
+than stacked at once.
+
+## Experiment 25 — QA-filtered data only, from scratch (isolating from Experiment 24's regularization stack)
+
+**Setup**: same QA-filtered manifest as #24, confusable-pair loss
+(alpha=2.0) only — no dropout/weight-decay/label-smoothing — isolating
+whether the QA filter itself helped or hurt, separate from Experiment
+24's over-regularization. From scratch, 80 epochs.
+
+**Status**: launched, then superseded in priority by Experiment 26's
+result below before completion — the numbers, once available, are
+useful documentation but no longer change the project's direction.
+
+## Experiment 26 — ASR-cascade (Whisper transcript → text classifier), a different architecture entirely
+
+**Motivation**: an ML-engineering review (commercial voice assistant
+architecture + SOTA SLU research, MODEL.md Section 9) found that Siri,
+Alexa, and Google Assistant all classify intent from a **text
+transcript**, not raw audio — a cascade (ASR → NLU), not the single
+end-to-end audio-to-intent model this project has built through
+Experiment 25. Verified directly against this project's own hardest
+case before committing to the idea: `faster-whisper` (`base`) correctly
+resolved the VOLUME_UP/VOLUME_DOWN and LIGHT_ON/LIGHT_OFF distinction
+in text ("Turn the volume up.", "lights off in the washroom") on real
+clips that `whisper-tiny` and, separately, six direct-audio loss-
+engineering experiments (14-19) could not reliably resolve acoustically.
+
+**Setup**:
+1. `scripts/legacy/transcribe_corpus_for_cascade.py` — `faster-whisper` (base)
+   transcribes all 62,876 non-background clips in the manifest.
+   Deliberately uses *Whisper's own transcript* as the training text,
+   not each source's ground-truth transcript (which the combined
+   manifest doesn't carry through anyway) — the classifier should
+   train on the same kind of noisy ASR output it'll see at real
+   inference time.
+2. `scripts/legacy/train_cascade_classifier.py` — TF-IDF (1-2 grams) +
+   logistic regression on `(Whisper transcript, label)`. Deliberately
+   the cheapest plausible text classifier — this project's 20-intent,
+   largely fixed-phrasing vocabulary is far narrower than open-domain
+   SLU benchmarks like SLURP's full 69 intents.
+3. `scripts/demo_infer_cascade.py` — live mic test, mirroring
+   `demo_infer.py`'s interface (same push-to-talk capture, same
+   `--debug` full-distribution/WAV-saving option), for the cascade
+   instead of the direct-audio model.
+
+No hyperparameter tuning at any step — this was a first-pass
+feasibility check.
+
+**Result — a step change, not an incremental gain**:
+
+| Split | All | Real audio only |
+|---|---:|---:|
+| Val | 90.17% (n=6,844) | 87.51% (n=5,062) |
+| **Test** | **92.23%** (n=8,597) | **90.62%** (n=6,831) |
+
+Real-audio-only accuracy (the honest number, controlling for
+synthetic clips being easier for Whisper to transcribe than real
+speech) clears 90% on the held-out test split and lands almost exactly
+at the published SLURP ceiling (87-88%, the closest comparable
+real-world benchmark) found in the same research pass — a credible
+number, not an inflated illusion. Confirmed on two independent splits,
+not a one-off. Per-class, the project's single worst, most persistent
+problem — VOLUME_UP/VOLUME_DOWN polarity confusion — improved
+dramatically: VOLUME_DOWN 55.9-69.9% (every prior direct-audio
+experiment) → **80.1%**; VOLUME_UP 56.8-72.8% → **86.6%**. The classes
+with zero real audio coverage (CALL, NEXT, LIST_REMINDERS) — the
+project's other standing open risk — score 88.9%, 100%, and 98.1%
+respectively on this blended metric, consistent with the ASR offloading
+acoustic generalization almost entirely onto Whisper's own pretraining
+(hundreds of thousands of hours of real diverse speech, none of it
+from this project's limited/synthetic-heavy dataset).
+
+**Model size** (measured, not estimated): direct-audio DS-CNN
+checkpoint is **137.5 KB**. The cascade is `faster-whisper` (base,
+142MB on disk) + the TF-IDF/logistic-regression classifier (1.9MB) =
+**~144MB total — ~1,070x the DS-CNN's size**.
+
+**Decision, revised after a compliance check (see MODEL.md Section 10)**:
+the assignment explicitly states "ASR models are not desirable for
+on-device computing because of footprint" and requires the VCM to be
+tiny — at ~1,070x the size, the cascade cannot be the deployed VCM.
+It's kept as a **backup/reference option** (useful if the footprint
+constraint is ever relaxed, or as a benchmark ceiling) and — more
+usefully — as an **offline training-time teacher** for the direct-audio
+model via knowledge distillation (see Experiment 27), which keeps 100%
+of the ASR's benefit off the deployed model entirely. Live-voice
+validation of the cascade (`--debug`) was done afterward anyway, out of
+general interest — see the notes below — and held up well, but that no
+longer changes which model actually gets deployed.
+
+**Live-voice validation (informal, ~68 utterances, done for interest
+after the compliance finding above)**: ~96% correct on clearly-
+intentional utterances, exceeding the 90.62% test-set number. Every
+previously-broken direct-audio case now worked via the cascade —
+"Kill the lights" (LIGHT_OFF=0.98), "Lower the volume"/"Turn the
+volume down" (VOLUME_DOWN=0.99, both previously scored WEATHER=0.97 on
+the direct model), "Make a call" (CALL=0.96-0.98, previously ~0-1%).
+Real remaining errors: "Start music"→STOP (should be PLAY_MUSIC),
+"Lights out."→LIGHT_ON (idiom not in any training template, should be
+LIGHT_OFF), "Stop play"→PLAY_MUSIC (should be STOP, though Whisper's
+own transcription looked truncated here too). A few attempts were also
+hallucinated into non-English text by Whisper on ambiguous/quiet audio
+(fixed afterward — `language="en"` is now forced in
+`FasterWhisperTranscriber`).
+
+## Experiment 27 — knowledge distillation from the ASR-cascade into the deployable DS-CNN
+
+**Motivation**: the compliance finding in Experiment 26 (ASR isn't
+deployable — "not desirable for on-device computing because of
+footprint," VCM must be tiny) raised the question of whether the
+cascade's real benefit could still reach the deployed model without
+ever running ASR on it. The assignment's constraint is specifically
+about what runs at *inference* time; it says nothing about how
+training data/signal is produced. Knowledge distillation (Hinton,
+Vinyals, Dean, 2015) is the standard technique for exactly this: use a
+larger "teacher" model's predictions as extra soft-label supervision
+when training a smaller "student," then deploy only the student.
+
+**Setup**:
+1. `scripts/legacy/generate_distillation_labels.py` — runs every non-
+   background manifest row's already-computed Whisper transcript
+   (`data/cascade_transcripts.csv`, from Experiment 26) through the
+   trained cascade classifier, producing a full 19-class probability
+   distribution per clip (`data/distillation_labels.csv`).
+2. `vcm.train.dataset.load_distillation_labels()` remaps these into
+   this project's 20-label order (`unknown_background` always gets
+   probability 0 — it has no transcript). `ManifestDataset` optionally
+   returns `(features, label, teacher_probs)` instead of
+   `(features, label)` when distillation labels are supplied.
+3. `vcm.train.losses.DistillationLoss` wraps the existing
+   `ConfusablePairLoss` and adds a temperature-scaled KL-divergence
+   term against the teacher's soft labels, skipping rows with no
+   teacher available (`--distill-weight`, `--distill-temperature`,
+   both opt-in/default-off in `train.py`).
+4. Training run: `--confusable-alpha 2.0 --distill-weight 2.0
+   --distill-temperature 2.0`, DS-CNN bigcap, from scratch, 80 epochs
+   — same recipe as Experiment 15 with distillation added on top.
+
+**A real numerical instability at the start, self-resolved**: epoch 1's
+train_loss was 23.17 — wildly higher than any prior experiment's
+(typically 0.2-2.0). val_loss (computed with the base criterion only,
+unaffected by distillation) looked normal (~3.0, expected for an
+untrained 20-class model). Root cause: an untrained model's raw
+outputs can be confidently wrong on classes the teacher favors, and
+KL-divergence punishes that heavily — `target * (log(target) -
+input)` blows up when the student's log-probability for a
+teacher-favored class is very negative. Watched closely through the
+LR warmup peak (the highest-risk point for this kind of instability,
+per Experiments 18-21's earlier lessons): train_loss fell steadily
+every epoch (23.17→8.11 by epoch 10→2.73 by epoch 80) and val_acc
+climbed normally throughout, with no NaN/divergence at any point — the
+large magnitude was a scale artifact of the KL term on an untrained
+model, not real instability.
+
+**Result**: 75.78% best val accuracy (epoch 55) — technically new
+best, edging out Experiment 15's 75.45% by +0.33pp. But the headline
+number hides real, substantial per-class churn, not a clean
+improvement:
+
+| Class | Exp 15 (no distillation) | Exp 27 (distillation) | Change |
+|---|---:|---:|---:|
+| PLAY_MUSIC | 54.6% | **70.8%** | **+16.2pp** |
+| CREATE_REMINDER | 66.8% | **73.8%** | +7.0pp |
+| COLOR | 63.0% | **70.4%** | +7.4pp |
+| NEXT | 79.6% | 83.0% | +3.4pp |
+| VOLUME_DOWN | 69.9% | 58.3% | **-11.6pp** |
+| PAUSE | 91.3% | 82.5% | -8.8pp |
+| STOP | 85.2% | 77.4% | -7.8pp |
+| WEATHER | 68.5% | 64.1% | -4.4pp |
+
+**Analysis**: the wins are real and land exactly where predicted —
+PLAY_MUSIC, CREATE_REMINDER, and COLOR are three of the five labels in
+the "diffuse confusion cluster" (PLAY_MUSIC/WEATHER/TIME/MESSAGE/
+CREATE_REMINDER) that no prior fix — confusable-pair loss, downsampling,
+regularization — ever touched, since it's not a clean acoustic pair
+the way VOLUME_UP/DOWN is. PLAY_MUSIC's +16.2pp is the single largest
+per-class improvement of any experiment in this project. But
+VOLUME_DOWN regressed substantially — notable because that's one of
+the two classes distillation was specifically expected to help (the
+cascade resolves it well via text) — and PAUSE/STOP, previously
+strong, both weakened. `distill-weight=2.0` may simply be too strong
+for some classes while being right for others; untried: a lower
+weight (e.g. 1.0), or a per-group weighting analogous to the
+confusable-pair loss's per-group alpha idea.
+
+**Current standing recommendation**: not a strict upgrade over
+Experiment 15 — which one to actually ship depends on whether the
+PLAY_MUSIC/COLOR/CREATE_REMINDER gains or the VOLUME_DOWN/PAUSE/STOP
+costs matter more for the live demo. Both remain fully compliant
+(137.5 KB, no ASR at inference time) — see MODEL.md Section 10 for the
+full three-way comparison including the ASR-cascade.
+
+## Evaluation change from Experiment 28 onward: real-speech test accuracy
+
+Through Experiment 27 the direct-audio models were compared on best
+*val* accuracy over all rows, while the ASR-cascade (Experiment 26) was
+reported on *test* accuracy over real speech only (90.62%) — two
+numbers that aren't comparable. `scripts/evaluate_checkpoint.py` now
+reports every checkpoint the cascade's way: test split, real speech
+only (`is_synthetic == False`, excluding `unknown_background`, n=6,831),
+plus per-class and confusable-group breakdowns. Re-scored on that
+basis, the previous best direct-audio models are **70.56%** (Experiment
+25) and **71.57%** (Experiment 27) — a ~20pp gap to the cascade, not
+the ~15pp the val numbers suggested. They score 94–96% on synthetic test
+clips, so the gap is specifically real speech. Results log:
+`logs/eval_exp28_29_test.log`.
+
+## Experiment 28 — CRNN: fixing DS-CNN's receptive field
+
+**Motivation — a structural finding, not a tuning one**: DS-CNN's first
+conv (10×4, stride 2) is followed by stride-1 3×3 depthwise blocks, so
+each output unit sees only 4 + 5×4 = ~24 input frames (**~240ms**)
+before global average pooling. It classifies a 2–5s command as an
+unordered bag of quarter-second snippets — shorter than a single word
+like "temperature". That explains two things in this log: Experiment
+7→11's +6.4pp for only ~2K extra params (one more block = wider
+receptive field, not capacity), and the carrier-phrase confusions
+(VOLUME vs TEMPERATURE) surviving six loss-engineering experiments
+(14–19). Hello Edge's DS-CNN was designed for 1s single-word keyword
+spotting, where this doesn't matter; this project's commands are
+multi-word phrases where word order and phrase context do.
+
+**Setup**: new `CRNN` in `architectures.py` (96,277 params, ~95 KB
+int8): the same DS-conv blocks but every second one strides by 2 in
+time and frequency (receptive field grows geometrically), frequency
+collapsed by a 1×1 projection, then a bidirectional GRU (hidden 64) and
+attention pooling (a 129-param learned per-frame weight) instead of
+global average pooling. Same recipe as Experiment 25 otherwise: `--model
+crnn --epochs 80 --warmup-epochs 5 --confusable-alpha 2.0`, from
+scratch, QA-filtered manifest, **seeds 0/1/2** — plus two new DS-CNN
+baseline seeds (1/2; seed 0 = Experiment 25's checkpoint) so both sides
+are multi-seed. All on GPU 2.
+
+**Result — the largest single improvement in the project**:
+
+| Model | Seeds | Best val | Real-speech test | All test |
+|---|---:|---:|---:|---:|
+| DS-CNN bigcap (26,300) | 3 | 72.69–73.98% | 68.42 / 69.01 / 70.56% | 73.68–75.31% |
+| **CRNN (96,277)** | 3 | 84.00 / 84.91 / 84.00% | **79.84 / 80.84 / 80.57%** | 83.28–84.25% |
+
++11pp on real speech, consistent across all three seeds (spread <1pp on
+both sides, so this is not run-to-run noise). The within-group polarity
+confusion roughly halved or better (VOLUME/TEMPERATURE 6.1% → 2.1–2.5%,
+LIGHT 2.2% → 0.9–1.5%). CRNN overfits noticeably (train loss ~0.05 vs
+val loss ~0.7, val loss rising slightly while val accuracy still
+climbed) — unlike the 26K DS-CNN, which was *under*fitting (why the
+Experiment 24 regularization stack hurt it). CRNN has capacity to
+spare, which made regularization via augmentation the natural next
+step (Experiment 29b).
+
+**Caveat for the assignment**: the architecture review says "no
+attention/transformer layers". Attention *pooling* here is one linear
+scorer over time steps, not transformer self-attention, but if the rule
+is read literally a conv-only variant (dilated time convs + pooling, no
+GRU/attention) is the fallback. The GRU is also not yet benchmarked on
+the RPi ONNX/int8 path.
+
+**Operational note**: the first launch oversubscribed the shared DGX
+node (~24K threads, ~200 cores — librosa/BLAS spawn a thread per core in
+every DataLoader worker). All runs since set
+`OMP_NUM_THREADS=MKL_NUM_THREADS=OPENBLAS_NUM_THREADS=NUMBA_NUM_THREADS=1`,
+which cut usage to ~40 cores and *halved* epoch time.
+
+## Experiment 29a — trim silence + 5.0s window
+
+**Motivation**: features kept the first 3.0s of each clip. Measured on
+a 3,000-clip sample (`librosa.effects.trim`, top_db=30): speech runs
+past 3.0s in **12.2% of clips overall and 29.6% of SLURP** — the source
+where real-speech accuracy is weakest. Trimming leading/trailing silence
+plus a 5.0s window leaves speech truncated in ~1.0% overall (3.3% of
+SLURP).
+
+**Setup**: Experiment 28's CRNN recipe + `--trim-silence --window-s
+5.0`, seeds 0/1/2. Stored in the checkpoint as `feature_config`, which
+`demo_infer.py` and `evaluate_checkpoint.py` apply automatically.
+
+**Result — essentially no change**: 80.73 / 80.81 / 80.71% real-speech
+test vs Experiment 28's 79.84 / 80.84 / 80.57% (+0.3pp mean, within seed
+noise). The truncated tails were evidently mostly words that don't
+change the intent (the rest of a reminder's content, a location). Kept
+anyway, since 29b builds on it and it removes a real train/live
+mismatch (push-to-talk audio has variable leading silence), but this
+was not the lever.
+
+## Experiment 29b — waveform augmentation
+
+**Motivation**: SpecAugment was ruled out twice (Experiments 2, 8)
+because random time masking erases the one distinguishing word. But the
+synthetic-to-real gap was the dominant remaining problem (94–97%
+synthetic vs ~80% real speech on test), and CRNN was overfitting.
+Waveform augmentation perturbs *how* a command sounds without removing
+*what* was said.
+
+**Setup**: Experiment 29a + `--wave-augment` (`vcm/train/wave_augment.py`),
+applied to training audio after trimming and before feature
+extraction: background noise from the *train-split* GSC clips at SNR
+5–25 dB (p=0.5), speed perturbation 0.9–1.1× (p=0.5), synthetic room
+reverb (exponentially decaying noise RIR, RT60 0.2–0.8s, p=0.3), and a
+random 0–0.3s start shift (always). No gain augmentation — per-clip
+peak-referenced dB normalization cancels it. Seeds 0/1/2.
+
+**Result — new best deployable model**:
+
+| | Seeds | Best val | Real-speech test | All test | Synthetic test |
+|---|---:|---:|---:|---:|---:|
+| Experiment 29a | 3 | 83.75–84.88% | 80.71–80.81% | 83.91–84.21% | 96.3–97.8% |
+| **Experiment 29b** | 3 | **88.29 / 88.51 / 88.46%** | **85.32 / 85.14 / 85.73%** | **87.97–88.40%** | 98.9–99.2% |
+| ASR-cascade (Experiment 26, reference) | — | — | 90.62% | 92.23% | — |
+
++4.6pp real speech over 29a, again consistent across seeds. Cumulative
+over the DS-CNN: **+16.1pp on real speech** (69.3% → 85.4% seed mean),
+closing three-quarters of the gap to the ASR-cascade at 96K params and
+no ASR at inference. Confusable groups (seed 2): VOLUME/TEMPERATURE
+95.5% correct / 1.4% within-group / 3.0% other; LIGHT 92.0% / 0.7% /
+7.3%. The polarity confusion that dominated Experiments 1–27 is
+effectively solved.
+
+**Per-class accuracy, real-speech test split** (Experiment 25 DS-CNN
+and Experiment 28 CRNN seed means for comparison; "all" includes
+synthetic clips):
+
+| Label | Real n | Exp 25 DS-CNN | Exp 28 CRNN (mean) | 29b s0 | 29b s1 | 29b s2 | **29b mean** | 29b mean, all clips |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| TEMPERATURE | 1133 | 95.1% | 98.8% | 99.2% | 99.4% | 99.1% | **99.2%** | 99.3% |
+| PAUSE | 41 | 100.0% | 98.4% | 100.0% | 100.0% | 100.0% | **100.0%** | 100.0% |
+| STOP | 64 | 89.1% | 97.9% | 98.4% | 100.0% | 100.0% | **99.5%** | 99.7% |
+| TIMER | 80 | 71.2% | 92.9% | 96.2% | 96.2% | 97.5% | **96.7%** | 98.8% |
+| LIGHT_ON | 598 | 86.5% | 92.0% | 94.3% | 94.8% | 95.5% | **94.9%** | 95.3% |
+| VOLUME_DOWN | 412 | 75.7% | 86.1% | 89.1% | 90.8% | 91.8% | **90.5%** | 91.6% |
+| LIGHT_OFF | 718 | 72.6% | 83.7% | 88.3% | 86.8% | 88.3% | **87.8%** | 88.4% |
+| VOLUME_UP | 515 | 69.9% | 83.0% | 88.0% | 87.4% | 88.2% | **87.8%** | 89.0% |
+| TIME | 343 | 70.8% | 75.7% | 85.4% | 82.8% | 81.9% | **83.4%** | 85.4% |
+| ALARM | 337 | 65.6% | 74.4% | 81.6% | 81.9% | 79.5% | **81.0%** | 87.4% |
+| MESSAGE | 399 | 52.6% | 68.8% | 80.2% | 81.5% | 78.2% | **80.0%** | 82.4% |
+| WEATHER | 632 | 57.1% | 69.1% | 77.4% | 78.8% | 79.4% | **78.5%** | 79.8% |
+| PLAY_MUSIC | 846 | 60.9% | 75.7% | 76.7% | 74.8% | 78.1% | **76.6%** | 78.1% |
+| BRIGHTNESS | 351 | 55.8% | 63.4% | 74.1% | 76.1% | 76.3% | **75.5%** | 81.7% |
+| CREATE_REMINDER | 176 | 34.7% | 50.6% | 64.8% | 62.5% | 71.6% | **66.3%** | 82.3% |
+| COLOR | 186 | 38.2% | 48.0% | 56.5% | 54.3% | 51.1% | **53.9%** | 75.0% |
+| NEXT | 0 | – | – | – | – | – | synthetic-only | 100.0% |
+| LIST_REMINDERS | 0 | – | – | – | – | – | synthetic-only | 96.5% |
+| CALL | 0 | – | – | – | – | – | synthetic-only | 94.2% |
+| unknown_background | 0 | – | – | – | – | – | not speech | 100.0% |
+
+Every class with real test audio improved over Experiment 25, most by
+double digits. **What's left**: COLOR (53.9%), CREATE_REMINDER (66.3%),
+BRIGHTNESS (75.5%) and the PLAY_MUSIC/WEATHER/MESSAGE cluster (77–80%)
+— almost entirely SLURP's free-form phrasing. Top confusions (seed 2)
+are PLAY_MUSIC↔WEATHER (52/45), LIGHT_OFF→BRIGHTNESS (48),
+PLAY_MUSIC↔MESSAGE (32/31) and COLOR↔BRIGHTNESS (31/27) — classes that
+share vocabulary, not a single polarity word. CALL/NEXT/LIST_REMINDERS
+still have no real test audio at all, so their numbers only measure
+synthetic performance; a quick local check with macOS `say` misread
+"call mom" as LIGHT_ON (0.98) — the same synthetic-only-label risk
+flagged in DATASET.md step 8.
+
+**Current standing recommendation**: `checkpoints/exp29b_crnn_trim5s_waveaug_s2.pt`
+(best real-speech seed, 85.73%) is the best deployable model. Try it
+live with `python scripts/demo_infer.py --checkpoint
+checkpoints/exp29b_crnn_trim5s_waveaug_s2.pt`; the feature config
+(trim + 5.0s) is read from the checkpoint automatically.
+
+## Experiment 30 — auxiliary word-level CTC on the Whisper transcripts
+
+**Motivation**: Experiment 27 distilled only the cascade's 19-class
+probabilities, a thin signal. Following Lugosch et al. (Interspeech
+2019), a CTC loss asking the model's per-frame features to spell out
+*which words were said, in order* should push the encoder toward word
+content instead of clip-level acoustic texture. That should in turn help
+the shared-vocabulary confusions left after 29b (PLAY_MUSIC ↔ WEATHER ↔
+MESSAGE, COLOR ↔ BRIGHTNESS).
+
+**Setup**: Experiment 29b + `--ctc-weight` (`vcm/train/transcripts.py`):
+a linear head (280K params) on CRNN's per-frame BiGRU outputs,
+word-level vocabulary from the train-split Whisper transcripts (2,172
+entries incl. blank/`<unk>`, words seen ≥3 times, 97.6% token
+coverage), empty target for untranscribed `unknown_background`. Word-level
+rather than character-level because CRNN's frames are ~80ms apart, too
+coarse for characters. The head lives only in the training loop and is
+**not saved**, so the deployed model is identical in size (96,277) to
+29b. Weight 0.5 × seeds 0/1/2, plus 0.2 and 1.0 at seed 0.
+
+**Result — a small but consistent negative**:
+
+| | Best val | Real-speech test | All test |
+|---|---:|---:|---:|
+| Experiment 29b (no CTC), 3 seeds | 88.29–88.51% | 85.32 / 85.14 / 85.73% (mean 85.40) | 87.97–88.40% |
+| **CTC weight 0.5**, 3 seeds | 88.31–88.44% | 84.61 / 84.83 / 84.67% (mean **84.70**) | 87.56–87.77% |
+| CTC weight 0.2, seed 0 | 88.40% | 84.80% | 87.75% |
+| CTC weight 1.0, seed 0 | 87.72% | 83.68% | 86.74% |
+
+-0.7pp real speech at weight 0.5, with all three CTC seeds below all
+three 29b seeds, and monotonically worse as the weight grows (0.2 ≈ 0.5
+> 1.0). Val accuracy was indistinguishable, so only the real-speech test
+metric exposes the difference. The CTC loss itself trained normally
+(~120 → ~1.8), so this isn't a broken head. The per-class
+breakdown (real speech, 3-seed means, weight 0.5 vs 29b) shows where it
+cost:
+
+| Label | 29b | CTC 0.5 | Change |
+|---|---:|---:|---:|
+| CREATE_REMINDER | 66.3% | 59.7% | **-6.6pp** |
+| COLOR | 53.9% | 51.8% | -2.1pp |
+| WEATHER | 78.5% | 76.6% | -1.9pp |
+| LIGHT_ON | 94.9% | 93.8% | -1.1pp |
+| VOLUME_UP | 87.8% | 86.7% | -1.1pp |
+| ALARM | 81.0% | 81.8% | +0.8pp |
+| STOP | 99.5% | 100.0% | +0.5pp |
+| all others | | | within ±0.7pp |
+
+The biggest losses are on exactly the free-form SLURP classes it was
+meant to help, CREATE_REMINDER most of all, whose transcripts are the
+longest and most open-vocabulary (the reminder's content). Likely
+explanation: with only 96K params, transcribing every word competes
+with classifying intent for the same capacity, and the free-form
+classes have the most intent-irrelevant words to transcribe. Lugosch
+et al.'s setup used the ASR targets for *pretraining* a much larger
+encoder, then fine-tuned for intent. Staging it that way (CTC-only
+pretrain, then intent fine-tune without CTC), or keyword-only targets
+instead of every word, are the untried variants. Neither is a cheap
+next step compared with the data gaps found in live testing (below).
+
+**Current standing recommendation — unchanged**: Experiment 29b
+(`exp29b_crnn_trim5s_waveaug_s2.pt`, 85.73% real speech) remains the
+best deployable model. The `--ctc-weight` flag stays in `train.py`
+(default off) for the staged variants above.
+
+## Live-voice test of Experiment 29b (informal)
+
+One tester, Mac microphone, `scripts/demo_infer.py`, about 100
+utterances. Strong: volume up/down, lights on/off, temperature, NEXT,
+CALL, MESSAGE, LIST_REMINDERS, ALARM, CREATE_REMINDER — mostly ≥0.95
+confidence. Weak, each traced to a gap in the training transcripts
+(`data/cascade_transcripts.csv`, train split):
+
+- **PAUSE/STOP lose to PLAY_MUSIC unless the verb is clearly
+  articulated.** Train counts: PAUSE 640, STOP 812, PLAY_MUSIC 3,682,
+  and about half of PLAY_MUSIC's clips contain "song"/"music"/"playing",
+  so those words are strong PLAY_MUSIC evidence. PAUSE phrasings are
+  mostly "pause the music" (219), "pause" (119), "pause this song" (90)
+  and "pause music" (69). "Pause audio" never occurs, and "pause the
+  song" only 17 times. Also, **26 STOP clips transcribe as "start
+  music"**, either a Whisper mishearing or mislabeled PLAY_MUSIC. Needs
+  a label audit.
+- **"Timer for 3/5 minutes" fails, "Start a timer for …" works.** Train
+  phrasings are dominated by "start a timer for / count down for" +
+  {10 seconds, 30 seconds, one minute}. Bare "timer …" is 262 of 1,941
+  clips, and other durations are rare.
+- **"Color {x}" is flaky.** That pattern occurs only in synthetic data
+  and only for red/green/blue (~380 clips). Real COLOR speech uses
+  "change/set the lights to …".
+- Confident errors (1.00 on a wrong class) plus low-confidence misses
+  (0.3–0.6) suggest a reject threshold in the demo ("didn't catch that")
+  as a cheap mitigation.
+
+Next lever is data rather than architecture: targeted synthetic data for
+these phrasings (including verb minimal pairs like "play / pause / stop
+the song", the same idea that fixed the polarity confusion), a label
+audit, and real recordings once the adviser clears the recording tool.
+
+## Experiment 31 — targeted synthetic data for the live-test gaps
+
+**Motivation**: the 29b live test (above) failed outside the class
+schema's 3 phrasings/3 slot values per intent, the only ones Option B was
+generated from. Targets: PAUSE/STOP losing to PLAY_MUSIC ("pause audio",
+"stop the song"), TIMER durations beyond 10 s / 30 s / 1 min, COLOR
+beyond red/green/blue, plus BRIGHTNESS counterparts for the shared
+"set/change the lights to …" carrier.
+
+**Setup**:
+- **Phrasings** (`src/vcm/dataset/sources/targeted_synth.py`): the
+  schema's own phrasings, imported from `dataset_schema.py` and voiced
+  first so they're always covered, plus extras. Extras include
+  play/pause/stop verb minimal pairs over the same objects ("the song",
+  "the audio", "the track", …), 27 timer durations × 10 templates, 14
+  colors × 10 templates, and 10 brightness levels × 5 templates.
+- **Voices** (`scripts/generate_targeted_synthetic.py`): Chatterbox
+  (the same TTS as Option B, so no new engine signature confined to
+  these classes), cloning real FSC and Timers-and-Such speakers from
+  ~6–10 s of their own audio. Train clips use the 145 train-split
+  speakers; a held-out test set uses the 20 test-split speakers. Random
+  exaggeration 0.3–0.7 and cfg 0.3–0.6 per clip. 5,500 clips at
+  3.3 s/clip, 4 shards on one GPU, ~72 min.
+- **QA**: faster-whisper base; kept if WER ≤ 0.2 after number
+  normalization and, for PAUSE/STOP/PLAY_MUSIC, Whisper heard the
+  intended verb. 4,357 of 5,500 passed (79%). BRIGHTNESS 97%, COLOR 86%,
+  TIMER 79–85%, PAUSE/STOP/PLAY_MUSIC 68–77%. The PAUSE failures are
+  genuine TTS errors, mostly a dropped /p/ ("Daws.", "Pawsome",
+  "What's this song?"); short forms are worst ('pause song' failed 49 of
+  68). A first QA run rejected every "please …/can you …" media phrasing
+  through a verb-check bug, fixed in `b0156b3` before training.
+- **Manifest**: `scripts/legacy/add_targeted_synth_to_manifest.py` writes
+  `data/dataset_manifest_targeted.csv` (62,318 + 4,357 = 66,675 rows),
+  leaving `dataset_manifest.csv` untouched. The val split has no targeted
+  clips, so val stays comparable to 29b.
+- **Training**: exactly the 29b recipe on the new manifest, seeds
+  0/1/2, GPU 2.
+
+**Result — real speech flat, the targeted phrasings fixed**:
+
+| | Best val | Real-speech test | Targeted held-out test (unseen voices) |
+|---|---:|---:|---:|
+| Experiment 29b | 88.29 / 88.51 / 88.46% | 85.32 / 85.14 / 85.73% (mean 85.40) | 70.25 / 71.86 / 72.94% |
+| **Experiment 31** | 88.22 / 88.70 / 88.75% | 85.08 / 84.91 / 85.27% (mean 85.09) | **99.28 / 98.21 / 98.39%** |
+
+Both evaluated on the same test rows (`logs/eval_exp31_test.log`). The
+-0.3pp on real speech is inside the ~0.6pp seed spread, so there's no
+real-speech change either way. That's expected: the real test set barely
+contains the new phrasings. Its PAUSE/STOP rows were already 100%, and
+its real TIMER rows 96–98%. The gain shows on the phrasings themselves
+(3-seed means, all test rows including targeted clips):
+
+| Label | 29b | Exp 31 | Change |
+|---|---:|---:|---:|
+| PAUSE | 84.9% | **100.0%** | +15.1pp |
+| STOP | 86.8% | **100.0%** | +13.2pp |
+| TIMER | 89.2% | **98.9%** | +9.8pp |
+| COLOR | 70.9% | **81.3%** | +10.4pp |
+| BRIGHTNESS | 82.3% | 81.9% | -0.3pp |
+| PLAY_MUSIC | 79.0% | 78.7% | -0.3pp |
+
+**Caveats**:
+- The targeted test clips are Chatterbox clones, the same engine as
+  their training data, just unseen voices. 98–99% is therefore an upper
+  bound on how the phrasings transfer to real speech. The live-voice
+  retest is the real check.
+- Real-speech per class (3-seed means) moved within noise for most
+  classes, but **BRIGHTNESS fell 75.5% → 72.9%** (-2.6pp; two of three
+  seeds below every 29b seed) and CREATE_REMINDER 66.3% → 64.4%. Real
+  COLOR, which is SLURP free-form phrasing the new data doesn't cover,
+  stayed at 55.4% (+1.4pp). The BRIGHTNESS dip may come from the new
+  "set the lights to N percent" carrier, and is worth watching.
+- Reject threshold 0.6 behaves the same as for 29b: on val it rejects
+  11.8% and accepted accuracy is 91.1% (29b: 10.4% / 90.5%).
+
+**Standing recommendation**: `checkpoints/exp31_crnn_targeted_s2.pt`
+(85.27% real speech, the best Exp 31 seed) for live testing and the
+demo, pending a live retest. It matches 29b on real speech and covers
+every schema phrasing, which is what benchmarking is likely to test.
+Keep `exp29b_crnn_trim5s_waveaug_s2.pt` (85.73%) as the best
+real-speech-only checkpoint until the live retest confirms the switch.
+
+## Wake-word selection: "Hey Kiwi"
+
+**Why**: the course requires a wake word instead of the push-to-talk
+button. Candidates were scored for **false-trigger risk** before any model
+was built, with `scripts/legacy/wakeword_confusability.py`. It converts each of
+the 62,836 Whisper transcripts of this project's command audio into one
+phoneme stream (CMUdict, across word boundaries) and counts utterances
+containing a stretch within one phoneme edit of the candidate. It also
+counts common English words (wordfreq Zipf ≥ 3) within one edit.
+
+| Wake word | Near-matches per 1,000 commands | Common sound-alikes (freq. per million words) | What collides |
+|---|---:|---:|---|
+| Carina | 0.02 | 2 (8.4) | "screen of"; Serena, Katrina |
+| Crayon | 0.03 | 2 (9.9) | "pray and"; crane, craven |
+| Conan | 0.05 | 7 (40.3) | "phone and"; canon, colon |
+| Cronin | 0.08 | 0 (0.0) | "screen in" |
+| Kernel | 0.33 | 3 (86.0) | "make an alarm", "turn a light"; journal, colonel |
+| **Kiwi** | **0.67** | **2 (5.3)** | "queen", "every week(day)"; pee-wee, kiki |
+| Nini | 1.48 | 7 (22.0) | "we need"; Nina, nanny |
+| Orly | 17.7 | 5 (11.2) | "for me", "for p.m.", "more heat", "your lights" |
+| Corinne | 38.0 | 16 (359) | "temperature in", "current", "weather in" |
+| Ellie | 79.2 | 44 (2,417) | "please", "tell", "only"; any, early, else |
+| Cory | 85.0 | 37 (1,186) | "increase", "decrease", "create" |
+
+For reference on the English half: Alexa has 1 sound-alike (1.3 per
+million), and Siri has 19 (1,160: city, series, sorry).
+
+**Decision: "Hey Kiwi".** It has the fewest everyday-English
+sound-alikes of any candidate and the second-lowest command collision
+rate, which is still ~125× fewer than Cory. It's spelled as it sounds,
+has one pronunciation (including in Filipino English), and isn't a common
+name, unlike Carina, Orly and Nini. It starts with a hard "k" that's easier
+to detect than Alexa's opening vowel, and it's a play on the author's
+surname (Quiwa). Carina scored lower on command collisions but is a
+common name in the Philippines. Cory, the first idea, would have
+triggered on roughly 1 in 12 commands through "increase", "decrease" and
+"create". The collision words become the detector's hard negatives
+(`vcm.dataset.sources.targeted_synth.NOT_WAKE_PHRASES`).
+
+**Limits**: CMUdict is American English, and this is a text proxy for
+false-trigger risk, not a trained detector. The detector's measured false
+wake-ups per hour are in Experiment 33.
+
+## Experiment 32 — slot-value heads (intent + slots in one model)
+
+**Setup**: Experiment 31's recipe on a new manifest (`dataset_manifest_exp32.csv`,
+69,324 rows) with three changes at once. Full numbers, logs and QA tables
+are in `reports/exp32_33_report.md`.
+- **Slot heads:** one head per slotted intent (vcm/slots.py; 106,855
+  params), `--slot-weight 1.0`.
+- **slots2:** 2,283 train + 366 test Chatterbox clips voicing every slot
+  value, QA-passed only when Whisper heard the intended value.
+- **Snips speaker re-split:** 40 of Snips' 49 speakers were in more than one
+  split before, 0 after.
+
+Slot labels come from ground-truth text (synthetic) or Whisper transcripts
+(real): 13,139 labels.
+
+**Result: slot values work, intent accuracy dropped.** Real-speech test,
+Snips excluded (the fair comparison: Experiment 31 had seen some of the
+re-split test speakers):
+
+| | Real speech | SLURP | Slot values (ground-truth labels) |
+|---|---:|---:|---|
+| Experiment 31 | 85.16 / 85.08 / 85.48% | 72.1–72.7% | — |
+| **Experiment 32** | **81.63 / 82.07 / 81.42%** | 65.6–66.5% | ALARM 98.4%, COLOR 86.9%, TIMER 74.2%, BRIGHTNESS 74.1% (seed 1) |
+
+−3.5pp, against a ~0.6pp seed spread. Almost all of it is SLURP's free-form
+classes (real speech, best seeds): PLAY_MUSIC 77.2 → 69.0%, WEATHER
+79.8 → 69.9%, COLOR 49.3 → 39.0%, CREATE_REMINDER 67.1 → 55.7%. Two
+candidate causes, not separated by this run:
+- **Task competition:** the slot loss competes with the intent loss for a
+  107K-param model's capacity. (Training loss 0.61 vs 0.17 isn't evidence
+  either way: Experiment 32's includes the slot loss.)
+- **Class balance:** the slots2 clips shift it toward ALARM/TIMER/
+  BRIGHTNESS/COLOR.
+
+**int8 quantization cost another 6.8pp** (82.07% → 75.32% real speech;
+fp32 ONNX 82.09%, so the export itself is exact). int8 saves only 134 KB,
+so the deployed files are fp32 (426 KB intent; 533 KB with the wake word).
+The earlier "int8 agrees on 12/12 phrases" check (Experiment 31) used 12
+clear TTS clips and missed this.
+
+**Decision**: sidestep both causes by freezing Experiment 31 and training
+only the slot heads on top (Experiment 34, `train.py --freeze-from`).
+Intent predictions are then Experiment 31's exactly (verified: identical
+logits), and the question becomes only how good frozen-feature slot heads
+are.
+
+## Experiment 33 — "Hey Kiwi" wake word
+
+**Setup**: 25,475-param CRNN (vcm/wakeword/) on 1.5 s windows. It's
+trained on the wakeword batch (Chatterbox "hey kiwi" in 145 cloned train
+voices plus near-miss phrases), cut-off positives, command speech and
+noise. Evaluated streaming, like the device: false rejects on 195 held-out
+clips from 20 unseen voices (clean, and at 10 dB noise), and false wake-ups
+over 7.48 h of test-split speech.
+
+**Data problem**: Whisper-base heard only ~45% of the "hey kiwi" clips as
+"hey kiwi", mostly "Thank you…" (599 clips), "Kiwi" or "Okay, Kiwi".
+Listening confirmed the clips say "hey kiwi", so this was Whisper, and the
+strict check threw away more than half the positives (1,347 train kept).
+Near-miss negatives were also over-rejected by a WER check (fixed in
+`a701268`: a negative only has to *not* sound like the wake word).
+
+**Result** (seed 1, fp32):
+
+| Threshold | False reject, clean | False reject, 10 dB noise | False wake-ups per hour |
+|---:|---:|---:|---:|
+| 0.90 | 4.1% | 9.7% | 1.34 |
+| **0.95 (default)** | **6.7%** | **16.4%** | **0.67** |
+| 0.98 | 19.0% | 29.2% | 0.13 |
+
+The automatic suggestion (≤ 0.5 false wake-ups/h) was 0.98, where the
+curve is steep. 0.95 is the default instead: much fewer misses for ~1
+false wake-up every 1.5 h of dataset speech. Real-room rates need the
+field test (DEPLOYMENT.md step 8). int8 is similar up to 0.85 and worse
+at 0.98 (41.5% noisy false rejects), so the wake word also ships fp32.
+
+**Next (Experiment 34)**:
+- keep every "hey kiwi" clip that's plausible audio instead of trusting
+  Whisper (~3,000 positives instead of 1,347), and retrain;
+- add the author's own recordings (`scripts/record_wakeword.py`), as
+  training data and as a real-voice false-reject measurement.
+
+## Experiment 34 — slot heads on a frozen encoder, wake word v2
+
+Full numbers and logs: `reports/exp34_report.md`.
+
+**Slots, setup**: Experiment 31 seed 2 frozen (`train.py --freeze-from`,
+BatchNorm statistics frozen too); only the slot heads train (10,578
+params, 30 epochs, 3 seeds). For comparison, one joint run with the slot
+loss down-weighted (`--slot-weight 0.3`, 80 epochs, 1 seed).
+
+**Slots, result** (test, Snips excluded; slot accuracy = mean over the 4
+slotted intents' ground-truth-labelled clips):
+
+| | Real speech | Slot-head acc | TIMER | ALARM | BRIGHTNESS | COLOR |
+|---|---:|---:|---:|---:|---:|---:|
+| Experiment 31 (no slots) | 85.48% | — | | | | |
+| **Frozen, seeds 0/1/2** | **85.48%** (all three) | 77.05 / 77.43 / **77.64%** | 68.4% | 89.7% | 68.2% | 84.3% |
+| Joint, slot weight 0.3 | 84.80% | 83.41% | 74.2% | 99.4% | 73.7% | 86.4% |
+| Experiment 32 (joint, weight 1.0) | 82.07% | 83.42% | 74.2% | 98.4% | 74.1% | 86.9% |
+
+(per-slot columns: frozen seed 2, joint w0.3 seed 0, Experiment 32 seed 1)
+
+- Freezing works as intended: intent is exactly Experiment 31's, and
+  val_acc stayed constant across all 30 epochs.
+- The price is ~6 points of slot accuracy, mostly ALARM (−9.7) and
+  TIMER (−5.8): features trained only for intent carry less of the value.
+- Joint training at weight 0.3 gets Experiment 32's slot accuracy for
+  −0.68 intent points (vs −3.4 at weight 1.0). Only one seed, and
+  Experiment 31's seeds spanned 85.08–85.48%, so the intent cost isn't
+  clearly outside seed noise yet. This separates Experiment 32's two
+  candidate causes: most of its intent loss was the slot loss's weight
+  (task competition), not the slots2 class balance, since both runs
+  used the same data.
+- Reject threshold 0.6 on val (frozen seed 2): rejects 11.1%, accepted
+  accuracy 86.2% → 91.8%, 4.6% of correct answers re-asked.
+
+**Shipped**: frozen seed 2 (`models/vcm_intent.onnx`, 426 KB fp32; ONNX
+85.46% vs 85.48%, one clip, slot lines identical). Intent accuracy is
+the project's headline number, so it isn't traded for slot accuracy on
+one seed. If more w0.3 seeds hold at ~85%, joint w0.3 is the better model.
+**Default switched to joint w0.3** after live Pi testing found the frozen
+model's slot values too weak: `models/vcm_intent.onnx` is now
+`exp34_joint_w03_s0.pt` (426 KB fp32; ONNX matches the checkpoint to 1e-6),
+and the frozen model stays as `models/legacy/vcm_intent_frozen.onnx`. The trade:
+−0.68 intent points for +5.8 slot points (ALARM +9.7, TIMER +5.8,
+BRIGHTNESS +5.5, COLOR +2.1). More w0.3 seeds would confirm the intent
+cost is within seed noise.
+
+**Wake word, setup**: positives kept by the plausible-audio rule instead
+of Whisper (train 2,942/3,000 passed vs 1,347; test 391/400 vs 195),
+plus the author's 30 recorded takes (20 train, 10 held-out test) and 12
+near-misses. 2 seeds, 30 epochs.
+
+**Wake word, result** (same 391-clip test set and 7.48 h negative
+stream for all; real voice = 10 takes, so each is 10 points):
+
+| Model, threshold | False reject clean | 10 dB noise | Real voice | False wake-ups/h |
+|---|---:|---:|---:|---:|
+| Experiment 33 s1, 0.95 | 27.4% | 34.5% | 20% | 0.67 |
+| **v2 s0, 0.95 (shipped)** | **14.1%** | 21.5% | **0%** | 1.34 |
+| v2 s0, 0.98 | 27.9% | 43.2% | 30% | 0.40 |
+| v2 s1, 0.95 | 14.3% | 23.8% | 10% | 2.27 |
+
+- Experiment 33 looks worse here than in its own report (6.7% clean
+  false rejects) because 200 of the new 391 test positives are clips its
+  Whisper QA had rejected, which it never trained on.
+- v2 halves clean false rejects at 0.95 and catches every real take, at
+  twice the false wake-ups. At 0.98 the false wake-ups (3 in 7.48 h) are
+  all synthetic near-miss phrases, but 3 of 10 real takes are missed.
+- **Threshold stays 0.95**: a missed "hey kiwi" is repeated at once,
+  while the false wake-ups are dominated by near-miss phrases that are
+  rarer in a real room than in this stream. The Pi field test decides.
+- The 10 dB noise column moved a few points between runs: the noise
+  segment used the unseeded global `random`. Fixed after this run
+  (`add_noise(..., rng)`), so later evaluations are reproducible.
+
+## Experiment 35 — temperature and reminder slot heads
+
+Full numbers and logs: `reports/exp35_report.md`.
+
+**Setup**: two more slot heads, appended after Experiment 32's four. They
+use the class schema's 3 values each: TEMPERATURE (18 / 22 / 26 degrees)
+and CREATE_REMINDER (drink water / study / call home). A new synthetic
+batch, slots3, adds 1,380 Chatterbox clips; 1,319 passed QA, which
+requires Whisper to hear the value. TEMPERATURE passed 98.5–98.9%,
+CREATE_REMINDER 92.2–92.7%, and every value at least 89%. Training uses
+Experiment 34's joint recipe (slot weight 0.3, 80 epochs), 3 seeds. The
+model has 107,887 params (+1,032).
+
+**Result** (test; real-speech intent without Snips, the same rows as the
+baseline's 84.80%; slot accuracy on ground-truth-labelled clips):
+
+| | Real speech | Old-4 slot mean | TIMER | ALARM | BRIGHTNESS | COLOR | TEMPERATURE | CREATE_REMINDER |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Experiment 34 joint w0.3 (baseline) | 84.80% | 83.41% | 74.2% | 99.4% | 73.7% | 86.4% | — | — |
+| Seed 0 | 85.15% | 83.34% | 73.9% | 97.5% | 74.1% | 87.8% | 100% | 100% |
+| Seed 1 | 85.19% | 83.26% | 75.4% | 97.8% | 73.7% | 86.1% | 100% | 100% |
+| **Seed 2 (shipped)** | **85.24%** | **83.75%** | 74.4% | 97.8% | 76.1% | 86.7% | 100% | 100% |
+
+- Adding the two heads cost no intent accuracy. All three seeds are
+  0.35–0.44 points above the baseline (all sources: 84.15–84.17% vs
+  84.04%). The old heads hold: the largest drop is ALARM, −1.6.
+- The new heads' 100% is on **synthetic clips only** (267 TEMPERATURE,
+  201 CREATE_REMINDER test clips, all `option_b` or slots3). No
+  real-speech recording in the data carries these values: FSC's
+  temperature commands have no number, and SLURP's reminders use other
+  tasks. Live testing decides.
+- **The schema and the data disagree on one value.** `option_b`, the
+  class dataset, uses "exercise" as the third reminder task, while
+  `dataset_schema.py` and `vcm.slots` say "call home". So option_b's 580
+  "exercise" clips are unlabelled, and "call home" exists only in slots3
+  (189 train clips).
+- Per-class intent on real speech moved in both directions, and the
+  baseline is one seed:
+  - CREATE_REMINDER is noisy: 55.7 / 66.5 / 59.7% vs 65.3% (n=176).
+  - BRIGHTNESS is lower in all three seeds: 66.9–69.3% vs 74.6%.
+  - Snips lighting is lower: 71.6–72.6% vs 75.3%.
+  - COLOR is higher: 57.8–59.8% vs 57.0%.
+
+**Shipped**: seed 2 (`models/vcm_intent.onnx`, 432 KB fp32, 6 slot heads
+in the metadata). It is best on the gated measure and has the best old-4
+slot mean. The ONNX file matches the checkpoint on the same rows (85.24%,
+identical slot lines). The int8 file is still Experiment 34's.
+
+**Note (added in Experiment 36):** "call home" was a stale schema value.
+The class recordings use "exercise", and so does the author. It was fixed
+in `c59c0c0` (schema CSV, loader, `vcm.slots` vocabulary, slots3 phrases)
+and retrained in Experiment 36. This model's third reminder value is
+"call home", so it can't output "exercise". Experiment 36 seed 1
+replaced it as the shipped model.
+
+## Experiment 36 — corrected reminder values (exercise)
+
+Full numbers and logs: `reports/exp36_report.md`.
+
+**Setup**: CREATE_REMINDER's third value is now "exercise" instead of
+"call home" (`c59c0c0`). Only slots3's 230 "call home" clips were
+re-voiced as "exercise", with the same ids, speakers and phrase slots;
+synthesis resumed and generated exactly those 230. Exercise QA passed
+93.5% / 93.3% (train/test). option_b's 580 "exercise" clips now get slot
+labels. Everything else is Experiment 35's recipe, 3 seeds, on GPU 2
+(free).
+
+**Result** (test; real-speech intent without Snips; slot accuracy on
+ground-truth clips; "exercise" = option_b test clips, n=60, synthetic):
+
+| | Real speech | TIMER | ALARM | BRIGHTNESS | COLOR | TEMPERATURE | CREATE_REMINDER | exercise |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Experiment 34 joint w0.3 | 84.80% | 74.2% | 99.4% | 73.7% | 86.4% | — | — | — |
+| Experiment 35 s2 (shipped before Exp 36) | 85.24% | 74.4% | 97.8% | 76.1% | 86.7% | 100% | 66.3% | 0% |
+| Seed 0 | **84.86%** | 76.2% | **96.9%** | 73.3% | 86.9% | 100% | 99.6% | 100% |
+| Seed 1 | 84.84% | 73.9% | 98.1% | 74.9% | 86.7% | 100% | 100% | 100% |
+| Seed 2 | 84.46% | 76.7% | 98.1% | 75.7% | 86.7% | 99.3% | 100% | 100% |
+
+- The corrected vocabulary works. Every seed scores 100% on "exercise",
+  where Experiment 35 can't output it (0%, so 66.3% on CREATE_REMINDER).
+- Intent is back at Experiment 34's level (84.46–84.86%), 0.4–0.8 below
+  Experiment 35's seeds (85.15–85.24%). The only change is 230 re-voiced
+  synthetic clips plus 580 option_b slot labels, and Experiment 31's
+  seeds alone spanned 0.4 points. So this is a small drop that may be
+  noise, not a confirmed effect.
+- Real-speech COLOR spans 36.8–49.3% across seeds (no Snips), so it's
+  mostly seed noise. Seed 1 is the best COLOR seed of all the models. CALL
+  has no real-speech test clips, so the bare "call" regression on the
+  author's voice can't be measured here.
+
+**Shipped: seed 1**, not the best-intent seed 0.
+- Seed 0 (84.86%) failed the ALARM gate by 0.5 points: 96.88% vs
+  Experiment 34's 99.38%, a 2.50-point drop against a 2-point limit.
+- Seed 1 is one clip behind on intent (84.84%, 6,577 clips) and passes
+  every gate: TIMER −0.26, ALARM −1.25, BRIGHTNESS +1.17, COLOR +0.30;
+  TEMPERATURE 100%, CREATE_REMINDER 100%, "exercise" 100%.
+- The unattended run gated only seed 0 and shipped nothing; the author
+  chose seed 1 afterwards.
+
+`models/vcm_intent.onnx` is 432 KB fp32, with metadata
+`source_checkpoint: exp36_joint_w03_s1.pt` and CREATE_REMINDER
+`['drink water', 'study', 'exercise']`. It matches the checkpoint on the
+same rows: real speech 84.84%, macro 83.27%, and every slot line and
+real-speech per-class line identical. One synthetic clip differs. The
+int8 file is still Experiment 34's.
+
+Seed 1 per-class intent accuracy on real speech (no Snips), vs
+Experiment 34:
+
+| | CREATE_REMINDER | BRIGHTNESS | COLOR | TEMPERATURE |
+|---|---:|---:|---:|---:|
+| Seed 1 | 59.09% | 69.10% | 49.26% | 99.38% |
+| Experiment 34 | 65.34% | 71.67% | 42.65% | 98.85% |
+| n | 176 | 233 | 136 | 1133 |
+
+COLOR is up 6.6 and CREATE_REMINDER down 6.3, but seeds spanned
+59.1–65.9% on CREATE_REMINDER, so live-test the reminder commands.
+
+---
+
+# Part 2: the class master dataset (Experiment 37 on)
+
+On 2026-10-01 the class agreed on one dataset and one schema: the master
+dataset (huggingface.co/datasets/airimonda/ai231-me2-voice-commands) and
+the final Option B schema. From here on every model trains only on its
+train split (plus its numerals set, through explicit flags), selects
+epochs on our speaker-disjoint val split carved from train, and is
+compared on **val**. The class-fixed **test** split and the **holdout**
+(Raspberry Pi live-test) split are reported but never used to choose a
+configuration. 20 classes: 19 intents + `OUT_OF_SCOPE`. Slot heads have
+the schema's 3 values each. See
+[DATASET.md](../DATASET.md).
+
+Numbers are mean ± standard deviation over 3 seeds unless a seed is
+named. "Real" = real-speech clips (not synthetic, not out of scope).
+Tables come from `scripts/summarize_experiments.py`.
+
+## Experiment 37 — the Exp 36 recipe on the master dataset
+
+**Setup**: CRNN + 6 slot heads exactly as shipped in Experiment 36
+(99,373 params now that each slot head has 3 values), slot weight 0.3,
+confusable-pair loss alpha 2.0, waveform augmentation (its noise bank is
+the train split's 11 Speech Commands noise clips), 5 s trimmed window,
+Adam 1e-3 with 5 warm-up epochs and cosine decay, batch 128. All runs on
+one A100 (GPU 6 of `ai-n002`), 6 at a time, ~18 s per epoch. Launcher:
+`logs/launch_exp37.sh`.
+
+- **37a**: 80 epochs (the shipped recipe).
+- **37b**: 150 epochs (train is ~7× smaller than the old 70,641 clips).
+- **37c**: 37a + `--real-oversample 3` (each real clip, out-of-scope
+  included, seen 3× per epoch; real clips are 27% of train).
+
+| Config | val all | val real | test all | test real | holdout all | holdout real |
+|---|---:|---:|---:|---:|---:|---:|
+| 37a (80 epochs) | 89.31 ± 0.27 | 64.04 ± 1.66 | 90.09 ± 0.45 | 63.58 ± 1.57 | 92.35 ± 0.51 | 90.70 ± 2.01 |
+| 37b (150 epochs) | 89.71 ± 0.87 | 64.67 ± 3.40 | 90.22 ± 0.57 | 63.94 ± 2.10 | 91.16 ± 1.28 | 88.76 ± 2.92 |
+| 37c (real × 3) | 89.66 ± 0.66 | 65.04 ± 2.46 | 90.17 ± 0.19 | 64.34 ± 1.00 | 91.84 ± 1.02 | 89.92 ± 2.92 |
+
+- All three are within seed noise of each other. More epochs and
+  repeating real clips don't move real-speech accuracy.
+- 37c roughly doubles OUT_OF_SCOPE test accuracy (25–40% vs 15% for 37a,
+  n=47), the class with the fewest train clips (187).
+- **Exact Option B wording scores 97–98%** on test (n=3,601): the demo
+  benchmark phrases work. Clips that ask for the same command in other
+  words ("close" variation match, n=770, mostly real speech) score 58–62%.
+  That is where the errors are.
+- Per accent (37a seed 1, test): Filipino group recordings 71.4% (n=189),
+  native English 66.1%, other non-native 58.0%, synthetic 99.0%.
+
+**Comparison with the Experiment 36 model (old dataset).** On the full
+test split the shipped Exp 36 model scores 92.37% overall and 78.27% on
+real speech, but it trained on much of it: hashing the decoded audio
+finds 2,439 of the 4,418 test clips in its training data (1,901 of the
+group's synthetic clips, which were Option B; 334 SLURP, 128 FSC, 74
+SNIPS) and 78 of 196 holdout clips (`data/me2/overlap_exp36_train.csv`).
+On the 1,979 test clips it never saw:
+
+| Model | all | real | synthetic | Filipino group recordings | SLURP |
+|---|---:|---:|---:|---:|---:|
+| Exp 36 (old dataset, 70,641 clips) | 86.71% | 65.82% | 95.71% | **88.36%** | 47.08% |
+| Exp 37a seed 1 (master dataset) | **89.24%** | 64.98% | **98.98%** | 71.43% | **53.33%** |
+
+So on unseen clips the new model matches the old one overall and on real
+speech, with ~7× less data. The one gap is the group's own Filipino
+recordings (−17 points). Log: `logs/exp37_eval_test_unseen_by_exp36.txt`.
+
+## Experiment 38 — comparable-size baselines
+
+Checklist item: a baseline of comparable size, same data and recipe
+(80 epochs, waveform augmentation, confusable-pair loss), intent only.
+Launchers: `logs/launch_exp38_baselines.sh`, `logs/launch_exp38_bcres.sh`.
+
+| Model | val all | val real | test all | test real | holdout all | holdout real |
+|---|---:|---:|---:|---:|---:|---:|
+| DS-CNN 128 filters × 5 blocks (99,604 params) | 85.52 ± 0.90 | 51.54 ± 2.91 | 86.90 ± 0.75 | 52.21 ± 2.96 | 82.65 ± 2.55 | 70.15 ± 5.85 |
+| BC-ResNet 112 channels × 6 blocks (89,396) | 77.69 ± 0.96 | 35.96 ± 2.64 | 78.83 ± 0.27 | 37.88 ± 1.51 | 67.52 ± 0.78 | 43.41 ± 1.78 |
+| CRNN, Exp 37a (99,373, with slot heads) | 89.31 ± 0.27 | 64.04 ± 1.66 | 90.09 ± 0.45 | 63.58 ± 1.57 | 92.35 ± 0.51 | 90.70 ± 2.01 |
+
+The CRNN beats a DS-CNN of the same size by about 3 points overall and
+11 points on real speech, the same gap that made us switch to it in
+Experiment 28. BC-ResNet, which keeps full frequency resolution through
+every block, does worst at this size (78.8% / 37.9%), as on the old
+dataset (Experiments 3–6). The full-resolution baselines also need 7–12 GB
+of GPU memory each against the CRNN's ~2.5 GB, because the CRNN's
+strided blocks shrink the map early.
+
+## Experiment 39 — one change at a time on Experiment 37a
+
+Each row changes one thing in 37a, 3 seeds, 80 epochs, all on GPU 6
+(two configs at a time). Configurations are compared on **val**; test and
+holdout are shown but were not used to choose. Launcher:
+`logs/run_queue_exp39.sh`.
+
+| Config | val all | val real | test all | test real | holdout all | holdout real |
+|---|---:|---:|---:|---:|---:|---:|
+| 37a (reference) | 89.31 ± 0.27 | 64.04 ± 1.66 | 90.09 ± 0.45 | 63.58 ± 1.57 | 92.35 ± 0.51 | 90.70 ± 2.01 |
+| 39a SpecAugment, frequency masks only | 89.47 ± 0.21 | 64.22 ± 0.56 | 91.42 ± 0.19 | 67.80 ± 0.75 | 91.16 ± 0.29 | 88.37 ± 0.00 |
+| 39b speed 0.85–1.15, noise 80% of clips | 89.40 ± 0.67 | 64.58 ± 2.99 | 89.82 ± 0.50 | 64.27 ± 2.00 | 92.86 ± 0.51 | 92.25 ± 1.78 |
+| 39c + 2,000 numerals clips as background talk | 88.79 ± 0.68 | 61.59 ± 1.34 | 89.23 ± 0.69 | 59.92 ± 2.19 | 90.14 ± 1.93 | 86.43 ± 3.74 |
+| 39d + 1,500 numerals clips as OUT_OF_SCOPE | 89.26 ± 0.50 | 64.40 ± 1.90 | 89.70 ± 0.43 | 63.61 ± 2.02 | 92.18 ± 0.59 | 89.53 ± 1.17 |
+| 39e EMA of weights (0.999) | 88.34 ± 0.18 | 60.42 ± 1.59 | 89.74 ± 0.26 | 63.31 ± 0.00 | 92.69 ± 0.78 | 91.47 ± 0.67 |
+| 39f 4-head attention pooling (107K) | 89.50 ± 0.75 | 64.40 ± 2.16 | 90.55 ± 0.44 | 65.60 ± 1.13 | 92.35 ± 0.51 | 89.92 ± 0.68 |
+| 39g 2-layer GRU (174K) | 89.87 ± 0.04 | 65.49 ± 0.54 | 90.54 ± 0.36 | 65.70 ± 1.99 | 92.35 ± 0.51 | 91.47 ± 1.78 |
+| 39h mean pooling instead of attention | 87.46 ± 0.78 | 58.42 ± 2.05 | 88.59 ± 0.27 | 58.39 ± 1.05 | 90.48 ± 1.18 | 86.82 ± 1.78 |
+| 39i label smoothing 0.1 | 89.64 ± 0.65 | 64.40 ± 2.45 | 89.94 ± 0.52 | 62.31 ± 2.69 | 91.33 ± 1.02 | 89.92 ± 1.35 |
+| 39j wider: 80 channels, GRU 96 (193K) | 89.71 ± 0.56 | 64.67 ± 1.44 | 90.89 ± 0.65 | 67.00 ± 2.04 | 93.71 ± 1.18 | 92.25 ± 2.93 |
+
+- **Attention pooling earns its place.** Mean pooling loses 5.6 points of
+  real speech on val (and 5.2 on test). This answers the open question
+  from Experiment 28 about whether attention pooling is needed.
+- **2-layer GRU** is the best single change: +1.5 real on val with the
+  smallest spread of any config (±0.5). It costs 75K parameters
+  (174K in all, ~0.7 MB fp32).
+- **Frequency-only SpecAugment, 4 attention heads and the wider model**
+  are neutral on val (within ±0.6) but each gains 2–4 points of real
+  speech on test. Kept for the combination, as none hurt.
+- **Numerals as OUT_OF_SCOPE** is neutral on intents but doubles
+  OUT_OF_SCOPE accuracy on test (15% → 30% mean, n=47): bare numbers
+  are not commands, and the dataset labels them out of scope itself.
+- **Hurt, dropped:** numerals as background talk (−2.5 real on val:
+  speech under speech blurs the command), EMA weights (−3.6), and label
+  smoothing and wider speed range (neutral, larger spread).
+
+## Experiment 40 — combining the changes, and self-distillation
+
+**40a (combo)** = 37a + 2-layer GRU + 4 attention-pooling heads +
+frequency-only SpecAugment + 1,500 numerals clips as OUT_OF_SCOPE: every
+Exp 39 change that didn't hurt on val, except the wider model. 181,936
+parameters. **40b** = 40a + distillation from the 9-model Exp 37 ensemble
+(`scripts/generate_ensemble_labels.py`; the ensemble scores 91.98% on
+val against ~89.3% for one of its members). The teacher's probabilities
+and the student's are both softened at T=3 (`--distill-soften-teacher`),
+weight 1.0. No outside data or model: the teacher is our own CRNNs on the
+same train split. Launcher: `logs/run_queue_exp40.sh`.
+
+| Config | val all | val real | test all | test real | holdout all | holdout real |
+|---|---:|---:|---:|---:|---:|---:|
+| 37a (reference) | 89.31 ± 0.27 | 64.04 ± 1.66 | 90.09 ± 0.45 | 63.58 ± 1.57 | 92.35 ± 0.51 | 90.70 ± 2.01 |
+| 39g 2-layer GRU (best single change) | 89.87 ± 0.04 | 65.49 ± 0.54 | 90.54 ± 0.36 | 65.70 ± 1.99 | 92.35 ± 0.51 | 91.47 ± 1.78 |
+| **40a combo** | 90.75 ± 0.62 | 69.65 ± 1.96 | 92.66 ± 0.24 | 73.24 ± 1.58 | 93.20 ± 0.59 | 92.25 ± 0.67 |
+| **40b combo + distillation** | 91.08 ± 0.39 | 70.38 ± 1.41 | 92.44 ± 0.26 | 71.65 ± 0.90 | 94.56 ± 0.78 | 94.19 ± 1.17 |
+
+- **The changes add up.** Individually each was worth 0–1.5 points of
+  real speech on val; together they are worth **+5.6 on val and +9.7 on
+  test** (63.6% → 73.2%), with the overall test score up 2.6 points.
+- **Filipino group recordings** (test, n=189) go from ~71% (37a) to
+  82.5–90.5% (40a seeds), most of the gap to the old Exp 36 model's 88%.
+- **Exact Option B wording: 98.8–99.1%** on test.
+- **Distillation** adds 0.3–0.7 on val and 1.4–1.9 on the holdout set,
+  and lifts OUT_OF_SCOPE (17–28% vs 11–19%), but is 1.6 lower on test
+  real speech. Mixed; see Experiment 41.
+
+## Experiment 41 — wider, a stronger teacher, more out-of-scope examples
+
+Four variations on 40a/40b, 3 seeds each, two configs at a time on GPU 6.
+The wider model has 80 channels and a GRU of 96 (372,096 parameters,
+1.46 MB). The Exp 40 teacher averages the 6 Exp 40 models (91.9% on val).
+Launcher: `logs/run_queue_exp41.sh`.
+
+| Config | val all | val real | test all | test real | holdout all | holdout real |
+|---|---:|---:|---:|---:|---:|---:|
+| 40a combo (182K) | 90.75 ± 0.62 | 69.65 ± 1.96 | 92.66 ± 0.24 | 73.24 ± 1.58 | 93.20 ± 0.59 | 92.25 ± 0.67 |
+| 40b combo + distillation from Exp 37 ensemble (182K) | 91.08 ± 0.39 | 70.38 ± 1.41 | 92.44 ± 0.26 | 71.65 ± 0.90 | 94.56 ± 0.78 | 94.19 ± 1.17 |
+| 41a combo, wider (372K) | 91.34 ± 0.61 | 70.29 ± 1.73 | 92.87 ± 0.35 | 73.68 ± 1.41 | 92.35 ± 1.35 | 89.92 ± 1.78 |
+| 41b combo + distillation from Exp 40 ensemble | 90.72 ± 0.20 | 69.57 ± 0.94 | 92.32 ± 0.16 | 71.85 ± 1.15 | 92.86 ± 0.51 | 91.86 ± 1.16 |
+| 41c = 40b with 4,000 numerals as OOS | 90.82 ± 0.34 | 69.84 ± 1.19 | 92.56 ± 0.42 | 72.55 ± 1.44 | 93.54 ± 0.29 | 92.25 ± 0.67 |
+| **41d combo, wider + distillation (372K)** | 91.60 ± 0.43 | 72.28 ± 1.51 | 92.92 ± 0.10 | 73.21 ± 0.23 | 93.88 ± 1.02 | 91.47 ± 2.42 |
+
+- **41d is the best on val** (91.60% / 72.28% real) and has the smallest
+  test spread of any config (92.92 ± 0.10%).
+- A stronger teacher (41b) and more numerals as OUT_OF_SCOPE (41c) did
+  not help.
+- Width adds about 1 point of real speech on val with distillation, about
+  0 without it (41a vs 40a: +0.6).
+
+**Shipped: 41d seed 0**, the best seed on val (91.98% all, 73.91% real):
+92.98% on test (73.48% real speech), 94.90% on holdout. Exported as
+`models/vcm_intent.onnx` (1,463 KB) and `models/vcm_intent.pt`; the ONNX
+file gives identical results to the checkpoint. **Also kept: 40b seed 1**
+(the best 182K seed on val) as `models/vcm_intent_small.onnx` (722 KB):
+92.21% / 70.99% / 95.41%, for when the intent and wake-word files must
+stay under 1 MB together. On one DGX CPU core the two take 8.8 ms and
+7.0 ms per command at p95, end to end.
+
+## Experiment 42 — wake word with the master dataset as negatives
+
+The Experiment 34 wake word learned "not the wake word" from the project's
+old dataset (its command speech and noise). Retrained with the same recipe
+(`scripts/train_wakeword.py`: 30 epochs, 24,000 samples per epoch, kind
+mix wake 30% / partial 10% / near-miss 15% / speech 35% / noise 10%), but
+with every negative from the class master dataset: its train split
+(12,262 speech clips including out-of-scope speech, 3,000 of them bare
+numbers from the numerals set, and its 11 noise clips), with its val
+split for checkpoint selection. Positives and near-miss phrases are
+unchanged: the synthetic wakeword batch and the author's own takes (the
+class dataset has no "hey kiwi"). 3 seeds, GPU 6, ~5 min each. Launcher:
+`logs/launch_exp42_wakeword.sh`.
+
+Streaming evaluation (`scripts/evaluate_wakeword.py`) at the device's
+threshold 0.6: misses on 391 held-out synthetic clips (clean / 10 dB
+noise) and the author's 10 held-out takes; false wake-ups while streaming
+the master test split (4,418 clips) and 300 near-miss phrases, 3.05 h.
+
+| Model | val balanced | Missed, clean | Missed, noise | Real takes missed | False wake-ups/hour |
+|---|---:|---:|---:|---:|---:|
+| Experiment 34 (old negatives) | — | 3.1% | 6.6% | 0/10 | 19.7 |
+| Seed 0 | 0.958 | 5.9% | 7.9% | 0/10 | 10.5 |
+| **Seed 1 (shipped)** | **0.961** | 4.1% | **4.6%** | 0/10 | 11.2 |
+| Seed 2 | 0.953 | 4.9% | 8.7% | 0/10 | 12.8 |
+
+- Seeing the class's own speech (including Filipino speech and near-miss
+  requests) as negatives cuts false wake-ups by 35–47%, at the cost of
+  about 1–3 points more missed clean clips.
+- **Size unchanged:** same architecture as Experiment 34 (32 channels,
+  GRU of 32), 25,475 parameters, 107 KB fp32, 5.3M multiply-adds per window.
+- **Shipped: seed 1**, the best on validation: `models/kiwi_wakeword.onnx`
+  (107 KB, identical to its checkpoint `models/kiwi_wakeword.pt`). The
+  Experiment 34 file stays as `models/legacy/kiwi_wakeword_exp34.onnx`.
+
+## Experiment 43 — retraining on the dataset's 2026-10-02 revision
+
+The class master dataset was rebuilt on 2026-10-02 (revision `da92a79`;
+Experiments 37–42 used `25111444`). Compared clip by clip (audio hash):
+743 free-form real clips of fixed commands that also named a song, room or
+contact were replaced with synthetic clips of the same split's voices
+(train 517, test 226), synthetic out-of-scope sentences were added (train
+69, test 29, holdout 6), 57 holdout clips were swapped, and a new
+`supplemental_synth` set of 5,856 synthetic clips appeared. No kept clip
+changed label. None of the new test or holdout clips were in the old train
+split. Details: [Dataset revisions](#dataset-revisions).
+
+Everything that learned from the old train split was retrained, with the
+recipes fixed in Experiments 37–42 (nothing re-tuned), 3 seeds each, all
+on GPU 6 (shared with one other user's small job). Launcher:
+`logs/run_queue_exp43.sh`.
+
+- **43t**: the 9 distillation teachers (Experiment 37a/b/c recipes) on
+  the new train split; their averaged predictions are the new soft labels.
+- **43a**: the shipped recipe (41d). **43b**: 43a plus the 3,461
+  `supplemental_synth` clips whose voices are in our train split
+  (`--include-supplemental`; clips of val, test or holdout voices are
+  never used). **43c**: the small recipe (40b).
+- **Wake word**: the Experiment 42 recipe on the new train split.
+
+| Config | val all | val real | test all | test real | holdout all | holdout real |
+|---|---:|---:|---:|---:|---:|---:|
+| 43t teacher: Exp 36 recipe, 80 epochs (99K) | 92.98 ± 0.35 | 71.72 ± 1.52 | 93.06 ± 0.50 | 70.27 ± 1.90 | 92.90 ± 1.51 | 93.80 ± 2.92 |
+| 43t teacher: 150 epochs | 93.51 ± 0.14 | 74.85 ± 1.09 | 93.74 ± 0.09 | 74.09 ± 1.39 | 94.39 ± 0.28 | 95.35 ± 0.00 |
+| 43t teacher: real clips ×3 | 93.14 ± 0.40 | 73.54 ± 1.55 | 92.50 ± 0.33 | 71.09 ± 2.05 | 92.90 ± 1.25 | 94.57 ± 1.35 |
+| 43c = 40b recipe: combo + distillation (182K) | 94.04 ± 0.39 | 75.76 ± 1.69 | 94.64 ± 0.43 | 75.93 ± 1.74 | 94.22 ± 1.59 | 93.80 ± 2.42 |
+| 43a = 41d recipe: combo, wider, distillation (372K) | 93.99 ± 0.32 | 74.95 ± 1.36 | 95.03 ± 0.27 | 77.52 ± 1.12 | 94.88 ± 1.25 | 94.96 ± 1.78 |
+| **43b = 43a + supplemental clips (372K)** | 94.34 ± 0.36 | 77.07 ± 1.97 | 95.27 ± 0.25 | 77.57 ± 0.98 | 95.38 ± 1.14 | 95.74 ± 0.67 |
+
+- **The 43t ensemble** (the averaged predictions of all 9 teachers, the
+  distillation target) scores **95.03%** on val (79.41% real speech,
+  n = 1,448 / 340), against 93.21% for one teacher on average. Measured
+  2026-10-02 with `scripts/generate_ensemble_labels.py checkpoints/exp43t_*_s?.pt
+  --split val` and the arg-max of its soft labels.
+- **43b is the best on val** (94.34% / 77.07% real), +2.1 real speech over
+  43a from the supplemental clips. **Shipped: 43b seed 1**, the best seed
+  on val (94.75% / 79.09%): **95.50%** on test, **78.64%** real speech,
+  **96.04%** holdout. The small model is **43c seed 0** (best 43c seed on
+  val): 94.53% / 76.06% / 93.07%.
+- **Out of scope** improves most: 69.7% of the 76 out-of-scope test clips
+  labeled OUT_OF_SCOPE and 17.1% acted on, against 31.6% labeled for the
+  previous model (41d) on the same clips. The new train split has 69
+  synthetic near-miss sentences that the old one lacked.
+- **The previous model on the new test set**: 41d scores 94.80% / 79.15%
+  real / 93.07% holdout. On intents the retrain is level with it (+0.7
+  overall, −0.5 real, within one seed's spread); the gains are out of
+  scope and holdout.
+- **Baselines on the new test set** (Experiment 38 checkpoints, first
+  revision): DS-CNN 89.50% / 57.06%, BC-ResNet 81.29% / 41.57%, the
+  same-size CRNN 92.41% / 69.71%.
+- **Wake word**, at threshold 0.6 on the new test stream (2.94 h): seed 1,
+  the best on val (0.960), misses 3.8% clean / 7.2% in noise / 0 of 10 real
+  takes and fires 12.9 times per hour; the Experiment 42 detector on the
+  same stream: 4.1% / 4.9% / 0 / 12.3. About level; shipped for
+  consistency with the current revision.
+
+# Appendix A: the project's own dataset (Experiments 1–36)
+
+The dataset this project built for itself before the class master dataset existed, kept as it was written. "Steps" and "sections" below refer to this appendix; older code comments that say "DATASET.md step N" mean these steps. The code that builds it is on the [`archive/exp36-pre-me2-schema`](https://github.com/quielq/quielq-vcm/tree/archive/exp36-pre-me2-schema) branch (tag `v1-exp36`); its loaders, scripts and tests that are still in the repo live in `src/vcm/dataset/legacy/`, `scripts/legacy/` and `tests/legacy/`.
+
+## Final training data for Experiments 33 to 36
+
+The shipped model (Experiment 36) trained on
+`data/dataset_manifest_exp36.csv`: **70,641 clips**, built in layers on top
+of the base manifest described in the rest of this document.
+
+| Layer | Clips | Real / synthetic | Added in |
+|---|---:|---|---|
+| Base manifest: SLURP, FSC, Snips, Timers and Such, GSC noise, Option B | 63,476 | 45,818 real + 17,658 synthetic | Steps 1–10 below |
+| Option B after the Whisper QA filter (`scripts/legacy/qa_filter_option_b.py`) | −1,158 | synthetic removed | Experiment 25 |
+| Targeted phrasings (pause/stop/play verb pairs, timer durations, colors, brightness levels) | +4,357 | synthetic, QA-passed | Experiment 31 |
+| Slot-value clips "slots2" (every timer, alarm, brightness and color value) | +2,649 | synthetic, QA-passed | Experiment 32 |
+| Slot-value clips "slots3" (temperature and reminder values) | +1,317 | synthetic, QA-passed | Experiments 35–36 |
+| **Total** | **70,641** | **45,218 real speech + 600 noise + 24,823 synthetic** (64% real speech) | |
+
+Snips was also re-split by speaker in Experiment 32
+(`scripts/legacy/resplit_snips_by_speaker.py`), because 40 of its 49 speakers had
+been in more than one split. Slot-value labels (`data/slot_labels_exp36.csv`,
+17,920 labels) come from the script for synthetic clips and from Whisper
+transcripts for real ones (`scripts/legacy/build_slot_labels.py`). The
+synthetic clips were generated with Chatterbox TTS, cloning real FSC and
+Timers and Such speakers (`scripts/generate_targeted_synthetic.py`), and
+kept only if Whisper heard the intended words.
+
+## Summary — what this is and how it was built
+
+The training dataset is **63,476 labeled audio clips across 20 classes**
+(19 command intents, e.g. `PLAY_MUSIC`, `LIGHT_ON`, `VOLUME_UP`, plus
+`unknown_background` for non-command audio), combined from **6
+independently-sourced datasets** — a mix of real recorded speech and
+class-shared synthetic (voice-cloned) speech — normalized into one
+common manifest schema.
+
+The design principle throughout: **prefer real audio, fill labeled-command
+gaps with synthetic audio, and never guess a label mapping** — every
+source's raw label vocabulary was inspected against real downloaded
+data (not the source's paper/docs) before any label-mapping code was
+written, and every gap in real coverage was checked against every
+known dataset candidate before falling back to synthetic. Three labels
+(`CALL`, `NEXT`, `LIST_REMINDERS`) currently have no real-audio source
+and are synthetic-only — `LIST_REMINDERS` was real-covered until a
+quality audit found its SLURP mapping was semantically wrong (see
+"Known per-label quality signal" below); finding a real source that
+actually covers timed reminders is an open item, not a permanent gap.
+`TIMER` was in this same fully-synthetic bucket until step 9 below
+closed it with real audio.
+
+| Source | Rows | Real / synthetic | Labels covered | Disk size |
+|---|---:|---|---|---:|
+| SLURP | 17,452 | Real | 12 of 19 | ~968 MB (18 MB annotations + 950 MB audio) |
+| Option B (class-shared) | 17,658 | Synthetic, QA-filtered | All 19 | ~1.0 GB |
+| FSC (Zenodo mirror) | 24,223 | Real | 8, incl. TEMPERATURE/STOP/PAUSE | ~2.1 GB |
+| Snips SLU (lighting subset) | 2,472 | Real | 4 (LIGHT_ON/OFF, BRIGHTNESS, COLOR) | ~275 MB |
+| GSC v2 background noise | 600 | Real | `unknown_background` only | ~40 MB |
+| Timers and Such | 1,071 | Real | TIMER + ALARM | ~124 MB |
+| **Total** | **63,476** | — | 17 of 19 with real coverage | **~4.5 GB** |
+
+(SLURP's row count dropped from 19,712 to 17,452 after a quality audit
+removed 2,260 mismatched/junk rows — see "Known per-label quality
+signal" below. No audio files were deleted; disk size is unchanged
+since the same downloaded files are still on disk, just fewer of them
+are referenced by the manifest now.)
+
+(Sizes are the retained on-disk footprint of `data/external/` after
+each source's fetch script runs — transient downloads like FSC's
+1.4GB zip and GSC's 2.4GB full archive are deleted immediately after
+extracting what's needed, per steps 5 and 7 below, so they aren't
+counted here. Timers and Such's 124MB is *not* transient-then-deleted
+like those — it's the real total footprint, made small by selectively
+downloading only the ~1,071 relevant files out of the archive's full
+12.2GB via HTTP range requests rather than the whole thing; see step 9.
+`data/dataset_manifest.csv` itself, the combined output, is a further
+~10 MB of metadata on top of this.)
+
+See "Current status" below for the exact per-label breakdown, and
+steps 1-10 for how to reproduce every source from a clean checkout.
+
+## Setup (same as the main README)
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+```
+
+## Current status
+
+`data/dataset_manifest.csv` (generated by `scripts/legacy/build_manifest.py`,
+step 10 below) currently combines **63,476 rows** from 6 sources (a 7th,
+real recordings for the synthetic-only gap, is opt-in per contributor
+— see step 8 — and not yet reflected in this snapshot):
+
+| Label coverage | Source | Rows | Disk size |
+|---|---|---:|---:|
+| 12 of 19 labels | Real audio (SLURP, quality-filtered — see below) | 17,452 | ~968 MB |
+| All 19 labels | Synthetic, QA-filtered audio (class-shared "Option B" dataset) | 17,658 | ~1.0 GB |
+| `unknown_background` only | Real noise, chopped into clips (Google Speech Commands v2) | 600 | ~40 MB |
+| 4 lighting labels only (LIGHT_ON/OFF, BRIGHTNESS, COLOR) | Real audio, text-classified (Snips SLU) | 2,472 | ~275 MB |
+| 8 labels, including TEMPERATURE/STOP/PAUSE | Real audio (FSC, via a verified Zenodo mirror) | 24,223 | ~2.1 GB |
+| TIMER + ALARM | Real audio (Timers and Such, selectively downloaded — see step 9) | 1,071 | ~124 MB |
+| 3 labels with zero real coverage | CALL, NEXT, LIST_REMINDERS — synthetic-only; LIST_REMINDERS lost its SLURP mapping to a quality fix (see below), the other two were checked against every candidate source found so far and none cover them | — | — |
+
+**Total: ~4.5 GB** across all 6 sources' retained data (see the
+Summary section above for what's excluded — transient full-archive
+downloads that get deleted right after extraction).
+
+Every row's `audio_path` resolves to a real local file (verified) — this
+is an actual training-ready manifest, not just row counts.
+
+### Per-label breakdown by source
+
+The label-level view of the table above — computed directly from
+`data/dataset_manifest.csv`, all splits combined. This is the real
+imbalance the training pipeline sees: **22x between the largest label
+(TEMPERATURE, 11,170) and the smallest (CALL, 498)**, motivating the
+class-imbalance work in EXPERIMENTS.md Experiments 18-20.
+
+| Label | SLURP | Option B | FSC | Snips | GSC bg | Timers | **Total** |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| TEMPERATURE | 0 | 1,796 | 9,374 | 0 | 0 | 0 | **11,170** |
+| LIGHT_OFF | 1,025 | 578 | 3,236 | 448 | 0 | 0 | **5,287** |
+| LIGHT_ON | 113 | 570 | 4,135 | 448 | 0 | 0 | **5,266** |
+| PLAY_MUSIC | 3,764 | 568 | 912 | 0 | 0 | 0 | **5,244** |
+| VOLUME_UP | 998 | 566 | 3,010 | 0 | 0 | 0 | **4,574** |
+| BRIGHTNESS | 1,163 | 1,770 | 0 | 1,028 | 0 | 0 | **3,961** |
+| VOLUME_DOWN | 560 | 580 | 2,731 | 0 | 0 | 0 | **3,871** |
+| WEATHER | 3,279 | 544 | 0 | 0 | 0 | 0 | **3,823** |
+| ALARM | 1,486 | 1,754 | 0 | 0 | 0 | 354 | **3,594** |
+| COLOR | 717 | 1,736 | 0 | 548 | 0 | 0 | **3,001** |
+| CREATE_REMINDER | 961 | 1,766 | 0 | 0 | 0 | 0 | **2,727** |
+| TIMER | 0 | 1,750 | 0 | 0 | 0 | 717 | **2,467** |
+| MESSAGE | 1,853 | 528 | 0 | 0 | 0 | 0 | **2,381** |
+| TIME | 1,533 | 548 | 0 | 0 | 0 | 0 | **2,081** |
+| STOP | 0 | 532 | 510 | 0 | 0 | 0 | **1,042** |
+| PAUSE | 0 | 496 | 315 | 0 | 0 | 0 | **811** |
+| unknown_background | 0 | 0 | 0 | 0 | 600 | 0 | **600** |
+| LIST_REMINDERS | 0 | 558 | 0 | 0 | 0 | 0 | **558** |
+| NEXT | 0 | 520 | 0 | 0 | 0 | 0 | **520** |
+| CALL | 0 | 498 | 0 | 0 | 0 | 0 | **498** |
+| **TOTAL** | **17,452** | **17,658** | **24,223** | **2,472** | **600** | **1,071** | **63,476** |
+
+At a glance: CALL/NEXT/LIST_REMINDERS are Option-B-only (the
+zero-real-coverage gap above); TEMPERATURE/LIGHT_ON/LIGHT_OFF/VOLUME_UP/
+VOLUME_DOWN are FSC-heavy; WEATHER/MESSAGE/TIME/PLAY_MUSIC/CREATE_REMINDER
+are SLURP-heavy; TIMER/ALARM are the only labels with any Timers-and-Such
+contribution.
+
+### Known per-label quality signal: source composition correlates with model accuracy
+
+Checked directly against the manifest (not assumed) after several
+training runs (see EXPERIMENTS.md) showed a consistent, reproducible
+weak-class pattern. The labels that train worst split into two
+different root causes by which source dominates them:
+
+- **SLURP-dominated labels train worse**: WEATHER (85% SLURP), TIME
+  (81%), MESSAGE (77%), PLAY_MUSIC (71%), LIST_REMINDERS (69%) are
+  consistently the lowest- or near-lowest-accuracy classes across every
+  architecture tried. SLURP's crowdsourced phrasing is naturalistic and
+  varied (e.g. `"open clock"` for ALARM, `"olly brighten the lights"`
+  for BRIGHTNESS — see step 2 below) rather than matching this
+  project's own scripted command phrasing, which plausibly makes the
+  acoustic-to-label mapping itself noisier to learn for these labels
+  specifically.
+- **Checked and ruled out: this is not a class-imbalance problem.**
+  Pearson correlation between per-label training-set size and
+  per-label accuracy (Experiment 11's real numbers, 20 labels): r ≈
+  -0.16 to +0.18 depending on outlier handling — essentially no
+  relationship. CALL has only 396 training examples and hits 94.4%
+  accuracy; WEATHER has 2,627 (~7x more) and only hits 56.7%. This also
+  makes sense mechanically: training already uses class-weighted
+  cross-entropy (inverse-frequency weighting), which specifically
+  corrects for raw imbalance — it's not the open problem here.
+- **The real problem for WEATHER/TIME/MESSAGE/LIST_REMINDERS is closer
+  to a mapping-purity problem than a phrasing-style problem.** Pulled
+  real example sentences from SLURP's raw `train.jsonl` for each raw
+  intent mapped to these labels and compared against this project's own
+  scripted taxonomy phrasing for the same label:
+
+  | Label | Taxonomy expects | Real SLURP example mapped to it |
+  |---|---|---|
+  | WEATHER | "What's the weather?" | `"do i need a coat"` — indirect, never says "weather" |
+  | TIME | "What time is it?" | `"is today the fourth or the fifth"` — a **date** question |
+  | MESSAGE | "Send a message" | `"between ten pm to nine am all emails received is to be replied to"` — email **scheduling**, not sending |
+  | LIST_REMINDERS | "Show my reminders" | `"pull up the shopping list"` — generic **lists**, conceptually different from timed reminders |
+  | PLAY_MUSIC | "Play music" | `"play only songs by the beatles please"` — reasonably matched, just more specific |
+
+  Four of these five aren't just noisier versions of the intended
+  intent — some of the mapped SLURP examples are arguably **the wrong
+  intent entirely** for what this project means by that label name
+  (PLAY_MUSIC is the exception; its SLURP examples are semantically
+  fine, just lexically varied).
+- **Option-B/FSC-dominated labels train best**: CALL, NEXT, TIMER
+  (100% Option B), TEMPERATURE (83% FSC), PAUSE/STOP/CREATE_REMINDER/
+  COLOR (51-64% Option B) are consistently the strongest classes.
+  Both sources use scripted, on-taxonomy phrasing.
+- **FSC-dominated VOLUME_UP/DOWN and LIGHT_ON/OFF are a separate,
+  already-diagnosed problem** (EXPERIMENTS.md Experiment 1 onward):
+  these underperform not because of source noise but because FSC
+  reuses near-identical "turn up/down" carrier phrasing across VOLUME
+  and TEMPERATURE commands, a structural phrase overlap rather than a
+  source-quality issue.
+
+**Fix applied** (`is_valid_sentence()` and an updated `LABEL_MAPPING` in
+`src/vcm/dataset/legacy/slurp.py`, same empirical transcript-driven
+approach already used for Snips SLU (step 6) and FSC's
+"deactivate"+"music" split (step 7)):
+
+- **LIST_REMINDERS**: SLURP mapping dropped entirely. Inspecting all
+  197 unique `lists_query` sentences found only 1 contains the word
+  "reminder" (and even that one is about viewing a list of reminders,
+  not a timed alert) — the rest are shopping lists, to-do lists, and
+  music playlists. A real concept mismatch, not noise, so filtering
+  down wasn't the right fix; the mapping is gone. **-1,265 rows.**
+  LIST_REMINDERS now relies solely on Option B's 558 synthetic rows —
+  see the Summary section's note on this being an open item, not a
+  permanent gap.
+- **TIME**: sentences that are pure date questions with no time
+  content (`"what date is today"`, `"is today march sixth"`) are
+  excluded; mixed date-and-time queries are kept. **-950 rows** (of
+  2,483 SLURP-sourced TIME rows, ~38%).
+- **WEATHER**: a small, surgical list of 13 clearly nonsensical/
+  off-topic sentences excluded (e.g. `"answer email from"`,
+  `"food will be given at the exhibition"`) — the vast majority of
+  WEATHER's SLURP examples, including indirect ones like
+  `"do i need a coat"`, are legitimately on-topic and were kept
+  as-is. **-35 rows** (of 3,314, ~1%).
+- **MESSAGE**: 3 clearly off-topic sentences excluded (e.g.
+  `"how it's come to us"`). **-10 rows** (of 1,863, ~0.5%).
+
+Applying this to already-downloaded audio (no re-fetch needed) via
+`scripts/legacy/refilter_slurp_manifest.py`, then rebuilding the combined
+manifest, took SLURP from 19,712 → 17,452 rows and the combined
+dataset from 64,665 → 62,405 rows.
+
+**Verified with a real training run** (EXPERIMENTS.md Experiment 12 —
+same model/config as Experiment 11, only the dataset changed): overall
+val accuracy improved +1.71pp (72.39% → 74.10%). LIST_REMINDERS jumped
+from the weakest class (49.4%) to a perfect 100% once purified down to
+Option B's 558 clean examples; WEATHER improved +6.1pp and TIME +4.9pp.
+MESSAGE unexpectedly dropped -6.4pp despite only 3 sentences being
+removed there — too small a change to be the direct cause, more likely
+a side effect of the overall class-weight/confusion redistribution
+than a flaw in the fix itself; worth re-checking once multiple seeds
+are used to rule out ordinary run-to-run noise.
+
+## 1. The taxonomy (class-shared fixed-vs-slotted schema)
+
+[`src/vcm/dataset/sources/dataset_schema.py`](../../src/vcm/dataset/sources/dataset_schema.py)
+holds the 19-label taxonomy (13 fixed-phrase intents, 6 slotted) as plain
+Python data, captured from the class's shared taxonomy sheet's richest
+table ("Option B" phrasing richness — not to be confused with the
+"Option B" *dataset* in step 4 below, same source naming, different
+artifact). It expands into 93 phrases total.
+
+```bash
+python -c "from vcm.dataset.sources.dataset_schema import generate_phrases; print(len(generate_phrases()))"
+```
+**Expect**: `93`.
+
+To regenerate the CSV export at `data/dataset_schema/dataset_schema.csv`
+(already committed, only needed if the taxonomy changes):
+```bash
+python -c "
+from pathlib import Path
+from vcm.dataset.sources.dataset_schema import export_csv
+export_csv(Path('data/dataset_schema/dataset_schema.csv'))
+"
+```
+**Expect**: a 94-line CSV (93 phrases + header). See
+[`data/dataset_schema/README.md`](../../data/dataset_schema/README.md) for the
+column format.
+
+## 2. SLURP coverage check (real data, real numbers)
+
+```bash
+python scripts/legacy/slurp_coverage.py
+```
+**What it does**: downloads SLURP's `train/devel/test.jsonl` (~13MB of
+annotation text, no audio) from `pswietojanski/slurp` on GitHub into
+`data/external/slurp/` (gitignored, so this doesn't bloat the repo — the
+script re-downloads if that folder isn't there), then prints a table of
+how many real SLURP sentences/recordings map to each of the 19 taxonomy
+labels, using the empirically-verified mapping in
+[`src/vcm/dataset/legacy/slurp.py`](../../src/vcm/dataset/legacy/slurp.py).
+
+**Expect** (verified output, reproduced exactly by running the command
+above from a clean checkout):
+```
+Loaded 16521 sentences / 72396 recordings
+
+Label               sentences  recordings  matched intents
+PLAY_MUSIC                911        3883                1
+WEATHER                   834        3412                1
+TIME                      490        2558                1
+LIGHT_ON                   30         126                1
+LIGHT_OFF                 213        1091                2
+PAUSE                       0           0                0
+STOP                        0           0                0
+NEXT                        0           0                0
+VOLUME_UP                 135        1059                1
+VOLUME_DOWN                71         587                1
+CALL                        0           0                0
+MESSAGE                   523        1925                1
+LIST_REMINDERS              0           0                0
+TIMER                       0           0                0
+ALARM                     253        1503                1
+TEMPERATURE                 0           0                0
+BRIGHTNESS                229        1234                4
+COLOR                     183         751                1
+CREATE_REMINDER           234        1005                1
+
+Zero SLURP coverage: PAUSE, STOP, NEXT, CALL, LIST_REMINDERS, TIMER, TEMPERATURE
+```
+Takes under a minute on a normal connection (13MB download + parsing
+16,521 JSON lines).
+
+**Note on the counts above vs. the final manifest**: this table shows
+raw sentence-to-intent mapping counts, from `LABEL_MAPPING` alone —
+LIST_REMINDERS shows 0 because its mapping was removed entirely (see
+"Known per-label quality signal" below). TIME, WEATHER, and MESSAGE
+still show their full pre-filter counts here, because the additional
+sentence-level quality filter (`is_valid_sentence()`) is applied later,
+during audio fetch (step 3) — this coverage check is metadata-only and
+doesn't download or filter audio, so it can't reflect that step.
+
+### What the three columns mean
+
+- **`sentences`** — a "sentence" in SLURP is one unique text+intent
+  annotation, a single prompt someone was asked to say (e.g. `"wake me
+  up at ten"`, labeled `alarm_set`). This column is a count of *distinct
+  prompts* mapped to that taxonomy label.
+- **`recordings`** — each sentence was recorded multiple times, usually
+  by different crowdworkers, often in paired mic setups (a close-mic
+  `-headset` take plus a room-mic take of the same prompt). This column
+  counts *actual audio files*, always ≥ the sentence count. Concretely:
+  one SLURP sentence (`slurp_id 9024`, text `"event"`, intent
+  `calendar_set`) has 9 separate recordings in the raw data — that's
+  one sentence contributing 9 to a `recordings` total.
+- **`matched intents`** — SLURP has its own internal vocabulary of 93
+  intents, finer-grained (and messier) than this taxonomy's 19 labels.
+  This is how many of SLURP's raw intents got mapped onto one canonical
+  label. Most are 1-to-1; `LIGHT_OFF` is 2 because SLURP has two
+  overlapping intents for it (legacy duplicate, e.g. "turn off the
+  light" vs. "turn off lamp"), and `BRIGHTNESS` is 4 for the same reason
+  across dim-up/dim-down and two legacy naming schemes (e.g. "dim the
+  lights" vs. "the lights are too bright"). See `LABEL_MAPPING` in
+  `sources/slurp.py` for exactly which raw intents feed each label.
+
+**A phrasing-looseness caveat worth knowing before trusting this data
+blindly**: SLURP's crowdsourced sentences aren't clean scripted commands
+the way this project's own taxonomy phrases are — e.g. `"open clock"` is
+labeled `alarm_set` (→ `ALARM`), and `"olly brighten the lights"` maps to
+`BRIGHTNESS`. Real, spoken-in-the-wild phrasing is part of why SLURP is
+useful (Section 9 already notes its sentences run long/natural), but it
+means a "covered" label here doesn't guarantee phrasing anywhere close to
+this project's own command set.
+
+**If the mapping looks wrong for a label**: the raw SLURP→taxonomy
+mapping is the `LABEL_MAPPING` dict at the top of `sources/slurp.py`,
+built by inspecting every one of SLURP's 93 actual `intent` values (not
+guessed from the paper) — edit it there and re-run the script.
+
+## 3. Pulling real SLURP audio
+
+```bash
+pip install datasets soundfile
+python scripts/legacy/fetch_slurp_audio.py
+```
+**What it does**: streams real audio for the 12 covered labels from a
+HuggingFace parquet mirror (`yhfang/slurp_dataset_audio_subset`) filtered
+by `slurp_id` against the local metadata from step 2 — no need to
+download SLURP's full 3.9GB Zenodo archive. Also applies
+`is_valid_sentence()` (see "Known per-label quality signal" below) so
+sentences that fail the TIME/WEATHER/MESSAGE quality filter are never
+written at all on a fresh run. Writes real `.flac` files to
+`data/external/slurp_audio/<split>/` plus a `manifest.csv` already in
+this project's common schema (see `manifest.py` below). Takes several
+minutes; run `scripts/legacy/slurp_coverage.py` (step 2) first if
+`data/external/slurp/*.jsonl` doesn't exist yet.
+
+**If you already have `data/external/slurp_audio/` populated from
+before the quality filter existed**, don't re-run this script (it would
+re-download ~900MB for no reason) — run
+`python scripts/legacy/refilter_slurp_manifest.py` instead, which re-derives
+each already-downloaded file's correct label (or drops it) from the
+local metadata alone, no network access needed.
+
+## 4. Class-shared synthetic dataset ("Option B")
+
+A classmate-contributed synthetic dataset, publicly shared on GitHub:
+17,658 QA-filtered recordings, voice-cloned from 100 real reference
+speakers (84 foreign, 16 genuinely Filipino-English), speaker-disjoint
+train/val/test split, clean + noisy acoustic conditions, generated
+directly against this project's own 19-label taxonomy (so it covers all
+19, including every label SLURP has zero coverage for) and already
+screened through a classmate-built transcribe-and-compare QA tool (942
+of 18,600 originals flagged and excluded).
+
+```bash
+git clone --depth 1 --filter=blob:none --sparse https://github.com/markandrian30/AI231.git /tmp/option_b_repo
+cd /tmp/option_b_repo && git sparse-checkout set MEX2/OptionB
+mkdir -p <repo-root>/data/external/option_b
+mv MEX2/OptionB/manifest.csv <repo-root>/data/external/option_b/
+mkdir -p <repo-root>/data/external/option_b/audio
+mv MEX2/OptionB/*/  <repo-root>/data/external/option_b/audio/
+```
+[`src/vcm/dataset/legacy/option_b.py`](../../src/vcm/dataset/legacy/option_b.py)
+loads it — no label-mapping layer needed, its `intent` column already
+matches our 19 canonical labels 1:1 (verified against the real
+`manifest.csv`, not assumed).
+
+## 5. Background noise -> `unknown_background` (Google Speech Commands v2)
+
+```bash
+python scripts/legacy/fetch_gsc_background.py
+```
+Section 3 requires an explicit background/unknown class and Section 9
+already named GSC's background-noise clips as the source, but nothing
+pulled it into the pipeline until this script existed. Downloads the
+official ~2.4GB archive **transiently**, extracts only the ~13MB
+`_background_noise_/` folder (6 long noise recordings — white/pink
+noise, a running tap, an exercise bike, a dishwasher, someone's cat —
+not the 35 keyword classes), deletes the full archive immediately after,
+then chops the noise into 600 fixed-length clips
+([`sources/gsc_background.py`](../../src/vcm/dataset/legacy/gsc_background.py))
+with an 80/10/10 train/val/test split. Increase coverage with
+`--clips-per-file` if 600 proves too few once training starts.
+
+## 6. Snips SLU lighting subset (real audio for 4 thin labels)
+
+```bash
+pip install datasets soundfile
+python scripts/legacy/fetch_snips_lights.py
+```
+Section 9 describes this as a "smart-lights" dataset; that turned out to
+be only half true — streaming and inspecting all 5,886 real transcripts
+found the corpus is roughly half lighting commands and half unrelated
+music requests ("I'd like to listen to `<artist>`"), no other domains.
+[`sources/snips_lights.py`](../../src/vcm/dataset/legacy/snips_lights.py)
+classifies each transcript by keyword/phrase pattern (there's no
+categorical label in the source data) into `LIGHT_ON`, `LIGHT_OFF`,
+`BRIGHTNESS`, or `COLOR` — see that module's docstring for a real false
+positive caught and fixed during development (a music request for an
+artist named "White Sea" initially matched the color "white"). Only
+matched clips are downloaded (2,472 of 5,886); the rest, including the
+whole music-request chunk, are skipped, not guessed. This is a
+hand-built heuristic classifier, not a ground-truth label the way
+SLURP's `intent` field is — treat it as good-quality, spot-checked, but
+not infallible. Confirmed this dataset has **no** vocabulary relevant to
+any of the 6 zero-real-coverage labels.
+
+## 7. FSC (real audio, resolved)
+
+FSC isn't freely downloadable via its official channel without a Kaggle
+account or a Fluent.ai license request — but a complete, verified
+third-party re-upload exists on Zenodo:
+[record 11106540](https://zenodo.org/records/11106540) ("Fluent speech
+commands dataset", CC BY 4.0, uploaded by Afsara Benazir, University of
+Virginia). Verify before trusting any copy of this — checksum against
+the Zenodo API, not just file size:
+
+```bash
+curl -s "https://zenodo.org/api/records/11106540/files" | python3 -m json.tool
+# expect: fluentai.zip, size 1545730387, md5 625d5dfecef850443955a034d5f892b2
+md5sum data/fluentai.zip   # must match the md5 above exactly
+```
+Download it directly if you don't already have a verified copy:
+```bash
+curl -s -o data/fluentai.zip "https://zenodo.org/api/records/11106540/files/fluentai.zip/content"
+```
+Then extract and process it:
+```bash
+mkdir -p data/external/fsc
+unzip -q data/fluentai.zip -d data/external/fsc/
+python scripts/legacy/process_fsc.py
+rm data/fluentai.zip   # redundant once extracted, ~1.4GB, don't keep it around
+```
+**Expect** (verified output, from the real 30,043-utterance archive —
+train+valid+test row counts, 23,132+3,118+3,793, match this project's
+own already-cited FSC figure exactly):
+```
+Loaded 30043 records (train+val+test)
+
+Label              matched utterances
+TEMPERATURE                      9374
+LIGHT_ON                         4135
+LIGHT_OFF                        3236
+VOLUME_UP                        3010
+VOLUME_DOWN                      2731
+PLAY_MUSIC                         912
+STOP                               510
+PAUSE                              315
+
+TOTAL: 24223 manifest rows -> data/external/fsc/manifest.csv
+```
+The `LABEL_MAPPING` in
+[`src/vcm/dataset/legacy/fsc.py`](../../src/vcm/dataset/legacy/fsc.py) is
+built from all 31 real `(action, object, location)` combinations found
+in the archive, not guessed — see that module's docstring for how one
+ambiguous combination (`"deactivate"` + `"music"`, which mixes PAUSE
+and STOP phrasing) was resolved by inspecting every transcription in it
+rather than assumed. `"change language"` and `"bring"` (newspaper/
+shoes/socks/juice) commands have no taxonomy equivalent and are
+dropped, not guessed.
+
+This closed the real-coverage gap for **TEMPERATURE, STOP, and PAUSE** —
+the three labels that had zero real coverage anywhere in this project
+before this. **CALL, NEXT, TIMER, and LIST_REMINDERS** remain fully
+synthetic as of this writing (LIST_REMINDERS joined this list later —
+see "Known per-label quality signal" above) — step 8 below is a direct
+attempt to close part of that gap.
+
+## 8. Real recordings for the synthetic-only gap — ARCHIVED, on hold
+
+**Status: paused, not deleted.** The tool below is built, tested, and
+ready, but recording new personal voice data for this project needs
+confirmation from the course adviser first (a permissions question
+separate from, and not yet resolved the way, the synthetic-data
+question in the [original architecture review](original_architecture_review.md) Section 7 was). Do not run
+this until that's confirmed. Left in place (not removed) so it's ready
+to pick back up the moment it's cleared — see EXPERIMENTS.md's parked
+list for the same note.
+
+```bash
+python docs/legacy/code/scripts/record_real_examples.py --speaker-id <your-name> --reps 10   # archived; restore to scripts/ first
+```
+**Why**: live testing found CALL, NEXT, TIMER, and LIST_REMINDERS —
+100% Chatterbox TTS, zero real-human recordings — perform noticeably
+worse on real speech than the validation numbers suggest, plus two
+specific phrasings ("Kill the lights" for LIGHT_OFF, "Message" for
+MESSAGE) that are technically covered but only by the same TTS voices.
+This is the same synthetic-to-real generalization gap already flagged
+in the original architecture review's Section 9 — and the same section
+documents a classmate's own prior finding that adding real recordings
+to a synthetic-only label (CALL) measurably helped. This script
+generalizes that fix: it walks through the ~20 affected `(label,
+phrase)` pairs (see the script's own `TARGET_PHRASES` list) via the
+push-to-talk capture (`vcm.audio.capture`),
+and writes a manifest.csv in the standard schema.
+
+**Runs on your own machine** (Mac or RPi) — this isn't something to run
+on the DGX. The more different people who contribute a few minutes
+each, the better: real research on TTS/real domain gaps (see the
+project's research notes) found **speaker diversity**, not just raw
+volume, is what actually closes this gap. Re-run with a different
+`--speaker-id` per contributor; recordings accumulate in the same
+manifest rather than overwriting.
+
+**Not train/test leakage, by construction**: adding your own voice to
+training and then informally testing with your own voice would
+otherwise conflate two different claims — "this helped recognize me"
+vs. "this generalizes to other people" — only the first of which that
+setup could honestly support. The script automatically holds out the
+last `--holdout-fraction` (default 20%) of each phrase's reps *per
+speaker* to val/test, so every contributor's own recordings include
+real, never-trained-on clips of their own voice — the same 80/10/10
+convention every other source in this dataset already uses (see
+`sources/gsc_background.py`). A held-out accuracy number on those
+clips honestly answers "did this help with my voice." Answering "does
+this generalize to a stranger's voice" needs a contributor who runs
+with `--holdout-fraction 1.0` (pure test, no training contribution) —
+a good role for one volunteer classmate.
+
+## 9. Timers and Such (real TIMER + ALARM audio)
+
+```bash
+pip install remotezip
+python scripts/legacy/fetch_timers_and_such.py
+```
+**Why**: live testing found TIMER was 100% Chatterbox TTS — zero real
+human recordings — the clearest case of the synthetic-to-real gap in
+this whole dataset. [Timers and Such](https://zenodo.org/records/4623772)
+(Lugosch et al., NeurIPS 2021 Datasets & Benchmarks,
+[arXiv:2104.01604](https://arxiv.org/abs/2104.01604), license
+"other-open") has real human recordings for exactly this: SetTimer and
+SetAlarm intents, mapped to TIMER and ALARM respectively.
+
+**Only the relevant real subset is downloaded, not the full archive**:
+the source archive is a single 12.2GB zip, and the paper reports only
+2,151 real (non-synthetic) utterances across all 4 of its intents
+combined — most of the 12.2GB is a synthetic portion we don't want
+(more TTS is not the fix for a TTS-only gap). Verified directly (not
+assumed) that Zenodo's file server honors HTTP range requests
+(`curl -H "Range: bytes=0-1023" ... ` returns `206 PARTIAL_CONTENT`
+even though it doesn't advertise `Accept-Ranges`), so
+[`remotezip`](https://pypi.org/project/remotezip/) can read the
+archive's central directory and fetch only the ~1,071 real
+SetTimer/SetAlarm files (~124MB) — checked and confirmed by actually
+running this, not estimated from the file list alone.
+
+**Expect** (verified output from a real run):
+```
+1071 real SetTimer/SetAlarm recordings to fetch
+...
+TOTAL: 1071 recordings -> data/external/timers_and_such/manifest.csv (1444s elapsed)
+```
+717 map to TIMER, 354 to ALARM, from ~90+ unique real speakers combined
+across the train/dev/test splits (counts verified from the real
+per-split CSVs, not the paper's aggregate-only reporting). SimpleMath
+and UnitConversion (the dataset's other 2 intents) have no taxonomy
+equivalent and are dropped, not guessed — see
+[`src/vcm/dataset/legacy/timers_and_such.py`](../../src/vcm/dataset/legacy/timers_and_such.py).
+Takes ~20-25 minutes (latency-bound: ~1,071 individual range requests,
+not a bandwidth bottleneck) — this is expected, not a hung process.
+
+## 10. Combined manifest
+
+```bash
+python scripts/legacy/build_manifest.py
+```
+Combines every source above (SLURP, Option B, GSC background, Snips
+lighting, FSC, real recordings, Timers and Such — whichever of steps
+3/4/5/6/7/8/9 you've actually run; missing ones are skipped with a
+note, not an error) into one `data/dataset_manifest.csv`, in the common
+schema every source normalizes into (`audio_path, label, source,
+is_synthetic, speaker_id, split` — see `manifest.py`), and prints a
+real-vs-synthetic breakdown per label. This is the file a training
+script should read from.
+
+## 11. Synthetic-audio QA gate
+
+[`src/vcm/dataset/legacy/synthetic_check.py`](../../src/vcm/dataset/legacy/synthetic_check.py)
+generalizes the transcribe-and-compare pattern from the QA tool used to
+filter the Option B dataset above, so it can screen output from *any*
+generator, not just the one it was built for. It needs a real
+transcriber backend to run for real (`FasterWhisperTranscriber`,
+requires `pip install faster-whisper`, which downloads an ASR model on
+first use — not a default dependency here since it's optional QA
+tooling, not part of the deployed model):
+
+```python
+from pathlib import Path
+from vcm.dataset.legacy.synthetic_check import FasterWhisperTranscriber, screen_batch
+
+transcriber = FasterWhisperTranscriber()  # pulls a Whisper model on first run
+pairs = [
+    (Path("synthetic/lights_off_01.wav"), "Lights off"),
+    (Path("synthetic/play_music_03.wav"), "Play a song"),
+]
+results = screen_batch(pairs, transcriber, threshold=0.8)
+for r in results:
+    print(r.audio_path, r.confidence, "PASS" if r.passed else "REVIEW")
+```
+Anything below the threshold is the "route to human spot-check" bucket,
+not automatically discarded.
+
+## Manifest format
+
+[`src/vcm/dataset/manifest.py`](../../src/vcm/dataset/manifest.py) is the
+common row shape (`audio_path, label, source, is_synthetic, speaker_id,
+split`) every source normalizes into, via a per-source label-mapping
+layer (`apply_label_mapping()`) so no source is hardcoded to one
+taxonomy. `scripts/legacy/build_manifest.py` (step 10) is the concrete example
+of combining sources through it.
+
+## Tests
+
+```bash
+python -m pytest
+```
+The dataset-specific tests are `tests/test_dataset_*.py`,
+`tests/test_slurp_coverage.py`, `tests/test_fsc_coverage.py`,
+`tests/test_option_b.py`, `tests/test_gsc_background.py`,
+`tests/test_snips_lights.py`, `tests/test_timers_and_such.py`, and
+`tests/test_synthetic_check.py` — all pure logic against synthetic
+fixtures, no network or real data files required to pass.
+
+## Acknowledgments
+
+This pipeline is built directly on top of work shared across the class,
+not developed in isolation. Specifically:
+
+- **Mark Macalacad** shared the **working taxonomy** (Section 1 above),
+  adopted here as-is (this project only added a plain-CSV export
+  alongside it for safer downstream tooling), and generated and shared
+  the **synthetic "Option B" dataset** (Section 4, all 19 labels),
+  using a speaker-disjoint voice-cloning methodology that deliberately
+  includes real Filipino-English reference speakers.
+- **Anthony Navarez** built and shared the transcribe-and-compare QA
+  tool that the **QA-screening approach** (Section 9) generalizes,
+  originally used to filter the synthetic dataset above.
+- The idea to check for a precedented public synthetic-command dataset
+  before generating new synthetic data from scratch (avoiding
+  duplicated effort) came from this project's own side, not a shared
+  classmate resource.
+- Several other classmates contributed dataset leads, reference
+  implementations, and corpus-sizing corrections that shaped the
+  candidate-source research in the [original architecture review](original_architecture_review.md) Section 9.
+
+Everything above exists because of this collective effort.
+
+# Appendix B: other records
+
+| Record | What |
+|---|---|
+| [reports/exp32_33_report.md](reports/exp32_33_report.md) | Full report for Experiments 32–33: slot heads, the first "Hey Kiwi" detector |
+| [reports/exp34_report.md](reports/exp34_report.md) | Experiment 34: frozen vs. joint slot heads, wake word v2 |
+| [reports/exp35_report.md](reports/exp35_report.md) | Experiment 35: temperature and reminder slot heads |
+| [reports/exp36_report.md](reports/exp36_report.md) | Experiment 36: the model shipped until the master dataset |
+| [AUDIT.md](AUDIT.md) | Everything we considered and did not ship, and why |
+| [original_architecture_review.md](original_architecture_review.md) | The original architecture plan |
+| [original_model_plan.md](original_model_plan.md) | The pre-training technology survey |
+| [code/](code/README.md) | The push-to-talk skeleton the repo started with, and retired scripts |
+| [`results/`](../../results/README.md) | Logs, evaluations and launchers for Experiments 37–43, including earlier models scored on the current test set |
+| Branch [`archive/exp36-pre-me2-schema`](https://github.com/quielq/quielq-vcm/tree/archive/exp36-pre-me2-schema), tag `v1-exp36` | The code and commands as of Experiment 36 |

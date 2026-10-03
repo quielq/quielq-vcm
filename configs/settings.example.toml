@@ -9,9 +9,8 @@
 # Obtained via `miiocli cloud` (one-time cloud-authenticated step, then fully local).
 bulb_host = ""
 bulb_token = ""
-# Section 4 flags the exact bulb family as unconfirmed (Xiaomi/Philips
-# co-branded vs. Yeelight-branded) — set this to whichever python-miio
-# device class matches, after checking against its supported-device list.
+# The python-miio device class that matches your bulb (check its
+# supported-device list); only used if bulb_host is set.
 bulb_device_class = "miio.Yeelight"
 plug_host = ""
 plug_token = ""

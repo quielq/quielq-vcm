@@ -3,7 +3,7 @@
 How the Voice Command Model (VCM) is built, as shipped: the Experiment 43b
 intent + slot model and the Experiment 43 "Hey Kiwi" wake word. How the
 design got here, including the original plan and the earlier models, is in
-[EXPERIMENTS.md](EXPERIMENTS.md).
+[EXPERIMENTS.md](legacy/EXPERIMENTS.md).
 
 Courses: AI222 (Supervised Learning) and AI231 (ML Operations), UP Diliman.
 

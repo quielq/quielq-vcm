@@ -235,7 +235,7 @@ SLOT_INTENTS: tuple[str, ...] = tuple(SLOT_VOCAB)
 
 
 def load_slot_labels(csv_path: Path) -> dict[str, tuple[str, str, str]]:
-    """scripts/build_slot_labels.py output: audio_path -> (label, value, text_source)."""
+    """data/me2/slot_labels.csv (scripts/build_me2_manifest.py) -> {audio_path: (label, value, text_source)}."""
     with Path(csv_path).open(newline="") as f:
         return {r["audio_path"]: (r["label"], r["value"], r["text_source"]) for r in csv.DictReader(f)}
 
