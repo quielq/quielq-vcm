@@ -6,7 +6,8 @@ explanations, and [the troubleshooting table](#troubleshooting) below
 covers the problems hit so far.
 
 **This setup:** Pi at `raspberrypi.local`, user `quielq`, USB mic
-"USB PnP Sound Device" (ALSA card 2), repo at `~/quielq-vcm` on both
+"MUSIC-BOOST USB Microphone MB-306" (replaced the C-Media "USB PnP Sound
+Device" on 2026-10-03; any USB mic works), repo at `~/quielq-vcm` on both
 machines.
 
 ## What runs where
@@ -218,7 +219,7 @@ last line is READY or the list of what to fix:
 | Line | FAIL / WARN means | Fix |
 |---|---|---|
 | power, temperature | Undervoltage or overheating | The official 27 W supply; airflow |
-| microphone device | The input isn't the USB PnP mic | Replug it; the WirePlumber rules pick it again |
+| microphone device | The input isn't a USB mic (or is the soundbar's) | Replug it; the WirePlumber rules pick it again |
 | speaker device, speaker volume | Not the soundbar, muted, or under 50% | Replug it; `pactl set-sink-volume @DEFAULT_SINK@ 100%` |
 | stream '...' | An app's sound is stuck turned down (a duck that never ended) | Run with `--fix` |
 | microphone signal | Silent (unplugged, muted) or clipping | Check the cable; `amixer -c 2 sset Mic 12` if clipping |

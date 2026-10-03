@@ -106,7 +106,7 @@ uses a lower wake threshold (0.4 instead of 0.6) while music plays.
 | Item | Role |
 |---|---|
 | Raspberry Pi 5, 8 GB (Cytron kit), 32 GB microSD, Raspberry Pi OS 64-bit | Runs everything |
-| USB microphone ("USB PnP Sound Device") | Input |
+| USB microphone (MUSIC-BOOST MB-306; any USB mic) | Input |
 | USB soundbar (Dell AC511) | Replies, alarms, music |
 | Sense HAT | Room temperature for the thermostat |
 | GPIO 17 pushbutton (optional) | Push-to-talk instead of the wake word (`--trigger button`) |
