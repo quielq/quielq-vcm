@@ -14,7 +14,7 @@ Three kinds of testing, from most to least formal:
 
 - **The class's fixed test split** of the master dataset, revision
   `da92a79` (2026-10-02; see
-  [DATASET.md](DATASET.md#revisions)): 4,443 clips, 47 per Option B
+  [DATASET.md](DATASET.md)): 4,443 clips, 47 per Option B
   variation ("Message" 43) plus 76 out-of-scope clips, from 144 speakers and
   synthetic voices that are in no other split. This is the headline
   number, the same set every group in the class reports on.
@@ -25,13 +25,10 @@ Three kinds of testing, from most to least formal:
 - **Holdout**: the 202 clips the class kept for the live test on the
   Raspberry Pi, scored offline the same way.
 - **Choosing on validation only.** Every setting and checkpoint was chosen
-  on our val split (12% of train, by speaker). Test and holdout were
+  on our val split (13% of train, by speaker). Test and holdout were
   reported but never used to choose.
 - Every test clip counts, including ones the device would reject for low
   confidence.
-- Experiments 37–42 were scored on the dataset's first revision, whose
-  test set had 226 more free-form real clips; those numbers are about 2
-  points lower overall and are not comparable with the ones here.
 
 ### Intent accuracy (shipped model, `models/vcm_intent.onnx`)
 
@@ -85,23 +82,15 @@ action.
 that, please repeat" for 15.7% of commands and is right on 86.6% of the
 ones it accepts (47% of its errors are caught).
 
-**Progress, all on the current test set** (mean of 3 seeds; EXPERIMENTS.md
-Experiments 38 and 43):
+**Comparable-size baselines** (mean of 3 seeds, same data and recipe;
+details in [MODEL.md](MODEL.md#4-baselines)):
 
-| Model | Params | val real | test all | test real | holdout |
-|---|---:|---:|---:|---:|---:|
-| BC-ResNet baseline, same size (38, first revision)\* | 89K | — | 81.29% | 41.57% | — |
-| DS-CNN baseline, same size (38, first revision)\* | 100K | — | 89.50% | 57.06% | — |
-| CRNN, Experiment 36 recipe (43t, 80 epochs) | 99K | 71.72% | 93.06% | 70.27% | 92.90% |
-| + combo and distillation (43c) | 182K | 75.76% | 94.64% | 75.93% | 94.22% |
-| + wider (43a) | 372K | 74.95% | 95.03% | 77.52% | 94.88% |
-| + supplemental synthetic clips (43b, **shipped**) | 372K | **77.07%** | **95.27%** | **77.57%** | **95.38%** |
-| Previous shipped model (41d, first revision)\* | 372K | — | 94.80% | 79.15% | 93.07% |
-
-\*Trained on the first revision; none of the current test or holdout clips
-were in its train split (checked by audio hash), so these are fair
-scores. The previous shipped model is about level on intents but gets
-31.6% of out-of-scope clips right, against 69.7% for 43b.
+| Model | Params | test all | test real |
+|---|---:|---:|---:|
+| BC-ResNet 112×6 | 89K | 81.29% | 41.57% |
+| DS-CNN 128×5 | 100K | 89.50% | 57.06% |
+| CRNN, same size | 99K | 92.41% | 69.71% |
+| **CRNN, final recipe (43b, mean of 3 seeds)** | 372K | **95.27%** | **77.57%** |
 
 ### Slot values (shipped model)
 
@@ -168,9 +157,7 @@ phrases (2.94 hours). Experiment 43, seed 1 (best of 3 on validation):
 | 0.95 | 13.8% | 23.3% | 0/10 | 2.0 |
 
 The false-wake stream deliberately includes near-miss phrases ("hey kitty",
-"every week"), so a real room sees fewer. On the same stream at 0.6 the
-Experiment 42 detector (first revision) misses 4.1% / 4.9% with 12.3 false
-wake-ups per hour: the two are about level. The master test split has no
+"every week"), so a real room sees fewer. The master test split has no
 pure-noise clips, so the 10 dB check mixes in the train split's 11 noise
 clips.
 
@@ -264,6 +251,47 @@ What the live run needs from us, and its risks:
   holds the microphone, use the `default` input (PipeWire), as the
   benchmark suggests.
 
+### The class live benchmark (live run, 2026-10-03)
+
+The full test (202 holdout clips + 16 without the wake word, seed 87436),
+run live on the Pi 5 with the benchmark at commit `ab39857`: laptop speaker
+about 1 m from the USB microphone, the Pi's soundbar muted so PLAY_MUSIC
+trials couldn't play over later ones
+([results/class_benchmark_live/report.md](../results/class_benchmark_live/report.md)).
+
+| Benchmark metric | overall | real voice | synthetic voice |
+|---|---:|---:|---:|
+| Intent accuracy (19) | **90.6%** [86–94%] | 86.5% | 94.3% |
+| Command accuracy (93: intent and slot) | 87.6% | 80.2% | 94.3% |
+| False accept (out-of-scope clip acted on) | 18.8% (3/16) [7–43%] | 20.0% (2/10) | 16.7% (1/6) |
+| False reject (command ignored) | 7.0% | 9.3% | 5.0% |
+| False wake (command without "Hey Kiwi" acted on) | 0% (0/16) | 0% | 0% |
+| Slot exact (intent right) | 94.1% | 85.7% | 100% |
+| Latency p50 / p95 (end of command to our line) | 0.59 / 0.69 s | | |
+
+Wake detection was 100%, and the model took 16 ms per command (RTF 0.010).
+Against the rehearsal, accuracy drops 5.4 points, almost all of it as
+false rejects (1.1% to 7.0%): the room and speaker make Kiwi answer
+`OUT_OF_SCOPE` more often rather than pick the wrong command (misfires
+1.6%).
+
+Setup the newer benchmark needs:
+
+- **Point it at a log file.** It no longer follows `journalctl` from the
+  saved settings. For the run, a systemd drop-in
+  (`~/.config/systemd/user/vcm.service.d/benchmark-log.conf` with
+  `StandardOutput=append:%h/vcm_benchmark/kiwi.log`) sent the listener's
+  output to a file, passed as `--log '/home/quielq/vcm_benchmark/kiwi.log'`
+  (quoted, so the laptop doesn't expand `~`). Remove the drop-in afterwards.
+- **Read only the JSON line.** The benchmark otherwise parses our
+  human-readable `-> TEMPERATURE (1.00) …` line first and reports the
+  timing fields as missing. In the sound check, `x` with
+  `^\{"intent": "(?P<intent>[^"]+)"(?:, "slot": "(?P<slot>[^"]*)")?.*?"infer_ms": (?P<infer_ms>[0-9.]+), "audio_ms": (?P<audio_ms>[0-9.]+)`
+  fixes it.
+- **One listener only.** A `vcm_listen.py` started by hand next to the
+  service answers every command twice; `pgrep -af vcm_listen` must show
+  just the service.
+
 ## 2. On-device and live tests
 
 **Speed and memory** (`scripts/benchmark_pi.py`, no microphone needed;
@@ -273,30 +301,30 @@ Runtime on 1 thread. On the Raspberry Pi 5 (8 GB), with the shipped
 Experiment 43b weights: 13.9 ms p50 / 15.2 ms p95 per command, RTF 0.0061
 at p95, wake word 1.9% of one core, 99 MB peak; 719 MB used system-wide
 with both services running
-([results/bench_pi5.md](../results/bench_pi5.md)). The previous model took
-9.9 ms. Details in [FOOTPRINT.md](FOOTPRINT.md).
+([results/bench_pi5.md](../results/bench_pi5.md)). Details in
+[FOOTPRINT.md](FOOTPRINT.md).
 
 **Preflight check** before a demo: `scripts/kiwi_doctor.py --beep` checks
 power, microphone, speaker, services, the listener, the home server, the
 models and the internet, and ends with READY ([RUNBOOK.md](RUNBOOK.md)).
 
-**Live commands.** The author said 137 commands to the device, saved with
-`--save-commands` and transcribed offline to check what was actually said.
-[RUNBOOK.md](RUNBOOK.md#test-checklist) lists three phrasings per command
-with how often each was acted on correctly, and the phrasings to avoid.
-Most work every time; CALL works reliably only as "make a call". The
-dashboard's "Simulate a command" box runs every action without speaking, to
-tell recognition problems from action problems.
+**Live commands.** [RUNBOOK.md](RUNBOOK.md#test-checklist) has a spoken
+test checklist and the schema's three phrasings per command, which the
+model gets right 99.2% of the time on test. The listener can save every
+recorded command (`--save-commands`, on by default in the service) to hear
+exactly what the model got. The dashboard's "Simulate a command" box runs
+every action without speaking, to tell recognition problems from action
+problems.
 
 ## 3. Automated test suite
 
-244 tests, all pure logic: no microphone, speaker, network, GPU or dataset
+245 tests, all pure logic: no microphone, speaker, network, GPU or dataset
 needed. They use synthetic arrays, small fixture files and mocked hardware.
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev,train]"      # train adds PyTorch, needed by the training tests
-python -m pytest                   # expect: 244 passed
+python -m pytest                   # expect: 245 passed
 ```
 
 Use `python -m pytest`, not bare `pytest`: on macOS a Homebrew `pytest` can

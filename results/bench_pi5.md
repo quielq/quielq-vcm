@@ -20,25 +20,9 @@ features + 10.0 ms model, 100 MB peak.
 
 Memory with both services running: 719 MB used of 8,063 MB (7,343 MB available, no swap);
 `vcm_listen.py` 99.5 MB RSS, `vcm.home.server` 171.5 MB RSS (after a live test that
-played music; it was 47.0 MB in the earlier measurement below).
+played music; 47 MB before any music had played).
 
-## Earlier: Experiment 41d / 40b weights (same architectures)
-
-Repo at master `11fc1d5`; intent `exp41d_combo_wide_distill_s0.pt`, wake word
-`exp42_wake_me2_s1.pt`.
-
-| Intent model | Size | p50 ms | p95 ms | RTF p95 | Features ms | Model ms | Wake word, share of 1 core | Wake hop p95 ms | Peak RSS MB |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| `vcm_intent.onnx` (Exp 41d), run 2 | 1,463 KB | 13.93 | 15.78 | 0.0063 | 3.75 | 9.98 | 1.85% | 1.90 | 99.6 |
-| `vcm_intent.onnx`, run 1 | 1,463 KB | 14.25 | 14.97 | 0.0060 | 3.93 | 10.27 | 1.94% | — | 99.3 |
-| `vcm_intent_small.onnx` (Exp 40b) | 722 KB | 11.07 | 12.06 | 0.0048 | 3.93 | 7.21 | 1.98% | 2.01 | 98.3 |
-
-Memory with both services running: 604 MB used of 8,063 MB (7,458 MB available, no swap);
-`vcm_listen.py` 95.3 MB RSS, `vcm.home.server` 47.0 MB RSS.
-
-The shipped Experiment 43b model has the same architecture and operations as 41d, and
-measured the same within run-to-run noise. The small model (Experiment 43c, same
-architecture as 40b) has not been re-timed with its new weights; expect the 40b numbers.
-
-For comparison, the previous intent model (Exp 36, 432 KB) took 9.9 ms per command
-(3.7 ms features + 6.2 ms model) on the same Pi.
+`vcm_intent_small.onnx` (Experiment 43c) has not been re-timed with its final weights;
+with earlier weights of the same architecture it took 11.1 ms p50 / 12.1 ms p95
+(RTF 0.0048, 7.2 ms model). Measurements of earlier models are in
+[docs/EXPERIMENTS.md](../docs/EXPERIMENTS.md#raspberry-pi-5-earlier-weights).

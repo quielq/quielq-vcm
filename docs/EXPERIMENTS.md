@@ -1,28 +1,443 @@
-# Training Experiments Log
+# Project history: experiments and earlier models
 
-Real results from actual training runs on the DGX (`ai-n002`, A100-40GB),
-20 classes (19 intents + `unknown_background`, `OUT_OF_SCOPE` from
-Experiment 37). The manifest grew over the
+This is the project's journal: every experiment we ran, every model we
+shipped before the final one, and every comparison between them. The
+rest of the documentation describes only the final system; start with the
+[README](../README.md) and [MODEL.md](MODEL.md) for that.
+
+**The final system** is the Experiment 43b intent + slot model (seed 1,
+`models/vcm_intent.onnx`) and the Experiment 43 "Hey Kiwi" wake word
+(seed 1, `models/kiwi_wakeword.onnx`), both trained on the class master
+dataset, revision `da92a79`.
+
+How this file is organized:
+
+| Part | What |
+|---|---|
+| [Part 0](#part-0-from-the-first-model-to-the-final-one) | The short story: model lineage, progress tables, the earlier models compared with the final one, and measurements made with earlier models |
+| [Part 1](#part-1-the-projects-own-dataset-experiments-136) | Experiments 1–36, on the dataset this project built for itself |
+| [Part 2](#part-2-the-class-master-dataset-experiment-37-on) | Experiments 37–43, on the class master dataset |
+| [Appendix A](#appendix-a-the-projects-own-dataset-experiments-136) | The project's own dataset (Experiments 1–36): sources, build steps, label audits |
+| [Appendix B](#appendix-b-other-records) | Detailed reports, the original plans, the audit of what was not shipped, and the archive branch |
+
+Real results from actual training runs on the DGX (`ai-n002`, A100-40GB).
+Every number is copied from a log file, not estimated; log paths are given
+so any entry can be re-checked. Logs for Experiments 37–43 are in
+[`results/`](../results/); earlier logs live on the DGX.
+
+# Part 0: from the first model to the final one
+
+## Lineage
+
+| Stage | Experiments | Model | Data | Result | Status |
+|---|---|---|---|---|---|
+| Keyword-spotting baselines | 1–27 | DS-CNN (24–26K params), BC-ResNet (10–26K) | Own dataset | Best 75.5% val (DS-CNN, Exp 15); 70.6% real-speech test (Exp 25) | Replaced by the CRNN |
+| ASR cascade | 26 | Whisper `base` + TF-IDF / logistic regression (~74M params, 149 MB) | Own dataset | 90.6% real-speech test | Not shipped: footprint |
+| CRNN | 28–31 | CRNN, ~96K params | Own dataset | +11 points of real speech over DS-CNN (Exp 28) | Became the architecture |
+| CRNN + slot heads | 32–36 | CRNN, 107,887 params, 432 KB | Own dataset, 70,641 clips | 84.84% real-speech test on the old test set | **Shipped until 2026-10-01** (`models/vcm_intent_exp36.onnx`); wake word from Exp 34 (`models/kiwi_wakeword_exp34.onnx`) |
+| The same recipe on the master dataset | 37 | CRNN, 99,373 params | Master dataset, first revision | 90.09% test, 63.58% real (first revision) | Starting point for Part 2 |
+| Comparable-size baselines | 38 | DS-CNN 99.6K, BC-ResNet 89.4K | Master dataset, first revision | Below the CRNN | Checklist item |
+| One change at a time, then combined | 39–41 | CRNN up to 372,096 params | Master dataset, first revision | Exp 41d: 92.92% test, 73.21% real (first revision) | **Shipped 2026-10-02** (41d seed 0) |
+| Wake word on master-dataset negatives | 42 | Wake CRNN, 25,475 params | Master dataset, first revision | 4.1% missed, 12.3 false wake-ups/h | Replaced by 43 |
+| Retrain on the current revision | 43 | CRNN 372,096 params (43b), 182K (43c); wake word | Master dataset, `da92a79` | 43b seed 1: 95.50% test, 78.64% real, 96.04% holdout | **Final** |
+
+## Progress, all on the current test set
+
+Mean of 3 seeds, on the class test set of revision `da92a79` (4,443 clips).
+Models marked \* were trained on the dataset's first revision; none of the
+current test or holdout clips were in that train split (checked by audio
+hash), so the scores are fair.
+
+| Model | Params | val real | test all | test real | holdout |
+|---|---:|---:|---:|---:|---:|
+| BC-ResNet baseline, same size (38)\* | 89K | — | 81.29% | 41.57% | — |
+| DS-CNN baseline, same size (38)\* | 100K | — | 89.50% | 57.06% | — |
+| CRNN, same size and recipe as the baselines (37a)\* | 99K | — | 92.41% | 69.71% | — |
+| CRNN, the Experiment 36 recipe (43t, 80 epochs) | 99K | 71.72% | 93.06% | 70.27% | 92.90% |
+| + 2-layer GRU, 4-head attention pooling, frequency-only SpecAugment, numerals as out-of-scope, distillation (43c) | 182K | 75.76% | 94.64% | 75.93% | 94.22% |
+| + wider: 80 channels, GRU 96 (43a) | 372K | 74.95% | 95.03% | 77.52% | 94.88% |
+| + the dataset's supplemental synthetic clips (**43b, final**) | 372K | **77.07%** | **95.27%** | **77.57%** | **95.38%** |
+| Previous shipped model (41d seed 0)\* | 372K | — | 94.80% | 79.15% | 93.07% |
+
+The final file is seed 1 of 43b, the best seed on val: 95.50% / 78.64% /
+96.04%.
+
+**The previous shipped models.** 41d (trained on the first revision) is
+about level with 43b on intents (+0.7 overall, −0.5 real speech for 43b,
+within one seed's spread), but labels only 31.6% of the out-of-scope test
+clips OUT_OF_SCOPE, against 69.7% for 43b: the current train split has
+synthetic near-miss sentences the first one lacked. The Experiment 36
+model (`models/vcm_intent_exp36.onnx`, our own dataset) trained on most of
+the class test set's source clips, so it can't be scored fairly on it
+(`results/eval/exp37_baseline_exp36onnx_*.txt`,
+`results/eval/exp37_eval_test_unseen_by_exp36.txt`).
+
+**What helped and what didn't** (Experiments 39–41, one change at a time,
+on the first revision):
+
+- **Helped:** a 2-layer GRU; 4-head attention pooling; SpecAugment with
+  frequency masks only; bare numbers from the numerals set as
+  out-of-scope examples. All four together added 9.7 points of real speech
+  on the first revision's test set (Experiment 40a). Distillation from an
+  ensemble of our own CRNNs (40b) and a wider model (41d) then raised
+  real-speech accuracy on val further.
+- **Attention pooling is needed:** plain mean pooling loses 5.6 points of
+  real speech on val and 5.2 on test (39h).
+- **Hurt:** numerals as background talk (−2.5 real on val), an EMA of the
+  weights (−3.6). Label smoothing, a wider speed range, more epochs
+  (150, 37b) and repeating real clips did nothing.
+- **Supplemental synthetic clips** (43b vs 43a): +2.1 real speech on val.
+
+**Before the master dataset** (Experiments 1–36, our own data): the CRNN
+beat DS-CNN and BC-ResNet by 11 points of real speech (Experiment 28),
+silence trimming with a 5 s window removed a train/live mismatch (29a),
+waveform augmentation added about 5 points (29b), the confusable-pair loss
+at α = 2.0 was the best setting (14–16), joint slot training at weight 0.3
+beat a frozen encoder on slots (34), and dynamic int8 quantization cost 6.8
+points of real speech (82.1% → 75.3%) while saving 134 KB and running no
+faster (32).
+
+## Why a CRNN: the earlier architectures
+
+The first 27 experiments used DS-CNN ("Hello Edge", Zhang et al. 2017). It
+plateaued at 68% to 71% on real speech. Each of its outputs sees only about
+24 frames, or 240 ms. That is shorter than the word "temperature". It then
+averages everything, so word order is lost. It classified a command like a
+bag of quarter-second snippets.
+
+**Figure H1. How DS-CNN and the CRNN hear the same command.** DS-CNN cuts
+the command into short pieces and averages them, so it cannot tell which
+word came first. The CRNN keeps every step in order, so the last word
+("up") can decide the answer.
+
+```mermaid
+---
+title: Figure H1. How DS-CNN and the CRNN summarize "turn the volume up"
+---
+flowchart TB
+    subgraph DS["DS-CNN: a bag of short windows"]
+        direction TB
+        W["[turn] [the] [vol] [ume] [up]<br/>each output sees ~240 ms"] --> GAP["Global average pooling<br/>every position weighted equally,<br/>word order discarded"]
+        GAP --> Y1["'up' vs 'down' is a small share<br/>of the average → often confused"]
+    end
+    subgraph CR["CRNN: an ordered sequence"]
+        direction TB
+        SEQ["turn → the → volume → up<br/>bidirectional GRU: each step sees<br/>the whole command, in order"] --> ATT["Attention pooling<br/>learned weights, highest on 'up'"]
+        ATT --> Y2["the deciding word<br/>dominates the summary"]
+    end
+```
+
+That is why DS-CNN kept confusing commands that differ by one word, like
+volume up and down, or lights on and off. The CRNN fixes this with three
+small changes: strided blocks that widen what each step sees, a GRU that
+reads the whole command in order, and attention pooling so the important
+word decides the answer. It was the largest single gain in the project:
+**+11 points on real speech** (Experiment 28), the same across three seeds.
+
+### DS-CNN (Experiments 1 to 27)
+
+The standard keyword-spotting model from "Hello Edge". Shown at the
+"matched capacity" size from Experiment 11, with the 3 s input used then.
+
+**Figure H2. DS-CNN: convolutions, then one big average.** It uses the same
+kind of blocks as the CRNN's front end. Its blocks never stride, so each
+output only hears about 240 ms. Global average pooling then mixes all
+positions into one summary, and word order is lost.
+
+```mermaid
+---
+title: Figure H2. DS-CNN (26,300 parameters; old dataset, Experiments 1–27)
+---
+flowchart LR
+    IN["Log-mel<br/>1 × 40 × 301<br/>(3 s)"] --> C1["Conv 10×4, stride 2<br/>60 filters<br/>→ 60 × 20 × 150"]
+    C1 --> D["5 depthwise-separable blocks<br/>no striding<br/>→ 60 × 20 × 150<br/>each output sees ~240 ms"]
+    D --> G["Global average pooling<br/>averages all 3,000 positions<br/>→ 60 numbers"]
+    G --> L["Linear<br/>→ 20 classes"]
+```
+
+26,300 parameters. Best results: **75.5% validation** (Experiment 15) and
+**70.6% real-speech test** (Experiment 25). Same building blocks as the
+CRNN's front end. The difference is what happens after: DS-CNN averages
+immediately, while the CRNN strides, keeps the time order and reads it with
+a GRU.
+
+### BC-ResNet (Experiments 3 to 6, and 10)
+
+"Broadcasted residual learning" (Kim et al. 2021). The original plan
+recommended it because it beat DS-CNN on Google Speech Commands.
+
+**Figure H3. One BC-ResNet block: a frequency path and a time path, added
+together.** The frequency path keeps all 20 mel bands. The time path first
+averages the bands away, which makes it cheap, and then looks along time.
+Its result is copied ("broadcast") back to every band and added in. The
+model stacks 8 of these blocks and still ends with a global average, like
+DS-CNN.
+
+```mermaid
+---
+title: Figure H3. One BC-ResNet block (the model stacks 8; old dataset, Experiments 3–10)
+---
+flowchart TB
+    X["Block input<br/>48 × 20 × 301"] --> FP["Frequency path<br/>depthwise conv 3×1 over mel bands<br/>+ BatchNorm"]
+    FP --> AVG["Average over the 20 mel bands<br/>→ 48 × 1 × 301"]
+    AVG --> TP["Temporal path<br/>depthwise conv 1×3 over time<br/>+ BatchNorm, 1×1 conv, ReLU, dropout"]
+    FP --> ADD(("+"))
+    TP -->|"broadcast back<br/>over all 20 bands"| ADD
+    X -->|"residual"| ADD2(("+"))
+    ADD --> R["ReLU"] --> ADD2
+    ADD2 --> OUT["Block output<br/>48 × 20 × 301"]
+```
+
+The full model is a 5×5 stem convolution (48 channels), 8 of these blocks,
+global average pooling and a linear classifier. 25,748 parameters. **67.5%
+validation**, below DS-CNN at the same size (72.4%). It also ends with a
+global average, so it has the same word-order problem as DS-CNN. We stopped
+testing it before real-speech test accuracy became our main measure.
+
+### ASR cascade (Experiment 26)
+
+**Figure H4. The ASR cascade: speech to text, then text to intent.** Whisper
+writes down what was said. A small text classifier then counts the words
+and phrases and picks the intent. It was the most accurate option, but
+Whisper alone is about 145 MB.
+
+```mermaid
+---
+title: Figure H4. ASR cascade (about 74M parameters, 149 MB; Experiment 26)
+---
+flowchart LR
+    AU["Audio"] --> W["Whisper base<br/>speech-to-text<br/>74M parameters, 145 MB"]
+    W --> T["Text<br/>'turn the volume up'"]
+    T --> TF["TF-IDF<br/>word and phrase counts"]
+    TF --> LOG["Logistic regression<br/>2 MB"]
+    LOG --> O["20 classes"]
+```
+
+**90.6% real-speech test** on our own dataset's test set, 5.8 points above
+the Experiment 36 CRNN (84.8%) on the same clips, because text makes
+one-word differences easy. It was never rebuilt for the master dataset.
+Its footprint is in [FOOTPRINT.md](FOOTPRINT.md#part-2-our-pipeline-vs-an-asr-cascade).
+Its Whisper transcripts were also used to label slot values on real speech
+in the old dataset and to pick the wake word.
+
+### Side by side, on the old dataset
+
+| | DS-CNN | BC-ResNet | CRNN (Exp 36, shipped then) | ASR cascade |
+|---|---|---|---|---|
+| Parameters | 26,300 | 25,748 | 107,887 | ~74M + classifier |
+| Weights (fp32) | ~105 KB | ~103 KB | 432 KB | ~149 MB |
+| Input | 3 s log-mel | 3 s log-mel | 5 s log-mel, silence trimmed | raw audio |
+| What one output sees | ~240 ms | a short local window | the whole command | the whole command |
+| Keeps word order? | No | No | Yes (GRU) | Yes (text) |
+| How it summarizes | Global average | Global average | Attention pooling | Text classifier |
+| Slot values | No | No | 6 heads | Not built |
+| Best result | 75.5% val, 70.6% real-speech test | 67.5% val | 84.8% real-speech test | 90.6% real-speech test |
+| Runs on the Pi in real time? | Yes | Yes | Yes, 9.9 ms | Too slow to listen always |
+
+The Experiment 36 CRNN was 64 filters, one GRU layer of 64 units and one
+attention head. The Experiment 37 model, the same recipe on the master
+dataset, had 99,373 parameters (its slot heads shrank to 3 values each).
+
+### What else changed from the earlier models
+
+- **Slot vocabularies.** Through Experiment 36 the TIMER, ALARM,
+  BRIGHTNESS and COLOR heads had 24, 28, 12 and 14 values. Since
+  Experiment 37 each head has exactly the class schema's 3 values.
+- **The non-command class.** Models before Experiment 37 output
+  `unknown_background` (noise only) as their 20th class; it is now
+  `OUT_OF_SCOPE`, mostly speech that is not a command. The home server
+  still accepts the old label, so `vcm_intent_exp36.onnx` can be run for
+  comparison:
+  ```bash
+  cd ~/quielq-vcm && .venv/bin/python scripts/vcm_listen.py --intent-model models/vcm_intent_exp36.onnx --server http://127.0.0.1:8000 --show-scores
+  ```
+- **The wake word.** The Experiment 34 detector used the project's old
+  dataset for its negatives; since Experiment 42 they come only from the
+  master dataset (retrained on the current revision in 43). Same
+  architecture and size throughout (25,475 parameters, 107 KB).
+- **`models/vcm_intent_frozen.onnx`** is the Experiment 34 frozen-encoder
+  variant, not used.
+
+## Measurements made with earlier models
+
+These were measured before the final model existed. They are kept as
+records; the current numbers are in [TESTING.md](TESTING.md) and
+[FOOTPRINT.md](FOOTPRINT.md).
+
+### Wake word, earlier detectors
+
+On the current test stream (master test split plus 300 near-miss phrases,
+2.94 h) at threshold 0.6, the Experiment 42 detector misses 4.1% clean /
+4.9% in noise / 0 of 10 real takes with 12.3 false wake-ups per hour; the
+final (43) one 3.8% / 7.2% / 0 / 12.9. About level; 43 was shipped for
+consistency with the current revision.
+
+The Experiment 34 detector on its own (old dataset) test set; the
+`--wake-threshold` help text in `scripts/vcm_listen.py` still quotes these:
+
+| Threshold | Missed, clean | Missed, 10 dB noise | Missed, author's real takes | False wake-ups per hour |
+|---:|---:|---:|---:|---:|
+| **0.6** | 3.1% | 5.6% | 0/10 | 12.7 |
+| 0.7 | 3.6% | 8.2% | 0/10 | 9.2 |
+| 0.85 | 6.9% | 11.5% | 0/10 | 4.3 |
+| 0.95 | 14.1% | 21.5% | 0/10 | 1.3 |
+
+### Reject threshold, Experiment 34 model
+
+On validation, the 0.6 confidence threshold rejected ~11% of commands and
+raised accuracy on the accepted ones from 86% to 92%.
+
+### Raspberry Pi 5, earlier weights
+
+`scripts/benchmark_pi.py`, 1 thread, both services running, 2026-10-02.
+Repo at master `11fc1d5`; intent `exp41d_combo_wide_distill_s0.pt`, wake
+word `exp42_wake_me2_s1.pt`.
+
+| Intent model | Size | p50 ms | p95 ms | RTF p95 | Features ms | Model ms | Wake word, share of 1 core | Wake hop p95 ms | Peak RSS MB |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `vcm_intent.onnx` (Exp 41d), run 2 | 1,463 KB | 13.93 | 15.78 | 0.0063 | 3.75 | 9.98 | 1.85% | 1.90 | 99.6 |
+| `vcm_intent.onnx`, run 1 | 1,463 KB | 14.25 | 14.97 | 0.0060 | 3.93 | 10.27 | 1.94% | — | 99.3 |
+| `vcm_intent_small.onnx` (Exp 40b) | 722 KB | 11.07 | 12.06 | 0.0048 | 3.93 | 7.21 | 1.98% | 2.01 | 98.3 |
+
+Memory with both services running: 604 MB used of 8,063 MB;
+`vcm_listen.py` 95.3 MB RSS, `vcm.home.server` 47.0 MB RSS. The final
+43b and 43c models have the same architectures and operations as 41d and
+40b; 43b measured the same as 41d within run-to-run noise
+([results/bench_pi5.md](../results/bench_pi5.md)), and 43c has not been
+re-timed.
+
+The Experiment 36 intent model (432 KB) took 9.9 ms per command (3.7 ms
+features + 6.2 ms model) on the same Pi, its wake word 2% of one core, and
+the listener peaked at 94 MB.
+
+### Footprint with the Experiment 36 models (2026-09-29)
+
+Measured on the demo Pi with both services running: models 539 KB
+(intent 432 + wake word 107), project folder 303 MB, voice loop 103 MB peak
+(94 MB in `benchmark_pi.py`), home server with Piper 185 MB.
+
+Our pipeline stage by stage on the laptop (1 thread), measured with the
+Experiment 31 intent model (int8) and a same-size toy wake word; the fp32
+Experiment 32 / 33 files measured the same, 88–89 MB peak and 3.1 ms per
+command:
+
+| Stage | Memory in use | Added |
+|---|---:|---:|
+| Python starts | 12.0 MB | +12.0 |
+| + numpy | 23.6 MB | +11.6 |
+| + onnxruntime | 42.0 MB | +18.4 |
+| + sounddevice (microphone library) | 47.6 MB | +5.6 |
+| + our runtime code | 48.4 MB | +0.8 |
+| + intent model loaded | 56.0 MB | +7.6 |
+| + wake-word model loaded | 57.0 MB | +0.9 |
+| Running: 30 s of wake-word listening + commands | 86–96 MB | +29–39 |
+
+Turning off ONNX Runtime's memory arena made no measurable difference
+(84.7–86.0 MB vs 85.8–94.8 MB). Compared with the ASR cascade at the time:
+~280× the disk (149 MB vs 539 KB), 5–7× the memory and 150–300× the latency
+(440–950 ms vs 3.1–3.4 ms per command on the laptop), for +5.8 points of
+real speech.
+
+**Checked on the Mac before the first Pi deploy** (Experiment 34 models, a
+clean venv with only `requirements-pi.txt`): `benchmark_pi.py` 3.2 ms per
+command, wake word 1% of one core, 82 MB peak; all 30 of the author's
+"hey kiwi" takes triggered at 0.95 (23 of 30 at 0.98) and none of the 12
+near-misses did.
+
+### Live phrasings with the Experiment 36 model (2026-09-28)
+
+From the author's 137 saved live commands, transcribed offline with
+Whisper. "right / tried" counts a command only if it was acted on (right
+intent, confidence ≥ 0.6). Several of these slot values (5 minutes, 7 AM,
+"buy milk") are not in the final schema, and several phrasings this model
+missed ("Power on the lights", "Kill the lights", "Pause audio", "Brightness
+level") are schema phrasings the final model gets right 99% of the time on
+test.
+
+| Command | Phrasing 1 | Phrasing 2 | Phrasing 3 | Avoided then |
+|---|---|---|---|---|
+| PLAY_MUSIC | Play music (7/7) | Start the music (3/3) | Play some music (1/1) | |
+| STOP | Stop the music (4/4, with "Stop music") | Stop (6/8) | Stop playing music *untested* | |
+| PAUSE | Pause (1/1) | Pause the music (1/1) | Pause song (1/1) | Pause audio (1/3) |
+| NEXT | Next song (1/1) | Skip song (1/1) | Go to the next song (1/1) | bare "Next" |
+| VOLUME_UP | Volume up (3/3, with "Turn the volume up") | Increase the volume (1/1) | Turn the volume up | |
+| VOLUME_DOWN | Volume down (2/2, with "Turn the volume down") | Decrease the volume (1/1) | Lower the volume (1/1) | |
+| WEATHER | Weather (1/1) | What's the weather (1/1) | Tell me the weather (1/1) | |
+| TIME | Time (2/2) | What time is it (1/1) | Tell me the time (1/1) | |
+| LIGHT_ON | Lights on (1/1) | Turn on the lights (2/3) | Switch on the lights *untested* | Power on the lights (0/4) |
+| LIGHT_OFF | Lights off (2/2) | Switch off the lights (2/2) | Turn off the lights (1/1) | Kill the lights (0/1) |
+| BRIGHTNESS | Brightness to 60 percent (5/7) | Adjust brightness to 60 percent (4/5) | Set the brightness to 60 percent *untested* | Brightness level 60 percent (0/2) |
+| COLOR | Color red (3/4) | Change color to red (1/1) | Set the lights to red *untested* | |
+| TEMPERATURE | Temperature 18 degrees (1/1) | Change the temperature to 22 degrees (1/1) | Set the temperature to 26 degrees (2/3) | |
+| ALARM | Set an alarm for 7 AM (6/6) | Wake me up at 6 AM *untested* | Alarm 8 AM *untested* | |
+| TIMER | Set a timer for 5 minutes *untested* | Timer 30 seconds *untested* | Countdown for 1 minute *untested* | |
+| CREATE_REMINDER | Reminder to drink water (3/3) | Remind me to study (2/2) | Create a reminder to exercise (2/2) | "run" |
+| LIST_REMINDERS | Reminders (2/2) | Show my reminders *untested* | List my reminders *untested* | |
+| CALL | Make a call (1/1) | Call (2/4) | *none reliable* | Make a phone call (0/2), Call mom (0/2) |
+| MESSAGE | Send a message (1/1) | Message *untested* | Send my message *untested* | |
+
+## Dataset revisions
+
+The master dataset changed once after we started. Experiments 37–42 used
+the 2026-10-01 revision `25111444`; Experiment 43 and the final model use
+the 2026-10-02 revision `da92a79`. Compared clip by clip, by audio hash; no
+kept clip changed label or slot value:
+
+| | Train | Test | Holdout |
+|---|---:|---:|---:|
+| Clips (old → new) | 10,682 → 10,733 | 4,418 → 4,443 | 196 → 202 |
+| Removed | 517: fixed commands that also carried a value ("play purple haze", "turn on the kitchen lights", "is it sunny today"); 371 SLURP, 80 SNIPS, 37 FSC, 29 class recordings | 226 of the same kind (171 SLURP, 46 SNIPS, 9 FSC) | 57 (45 class recordings, 11 FSC, 1 Common Voice) |
+| Added | 499 synthetic commands of train voices, 69 synthetic out-of-scope | 222 synthetic commands of test voices, 29 synthetic out-of-scope | 56 class recordings, 6 synthetic out-of-scope |
+| Out of scope | 201 → 270 | 47 → 76 | 10 → 16 |
+
+The removed clips were real people phrasing commands their own way, the
+hardest part of the old test set. On the new test set the same model
+scores about 2 points higher overall and 6 higher on real speech, so
+numbers from the two revisions are not comparable. The new revision also
+added `supplemental_synth`; `variations.csv` and the numerals set did not
+change.
+
+**Old dataset vs. master dataset:**
+
+| | Old (Experiments 1–36) | Master dataset (37 on) |
+|---|---|---|
+| Size | 70,641 clips (64% real) | 10,733 train + val clips (22% real), plus optional 3,461 supplemental synthetic |
+| Test set | Each source's own split; real speech only (6,577 clips) | Class-fixed, 4,443 clips, real and synthetic, balanced per variation |
+| Non-command class | `unknown_background`, 600 noise clips | `OUT_OF_SCOPE`, mostly speech |
+| Slot values | 24 timers, 28 alarm times, 12 brightness levels, 14 colors, 3 + 3 | 3 per slot, the schema's |
+| Filipino voices | Only in 16 of Option B's cloned reference speakers | Class recordings (Filipino speakers) in every split |
+| CALL, NEXT, LIST_REMINDERS | Synthetic only | Class recordings too |
+
+## Training runs on the shared DGX, earlier experiments
+
+Measured during Experiments 28–30 on GPU 2 (the practices that came out of
+this are in [TRAINING.md](TRAINING.md)):
+
+| What was running on GPU 2 | Per-epoch time | GPU utilization |
+|---|---:|---|
+| 5 CRNN runs, no augmentation (Exp 28) | ~34 s | not saturated |
+| 5 CRNN runs, with waveform augmentation (Exp 30) | ~63–66 s | CPU-bound on augmentation |
+| **11 runs at once** (Exps 28 + 29 overlapping) | ~60–130 s | **99%, GPU-bound, runs slow each other down** |
+
+Before threads were pinned, 5 runs × 12 workers created ~24,000 threads on
+~200 cores; with one thread per process, ~1,350 threads, ~40 cores, and
+epochs about 2× faster. The Experiment 37 model took ~18 s per epoch with
+6 runs sharing GPU 6 (~25 min a run). The Experiment 36 training commands
+are on the archive branch.
+
+# Part 1: the project's own dataset (Experiments 1–36)
+
+20 classes (19 intents + `unknown_background`). The manifest grew over the
 project, from 64,665 rows (Experiment 1) to 70,641 (Experiment 36); each
-entry names the one it used. Every number below is copied from a real log
-file, not estimated — log paths are given so any entry can be re-checked
-(logs and checkpoints live on the DGX, not in git).
-
-**Shipped models: Experiment 43b, seed 1** (intent + slots, trained on the
-class master dataset's 2026-10-02 revision: 95.50% on the class test set,
-78.64% on its real speech) and the Experiment 43 wake word. Experiments 1–36 below used the
-project's own dataset; Part 2 (Experiment 37 on) uses only the class
-master dataset. Until Experiment 37 the shipped model was Experiment 36,
-seed 1 (84.84% real-speech test on the old test set). [MODEL.md](MODEL.md) describes them;
-[TESTING.md](TESTING.md) has the final results. The pre-training technology
-survey these experiments started from is
+entry names the one it used. The pre-training technology survey these
+experiments started from is
 [archive/original_model_plan.md](archive/original_model_plan.md) (the
 "MODEL.md Section N" references below point there). Scripts named below
 that were later archived (`demo_infer.py`, `demo_infer_cascade.py`,
 `record_real_examples.py`) are in
-[archive/legacy_code/scripts/](archive/legacy_code/scripts/).
+[archive/legacy_code/scripts/](archive/legacy_code/scripts/). "DATASET.md
+step N" below refers to [Appendix A](#appendix-a-the-projects-own-dataset-experiments-136).
 
-**Reading the numbers:** Experiments 1–27 report best *validation* accuracy
 over all clips. From Experiment 28 on, the comparable number is
 *real-speech test* accuracy (see "Evaluation change from Experiment 28
 onward").
@@ -71,11 +486,11 @@ init, batch shuffling), not purely the effect being tested. Experiment
 | 29b | Same as #29a + **waveform augmentation** (noise, speed, reverb, start shift), 3 seeds | waveform | 80 | 88.29 / 88.51 / 88.46% val; **85.1–85.7% real-speech test** — best deployable model | `logs/exp29b_*.log` |
 | 30 | Same as #29b + auxiliary word-level CTC head on the Whisper transcripts (training only); weight 0.5 × 3 seeds, 0.2 and 1.0 × seed 0 | waveform | 80 | 88.31 / 88.44 / 88.40% val; 84.6–84.8% real-speech test (weight 0.5) — **slightly worse than #29b, not adopted** | `logs/exp30_*.log` |
 | 31 | Same recipe as #29b on the base manifest **+ 4,357 targeted synthetic clips** (Chatterbox, cloned FSC/Timers speakers; schema phrasings + extra phrasings for PAUSE/STOP/PLAY_MUSIC/TIMER/COLOR/BRIGHTNESS), 3 seeds | waveform | 80 | 88.22 / 88.70 / 88.75% val; 84.9–85.3% real-speech test (≈ #29b); **98–99% on held-out targeted clips** (29b: 70–73%) | `logs/exp31_*.log`, `logs/exp31_report.md` |
-| 32 | #31 recipe + **slot heads** (timer/alarm/brightness/color values) + slots2 clips + Snips speaker re-split, 3 seeds | waveform | 80 | 84.36 / 84.43 / 84.88% val; **81.4–82.1% real-speech test (no Snips), −3.5pp vs #31**; slot values ALARM 98%, COLOR 87%, TIMER 74%, BRIGHTNESS 74%; int8 −6.8pp | `logs/exp32_*.log` (DGX), `reports/exp32_33_report.md` |
+| 32 | #31 recipe + **slot heads** (timer/alarm/brightness/color values) + slots2 clips + Snips speaker re-split, 3 seeds | waveform | 80 | 84.36 / 84.43 / 84.88% val; **81.4–82.1% real-speech test (no Snips), −3.5pp vs #31**; slot values ALARM 98%, COLOR 87%, TIMER 74%, BRIGHTNESS 74%; int8 −6.8pp | `logs/exp32_*.log` (DGX), `archive/reports/exp32_33_report.md` |
 | 33 | **"Hey Kiwi" wake word**, 25K-param CRNN, 2 seeds | waveform | 30 | seed 1 at threshold 0.95: 6.7% clean / 16.4% noisy false rejects, 0.67 false wake-ups/h | `logs/exp33_*.log` (DGX) |
-| 34 | Slot heads on the **frozen** Exp 31 encoder (3 seeds) vs. **joint** training at slot weight 0.3 (1 seed); **wake word v2** (all plausible positives + the author's recordings) | waveform | 30 / 80 | Frozen: 85.48% real speech, slot mean 77.6%. Joint w0.3: 84.80%, slot mean 83.4%. Wake v2 at 0.95: 14.1% missed (was 27.4%), 0/10 real takes missed — **wake word shipped** | `reports/exp34_report.md` |
-| 35 | Joint w0.3 + **TEMPERATURE and CREATE_REMINDER slot heads** (107,887 params), 3 seeds | waveform | 80 | 85.15 / 85.19 / 85.24% real speech; new heads 100% (synthetic clips only); third reminder value was the stale "call home" | `reports/exp35_report.md` |
-| 36 | Same as #35 with the reminder value corrected to **"exercise"**, 3 seeds | waveform | 80 | 84.86 / **84.84** / 84.46% real speech; slots TIMER 73.9, ALARM 98.1, BRIGHTNESS 74.9, COLOR 86.7, TEMPERATURE 100, CREATE_REMINDER 100% — **seed 1 shipped** | `reports/exp36_report.md` |
+| 34 | Slot heads on the **frozen** Exp 31 encoder (3 seeds) vs. **joint** training at slot weight 0.3 (1 seed); **wake word v2** (all plausible positives + the author's recordings) | waveform | 30 / 80 | Frozen: 85.48% real speech, slot mean 77.6%. Joint w0.3: 84.80%, slot mean 83.4%. Wake v2 at 0.95: 14.1% missed (was 27.4%), 0/10 real takes missed — **wake word shipped** | `archive/reports/exp34_report.md` |
+| 35 | Joint w0.3 + **TEMPERATURE and CREATE_REMINDER slot heads** (107,887 params), 3 seeds | waveform | 80 | 85.15 / 85.19 / 85.24% real speech; new heads 100% (synthetic clips only); third reminder value was the stale "call home" | `archive/reports/exp35_report.md` |
+| 36 | Same as #35 with the reminder value corrected to **"exercise"**, 3 seeds | waveform | 80 | 84.86 / **84.84** / 84.46% real speech; slots TIMER 73.9, ALARM 98.1, BRIGHTNESS 74.9, COLOR 86.7, TEMPERATURE 100, CREATE_REMINDER 100% — **seed 1 shipped** | `archive/reports/exp36_report.md` |
 
 ## Parked / to-do
 
@@ -2195,7 +2610,7 @@ wake-ups per hour are in Experiment 33.
 
 **Setup**: Experiment 31's recipe on a new manifest (`dataset_manifest_exp32.csv`,
 69,324 rows) with three changes at once. Full numbers, logs and QA tables
-are in `reports/exp32_33_report.md`.
+are in `archive/reports/exp32_33_report.md`.
 - **Slot heads:** one head per slotted intent (vcm/slots.py; 106,855
   params), `--slot-weight 1.0`.
 - **slots2:** 2,283 train + 366 test Chatterbox clips voicing every slot
@@ -2275,7 +2690,7 @@ at 0.98 (41.5% noisy false rejects), so the wake word also ships fp32.
 
 ## Experiment 34 — slot heads on a frozen encoder, wake word v2
 
-Full numbers and logs: `reports/exp34_report.md`.
+Full numbers and logs: `archive/reports/exp34_report.md`.
 
 **Slots, setup**: Experiment 31 seed 2 frozen (`train.py --freeze-from`,
 BatchNorm statistics frozen too); only the slot heads train (10,578
@@ -2350,7 +2765,7 @@ stream for all; real voice = 10 takes, so each is 10 points):
 
 ## Experiment 35 — temperature and reminder slot heads
 
-Full numbers and logs: `reports/exp35_report.md`.
+Full numbers and logs: `archive/reports/exp35_report.md`.
 
 **Setup**: two more slot heads, appended after Experiment 32's four. They
 use the class schema's 3 values each: TEMPERATURE (18 / 22 / 26 degrees)
@@ -2405,7 +2820,7 @@ replaced it as the shipped model.
 
 ## Experiment 36 — corrected reminder values (exercise)
 
-Full numbers and logs: `reports/exp36_report.md`.
+Full numbers and logs: `archive/reports/exp36_report.md`.
 
 **Setup**: CREATE_REMINDER's third value is now "exercise" instead of
 "call home" (`c59c0c0`). Only slots3's 230 "call home" clips were
@@ -2479,7 +2894,7 @@ compared on **val**. The class-fixed **test** split and the **holdout**
 (Raspberry Pi live-test) split are reported but never used to choose a
 configuration. 20 classes: 19 intents + `OUT_OF_SCOPE`. Slot heads have
 the schema's 3 values each. See
-[DATASET.md](DATASET.md#the-class-master-dataset-experiment-37-on).
+[DATASET.md](DATASET.md).
 
 Numbers are mean ± standard deviation over 3 seeds unless a seed is
 named. "Real" = real-speech clips (not synthetic, not out of scope).
@@ -2697,7 +3112,7 @@ contact were replaced with synthetic clips of the same split's voices
 69, test 29, holdout 6), 57 holdout clips were swapped, and a new
 `supplemental_synth` set of 5,856 synthetic clips appeared. No kept clip
 changed label. None of the new test or holdout clips were in the old train
-split. Details: [DATASET.md](DATASET.md#revisions).
+split. Details: [Dataset revisions](#dataset-revisions).
 
 Everything that learned from the old train split was retrained, with the
 recipes fixed in Experiments 37–42 (nothing re-tuned), 3 seeds each, all
@@ -2747,3 +3162,713 @@ on GPU 6 (shared with one other user's small job). Launcher:
   takes and fires 12.9 times per hour; the Experiment 42 detector on the
   same stream: 4.1% / 4.9% / 0 / 12.3. About level; shipped for
   consistency with the current revision.
+
+# Appendix A: the project's own dataset (Experiments 1–36)
+
+The dataset this project built for itself before the class master dataset existed, kept as it was written. "Steps" and "sections" below refer to this appendix; older code comments that say "DATASET.md step N" mean these steps. The code that builds it is on the [`archive/exp36-pre-me2-schema`](https://github.com/quielq/quielq-vcm/tree/archive/exp36-pre-me2-schema) branch (tag `v1-exp36`); some loaders and their tests are still in `src/vcm/dataset/` and `tests/`.
+
+## Final training data for Experiments 33 to 36
+
+The shipped model (Experiment 36) trained on
+`data/dataset_manifest_exp36.csv`: **70,641 clips**, built in layers on top
+of the base manifest described in the rest of this document.
+
+| Layer | Clips | Real / synthetic | Added in |
+|---|---:|---|---|
+| Base manifest: SLURP, FSC, Snips, Timers and Such, GSC noise, Option B | 63,476 | 45,818 real + 17,658 synthetic | Steps 1–10 below |
+| Option B after the Whisper QA filter (`scripts/qa_filter_option_b.py`) | −1,158 | synthetic removed | Experiment 25 |
+| Targeted phrasings (pause/stop/play verb pairs, timer durations, colors, brightness levels) | +4,357 | synthetic, QA-passed | Experiment 31 |
+| Slot-value clips "slots2" (every timer, alarm, brightness and color value) | +2,649 | synthetic, QA-passed | Experiment 32 |
+| Slot-value clips "slots3" (temperature and reminder values) | +1,317 | synthetic, QA-passed | Experiments 35–36 |
+| **Total** | **70,641** | **45,218 real speech + 600 noise + 24,823 synthetic** (64% real speech) | |
+
+Snips was also re-split by speaker in Experiment 32
+(`scripts/resplit_snips_by_speaker.py`), because 40 of its 49 speakers had
+been in more than one split. Slot-value labels (`data/slot_labels_exp36.csv`,
+17,920 labels) come from the script for synthetic clips and from Whisper
+transcripts for real ones (`scripts/build_slot_labels.py`). The
+synthetic clips were generated with Chatterbox TTS, cloning real FSC and
+Timers and Such speakers (`scripts/generate_targeted_synthetic.py`), and
+kept only if Whisper heard the intended words.
+
+## Summary — what this is and how it was built
+
+The training dataset is **63,476 labeled audio clips across 20 classes**
+(19 command intents, e.g. `PLAY_MUSIC`, `LIGHT_ON`, `VOLUME_UP`, plus
+`unknown_background` for non-command audio), combined from **6
+independently-sourced datasets** — a mix of real recorded speech and
+class-shared synthetic (voice-cloned) speech — normalized into one
+common manifest schema.
+
+The design principle throughout: **prefer real audio, fill labeled-command
+gaps with synthetic audio, and never guess a label mapping** — every
+source's raw label vocabulary was inspected against real downloaded
+data (not the source's paper/docs) before any label-mapping code was
+written, and every gap in real coverage was checked against every
+known dataset candidate before falling back to synthetic. Three labels
+(`CALL`, `NEXT`, `LIST_REMINDERS`) currently have no real-audio source
+and are synthetic-only — `LIST_REMINDERS` was real-covered until a
+quality audit found its SLURP mapping was semantically wrong (see
+"Known per-label quality signal" below); finding a real source that
+actually covers timed reminders is an open item, not a permanent gap.
+`TIMER` was in this same fully-synthetic bucket until step 9 below
+closed it with real audio.
+
+| Source | Rows | Real / synthetic | Labels covered | Disk size |
+|---|---:|---|---|---:|
+| SLURP | 17,452 | Real | 12 of 19 | ~968 MB (18 MB annotations + 950 MB audio) |
+| Option B (class-shared) | 17,658 | Synthetic, QA-filtered | All 19 | ~1.0 GB |
+| FSC (Zenodo mirror) | 24,223 | Real | 8, incl. TEMPERATURE/STOP/PAUSE | ~2.1 GB |
+| Snips SLU (lighting subset) | 2,472 | Real | 4 (LIGHT_ON/OFF, BRIGHTNESS, COLOR) | ~275 MB |
+| GSC v2 background noise | 600 | Real | `unknown_background` only | ~40 MB |
+| Timers and Such | 1,071 | Real | TIMER + ALARM | ~124 MB |
+| **Total** | **63,476** | — | 17 of 19 with real coverage | **~4.5 GB** |
+
+(SLURP's row count dropped from 19,712 to 17,452 after a quality audit
+removed 2,260 mismatched/junk rows — see "Known per-label quality
+signal" below. No audio files were deleted; disk size is unchanged
+since the same downloaded files are still on disk, just fewer of them
+are referenced by the manifest now.)
+
+(Sizes are the retained on-disk footprint of `data/external/` after
+each source's fetch script runs — transient downloads like FSC's
+1.4GB zip and GSC's 2.4GB full archive are deleted immediately after
+extracting what's needed, per steps 5 and 7 below, so they aren't
+counted here. Timers and Such's 124MB is *not* transient-then-deleted
+like those — it's the real total footprint, made small by selectively
+downloading only the ~1,071 relevant files out of the archive's full
+12.2GB via HTTP range requests rather than the whole thing; see step 9.
+`data/dataset_manifest.csv` itself, the combined output, is a further
+~10 MB of metadata on top of this.)
+
+See "Current status" below for the exact per-label breakdown, and
+steps 1-10 for how to reproduce every source from a clean checkout.
+
+## Setup (same as the main README)
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+```
+
+## Current status
+
+`data/dataset_manifest.csv` (generated by `scripts/build_manifest.py`,
+step 10 below) currently combines **63,476 rows** from 6 sources (a 7th,
+real recordings for the synthetic-only gap, is opt-in per contributor
+— see step 8 — and not yet reflected in this snapshot):
+
+| Label coverage | Source | Rows | Disk size |
+|---|---|---:|---:|
+| 12 of 19 labels | Real audio (SLURP, quality-filtered — see below) | 17,452 | ~968 MB |
+| All 19 labels | Synthetic, QA-filtered audio (class-shared "Option B" dataset) | 17,658 | ~1.0 GB |
+| `unknown_background` only | Real noise, chopped into clips (Google Speech Commands v2) | 600 | ~40 MB |
+| 4 lighting labels only (LIGHT_ON/OFF, BRIGHTNESS, COLOR) | Real audio, text-classified (Snips SLU) | 2,472 | ~275 MB |
+| 8 labels, including TEMPERATURE/STOP/PAUSE | Real audio (FSC, via a verified Zenodo mirror) | 24,223 | ~2.1 GB |
+| TIMER + ALARM | Real audio (Timers and Such, selectively downloaded — see step 9) | 1,071 | ~124 MB |
+| 3 labels with zero real coverage | CALL, NEXT, LIST_REMINDERS — synthetic-only; LIST_REMINDERS lost its SLURP mapping to a quality fix (see below), the other two were checked against every candidate source found so far and none cover them | — | — |
+
+**Total: ~4.5 GB** across all 6 sources' retained data (see the
+Summary section above for what's excluded — transient full-archive
+downloads that get deleted right after extraction).
+
+Every row's `audio_path` resolves to a real local file (verified) — this
+is an actual training-ready manifest, not just row counts.
+
+### Per-label breakdown by source
+
+The label-level view of the table above — computed directly from
+`data/dataset_manifest.csv`, all splits combined. This is the real
+imbalance the training pipeline sees: **22x between the largest label
+(TEMPERATURE, 11,170) and the smallest (CALL, 498)**, motivating the
+class-imbalance work in EXPERIMENTS.md Experiments 18-20.
+
+| Label | SLURP | Option B | FSC | Snips | GSC bg | Timers | **Total** |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| TEMPERATURE | 0 | 1,796 | 9,374 | 0 | 0 | 0 | **11,170** |
+| LIGHT_OFF | 1,025 | 578 | 3,236 | 448 | 0 | 0 | **5,287** |
+| LIGHT_ON | 113 | 570 | 4,135 | 448 | 0 | 0 | **5,266** |
+| PLAY_MUSIC | 3,764 | 568 | 912 | 0 | 0 | 0 | **5,244** |
+| VOLUME_UP | 998 | 566 | 3,010 | 0 | 0 | 0 | **4,574** |
+| BRIGHTNESS | 1,163 | 1,770 | 0 | 1,028 | 0 | 0 | **3,961** |
+| VOLUME_DOWN | 560 | 580 | 2,731 | 0 | 0 | 0 | **3,871** |
+| WEATHER | 3,279 | 544 | 0 | 0 | 0 | 0 | **3,823** |
+| ALARM | 1,486 | 1,754 | 0 | 0 | 0 | 354 | **3,594** |
+| COLOR | 717 | 1,736 | 0 | 548 | 0 | 0 | **3,001** |
+| CREATE_REMINDER | 961 | 1,766 | 0 | 0 | 0 | 0 | **2,727** |
+| TIMER | 0 | 1,750 | 0 | 0 | 0 | 717 | **2,467** |
+| MESSAGE | 1,853 | 528 | 0 | 0 | 0 | 0 | **2,381** |
+| TIME | 1,533 | 548 | 0 | 0 | 0 | 0 | **2,081** |
+| STOP | 0 | 532 | 510 | 0 | 0 | 0 | **1,042** |
+| PAUSE | 0 | 496 | 315 | 0 | 0 | 0 | **811** |
+| unknown_background | 0 | 0 | 0 | 0 | 600 | 0 | **600** |
+| LIST_REMINDERS | 0 | 558 | 0 | 0 | 0 | 0 | **558** |
+| NEXT | 0 | 520 | 0 | 0 | 0 | 0 | **520** |
+| CALL | 0 | 498 | 0 | 0 | 0 | 0 | **498** |
+| **TOTAL** | **17,452** | **17,658** | **24,223** | **2,472** | **600** | **1,071** | **63,476** |
+
+At a glance: CALL/NEXT/LIST_REMINDERS are Option-B-only (the
+zero-real-coverage gap above); TEMPERATURE/LIGHT_ON/LIGHT_OFF/VOLUME_UP/
+VOLUME_DOWN are FSC-heavy; WEATHER/MESSAGE/TIME/PLAY_MUSIC/CREATE_REMINDER
+are SLURP-heavy; TIMER/ALARM are the only labels with any Timers-and-Such
+contribution.
+
+### Known per-label quality signal: source composition correlates with model accuracy
+
+Checked directly against the manifest (not assumed) after several
+training runs (see EXPERIMENTS.md) showed a consistent, reproducible
+weak-class pattern. The labels that train worst split into two
+different root causes by which source dominates them:
+
+- **SLURP-dominated labels train worse**: WEATHER (85% SLURP), TIME
+  (81%), MESSAGE (77%), PLAY_MUSIC (71%), LIST_REMINDERS (69%) are
+  consistently the lowest- or near-lowest-accuracy classes across every
+  architecture tried. SLURP's crowdsourced phrasing is naturalistic and
+  varied (e.g. `"open clock"` for ALARM, `"olly brighten the lights"`
+  for BRIGHTNESS — see step 2 below) rather than matching this
+  project's own scripted command phrasing, which plausibly makes the
+  acoustic-to-label mapping itself noisier to learn for these labels
+  specifically.
+- **Checked and ruled out: this is not a class-imbalance problem.**
+  Pearson correlation between per-label training-set size and
+  per-label accuracy (Experiment 11's real numbers, 20 labels): r ≈
+  -0.16 to +0.18 depending on outlier handling — essentially no
+  relationship. CALL has only 396 training examples and hits 94.4%
+  accuracy; WEATHER has 2,627 (~7x more) and only hits 56.7%. This also
+  makes sense mechanically: training already uses class-weighted
+  cross-entropy (inverse-frequency weighting), which specifically
+  corrects for raw imbalance — it's not the open problem here.
+- **The real problem for WEATHER/TIME/MESSAGE/LIST_REMINDERS is closer
+  to a mapping-purity problem than a phrasing-style problem.** Pulled
+  real example sentences from SLURP's raw `train.jsonl` for each raw
+  intent mapped to these labels and compared against this project's own
+  scripted taxonomy phrasing for the same label:
+
+  | Label | Taxonomy expects | Real SLURP example mapped to it |
+  |---|---|---|
+  | WEATHER | "What's the weather?" | `"do i need a coat"` — indirect, never says "weather" |
+  | TIME | "What time is it?" | `"is today the fourth or the fifth"` — a **date** question |
+  | MESSAGE | "Send a message" | `"between ten pm to nine am all emails received is to be replied to"` — email **scheduling**, not sending |
+  | LIST_REMINDERS | "Show my reminders" | `"pull up the shopping list"` — generic **lists**, conceptually different from timed reminders |
+  | PLAY_MUSIC | "Play music" | `"play only songs by the beatles please"` — reasonably matched, just more specific |
+
+  Four of these five aren't just noisier versions of the intended
+  intent — some of the mapped SLURP examples are arguably **the wrong
+  intent entirely** for what this project means by that label name
+  (PLAY_MUSIC is the exception; its SLURP examples are semantically
+  fine, just lexically varied).
+- **Option-B/FSC-dominated labels train best**: CALL, NEXT, TIMER
+  (100% Option B), TEMPERATURE (83% FSC), PAUSE/STOP/CREATE_REMINDER/
+  COLOR (51-64% Option B) are consistently the strongest classes.
+  Both sources use scripted, on-taxonomy phrasing.
+- **FSC-dominated VOLUME_UP/DOWN and LIGHT_ON/OFF are a separate,
+  already-diagnosed problem** (EXPERIMENTS.md Experiment 1 onward):
+  these underperform not because of source noise but because FSC
+  reuses near-identical "turn up/down" carrier phrasing across VOLUME
+  and TEMPERATURE commands, a structural phrase overlap rather than a
+  source-quality issue.
+
+**Fix applied** (`is_valid_sentence()` and an updated `LABEL_MAPPING` in
+`src/vcm/dataset/sources/slurp.py`, same empirical transcript-driven
+approach already used for Snips SLU (step 6) and FSC's
+"deactivate"+"music" split (step 7)):
+
+- **LIST_REMINDERS**: SLURP mapping dropped entirely. Inspecting all
+  197 unique `lists_query` sentences found only 1 contains the word
+  "reminder" (and even that one is about viewing a list of reminders,
+  not a timed alert) — the rest are shopping lists, to-do lists, and
+  music playlists. A real concept mismatch, not noise, so filtering
+  down wasn't the right fix; the mapping is gone. **-1,265 rows.**
+  LIST_REMINDERS now relies solely on Option B's 558 synthetic rows —
+  see the Summary section's note on this being an open item, not a
+  permanent gap.
+- **TIME**: sentences that are pure date questions with no time
+  content (`"what date is today"`, `"is today march sixth"`) are
+  excluded; mixed date-and-time queries are kept. **-950 rows** (of
+  2,483 SLURP-sourced TIME rows, ~38%).
+- **WEATHER**: a small, surgical list of 13 clearly nonsensical/
+  off-topic sentences excluded (e.g. `"answer email from"`,
+  `"food will be given at the exhibition"`) — the vast majority of
+  WEATHER's SLURP examples, including indirect ones like
+  `"do i need a coat"`, are legitimately on-topic and were kept
+  as-is. **-35 rows** (of 3,314, ~1%).
+- **MESSAGE**: 3 clearly off-topic sentences excluded (e.g.
+  `"how it's come to us"`). **-10 rows** (of 1,863, ~0.5%).
+
+Applying this to already-downloaded audio (no re-fetch needed) via
+`scripts/refilter_slurp_manifest.py`, then rebuilding the combined
+manifest, took SLURP from 19,712 → 17,452 rows and the combined
+dataset from 64,665 → 62,405 rows.
+
+**Verified with a real training run** (EXPERIMENTS.md Experiment 12 —
+same model/config as Experiment 11, only the dataset changed): overall
+val accuracy improved +1.71pp (72.39% → 74.10%). LIST_REMINDERS jumped
+from the weakest class (49.4%) to a perfect 100% once purified down to
+Option B's 558 clean examples; WEATHER improved +6.1pp and TIME +4.9pp.
+MESSAGE unexpectedly dropped -6.4pp despite only 3 sentences being
+removed there — too small a change to be the direct cause, more likely
+a side effect of the overall class-weight/confusion redistribution
+than a flaw in the fix itself; worth re-checking once multiple seeds
+are used to rule out ordinary run-to-run noise.
+
+## 1. The taxonomy (class-shared fixed-vs-slotted schema)
+
+[`src/vcm/dataset/sources/dataset_schema.py`](../src/vcm/dataset/sources/dataset_schema.py)
+holds the 19-label taxonomy (13 fixed-phrase intents, 6 slotted) as plain
+Python data, captured from the class's shared taxonomy sheet's richest
+table ("Option B" phrasing richness — not to be confused with the
+"Option B" *dataset* in step 4 below, same source naming, different
+artifact). It expands into 93 phrases total.
+
+```bash
+python -c "from vcm.dataset.sources.dataset_schema import generate_phrases; print(len(generate_phrases()))"
+```
+**Expect**: `93`.
+
+To regenerate the CSV export at `data/dataset_schema/dataset_schema.csv`
+(already committed, only needed if the taxonomy changes):
+```bash
+python -c "
+from pathlib import Path
+from vcm.dataset.sources.dataset_schema import export_csv
+export_csv(Path('data/dataset_schema/dataset_schema.csv'))
+"
+```
+**Expect**: a 94-line CSV (93 phrases + header). See
+[`data/dataset_schema/README.md`](../data/dataset_schema/README.md) for the
+column format.
+
+## 2. SLURP coverage check (real data, real numbers)
+
+```bash
+python scripts/slurp_coverage.py
+```
+**What it does**: downloads SLURP's `train/devel/test.jsonl` (~13MB of
+annotation text, no audio) from `pswietojanski/slurp` on GitHub into
+`data/external/slurp/` (gitignored, so this doesn't bloat the repo — the
+script re-downloads if that folder isn't there), then prints a table of
+how many real SLURP sentences/recordings map to each of the 19 taxonomy
+labels, using the empirically-verified mapping in
+[`src/vcm/dataset/sources/slurp.py`](../src/vcm/dataset/sources/slurp.py).
+
+**Expect** (verified output, reproduced exactly by running the command
+above from a clean checkout):
+```
+Loaded 16521 sentences / 72396 recordings
+
+Label               sentences  recordings  matched intents
+PLAY_MUSIC                911        3883                1
+WEATHER                   834        3412                1
+TIME                      490        2558                1
+LIGHT_ON                   30         126                1
+LIGHT_OFF                 213        1091                2
+PAUSE                       0           0                0
+STOP                        0           0                0
+NEXT                        0           0                0
+VOLUME_UP                 135        1059                1
+VOLUME_DOWN                71         587                1
+CALL                        0           0                0
+MESSAGE                   523        1925                1
+LIST_REMINDERS              0           0                0
+TIMER                       0           0                0
+ALARM                     253        1503                1
+TEMPERATURE                 0           0                0
+BRIGHTNESS                229        1234                4
+COLOR                     183         751                1
+CREATE_REMINDER           234        1005                1
+
+Zero SLURP coverage: PAUSE, STOP, NEXT, CALL, LIST_REMINDERS, TIMER, TEMPERATURE
+```
+Takes under a minute on a normal connection (13MB download + parsing
+16,521 JSON lines).
+
+**Note on the counts above vs. the final manifest**: this table shows
+raw sentence-to-intent mapping counts, from `LABEL_MAPPING` alone —
+LIST_REMINDERS shows 0 because its mapping was removed entirely (see
+"Known per-label quality signal" below). TIME, WEATHER, and MESSAGE
+still show their full pre-filter counts here, because the additional
+sentence-level quality filter (`is_valid_sentence()`) is applied later,
+during audio fetch (step 3) — this coverage check is metadata-only and
+doesn't download or filter audio, so it can't reflect that step.
+
+### What the three columns mean
+
+- **`sentences`** — a "sentence" in SLURP is one unique text+intent
+  annotation, a single prompt someone was asked to say (e.g. `"wake me
+  up at ten"`, labeled `alarm_set`). This column is a count of *distinct
+  prompts* mapped to that taxonomy label.
+- **`recordings`** — each sentence was recorded multiple times, usually
+  by different crowdworkers, often in paired mic setups (a close-mic
+  `-headset` take plus a room-mic take of the same prompt). This column
+  counts *actual audio files*, always ≥ the sentence count. Concretely:
+  one SLURP sentence (`slurp_id 9024`, text `"event"`, intent
+  `calendar_set`) has 9 separate recordings in the raw data — that's
+  one sentence contributing 9 to a `recordings` total.
+- **`matched intents`** — SLURP has its own internal vocabulary of 93
+  intents, finer-grained (and messier) than this taxonomy's 19 labels.
+  This is how many of SLURP's raw intents got mapped onto one canonical
+  label. Most are 1-to-1; `LIGHT_OFF` is 2 because SLURP has two
+  overlapping intents for it (legacy duplicate, e.g. "turn off the
+  light" vs. "turn off lamp"), and `BRIGHTNESS` is 4 for the same reason
+  across dim-up/dim-down and two legacy naming schemes (e.g. "dim the
+  lights" vs. "the lights are too bright"). See `LABEL_MAPPING` in
+  `sources/slurp.py` for exactly which raw intents feed each label.
+
+**A phrasing-looseness caveat worth knowing before trusting this data
+blindly**: SLURP's crowdsourced sentences aren't clean scripted commands
+the way this project's own taxonomy phrases are — e.g. `"open clock"` is
+labeled `alarm_set` (→ `ALARM`), and `"olly brighten the lights"` maps to
+`BRIGHTNESS`. Real, spoken-in-the-wild phrasing is part of why SLURP is
+useful (Section 9 already notes its sentences run long/natural), but it
+means a "covered" label here doesn't guarantee phrasing anywhere close to
+this project's own command set.
+
+**If the mapping looks wrong for a label**: the raw SLURP→taxonomy
+mapping is the `LABEL_MAPPING` dict at the top of `sources/slurp.py`,
+built by inspecting every one of SLURP's 93 actual `intent` values (not
+guessed from the paper) — edit it there and re-run the script.
+
+## 3. Pulling real SLURP audio
+
+```bash
+pip install datasets soundfile
+python scripts/fetch_slurp_audio.py
+```
+**What it does**: streams real audio for the 12 covered labels from a
+HuggingFace parquet mirror (`yhfang/slurp_dataset_audio_subset`) filtered
+by `slurp_id` against the local metadata from step 2 — no need to
+download SLURP's full 3.9GB Zenodo archive. Also applies
+`is_valid_sentence()` (see "Known per-label quality signal" below) so
+sentences that fail the TIME/WEATHER/MESSAGE quality filter are never
+written at all on a fresh run. Writes real `.flac` files to
+`data/external/slurp_audio/<split>/` plus a `manifest.csv` already in
+this project's common schema (see `manifest.py` below). Takes several
+minutes; run `scripts/slurp_coverage.py` (step 2) first if
+`data/external/slurp/*.jsonl` doesn't exist yet.
+
+**If you already have `data/external/slurp_audio/` populated from
+before the quality filter existed**, don't re-run this script (it would
+re-download ~900MB for no reason) — run
+`python scripts/refilter_slurp_manifest.py` instead, which re-derives
+each already-downloaded file's correct label (or drops it) from the
+local metadata alone, no network access needed.
+
+## 4. Class-shared synthetic dataset ("Option B")
+
+A classmate-contributed synthetic dataset, publicly shared on GitHub:
+17,658 QA-filtered recordings, voice-cloned from 100 real reference
+speakers (84 foreign, 16 genuinely Filipino-English), speaker-disjoint
+train/val/test split, clean + noisy acoustic conditions, generated
+directly against this project's own 19-label taxonomy (so it covers all
+19, including every label SLURP has zero coverage for) and already
+screened through a classmate-built transcribe-and-compare QA tool (942
+of 18,600 originals flagged and excluded).
+
+```bash
+git clone --depth 1 --filter=blob:none --sparse https://github.com/markandrian30/AI231.git /tmp/option_b_repo
+cd /tmp/option_b_repo && git sparse-checkout set MEX2/OptionB
+mkdir -p <repo-root>/data/external/option_b
+mv MEX2/OptionB/manifest.csv <repo-root>/data/external/option_b/
+mkdir -p <repo-root>/data/external/option_b/audio
+mv MEX2/OptionB/*/  <repo-root>/data/external/option_b/audio/
+```
+[`src/vcm/dataset/sources/option_b.py`](../src/vcm/dataset/sources/option_b.py)
+loads it — no label-mapping layer needed, its `intent` column already
+matches our 19 canonical labels 1:1 (verified against the real
+`manifest.csv`, not assumed).
+
+## 5. Background noise -> `unknown_background` (Google Speech Commands v2)
+
+```bash
+python scripts/fetch_gsc_background.py
+```
+Section 3 requires an explicit background/unknown class and Section 9
+already named GSC's background-noise clips as the source, but nothing
+pulled it into the pipeline until this script existed. Downloads the
+official ~2.4GB archive **transiently**, extracts only the ~13MB
+`_background_noise_/` folder (6 long noise recordings — white/pink
+noise, a running tap, an exercise bike, a dishwasher, someone's cat —
+not the 35 keyword classes), deletes the full archive immediately after,
+then chops the noise into 600 fixed-length clips
+([`sources/gsc_background.py`](../src/vcm/dataset/sources/gsc_background.py))
+with an 80/10/10 train/val/test split. Increase coverage with
+`--clips-per-file` if 600 proves too few once training starts.
+
+## 6. Snips SLU lighting subset (real audio for 4 thin labels)
+
+```bash
+pip install datasets soundfile
+python scripts/fetch_snips_lights.py
+```
+Section 9 describes this as a "smart-lights" dataset; that turned out to
+be only half true — streaming and inspecting all 5,886 real transcripts
+found the corpus is roughly half lighting commands and half unrelated
+music requests ("I'd like to listen to `<artist>`"), no other domains.
+[`sources/snips_lights.py`](../src/vcm/dataset/sources/snips_lights.py)
+classifies each transcript by keyword/phrase pattern (there's no
+categorical label in the source data) into `LIGHT_ON`, `LIGHT_OFF`,
+`BRIGHTNESS`, or `COLOR` — see that module's docstring for a real false
+positive caught and fixed during development (a music request for an
+artist named "White Sea" initially matched the color "white"). Only
+matched clips are downloaded (2,472 of 5,886); the rest, including the
+whole music-request chunk, are skipped, not guessed. This is a
+hand-built heuristic classifier, not a ground-truth label the way
+SLURP's `intent` field is — treat it as good-quality, spot-checked, but
+not infallible. Confirmed this dataset has **no** vocabulary relevant to
+any of the 6 zero-real-coverage labels.
+
+## 7. FSC (real audio, resolved)
+
+FSC isn't freely downloadable via its official channel without a Kaggle
+account or a Fluent.ai license request — but a complete, verified
+third-party re-upload exists on Zenodo:
+[record 11106540](https://zenodo.org/records/11106540) ("Fluent speech
+commands dataset", CC BY 4.0, uploaded by Afsara Benazir, University of
+Virginia). Verify before trusting any copy of this — checksum against
+the Zenodo API, not just file size:
+
+```bash
+curl -s "https://zenodo.org/api/records/11106540/files" | python3 -m json.tool
+# expect: fluentai.zip, size 1545730387, md5 625d5dfecef850443955a034d5f892b2
+md5sum data/fluentai.zip   # must match the md5 above exactly
+```
+Download it directly if you don't already have a verified copy:
+```bash
+curl -s -o data/fluentai.zip "https://zenodo.org/api/records/11106540/files/fluentai.zip/content"
+```
+Then extract and process it:
+```bash
+mkdir -p data/external/fsc
+unzip -q data/fluentai.zip -d data/external/fsc/
+python scripts/process_fsc.py
+rm data/fluentai.zip   # redundant once extracted, ~1.4GB, don't keep it around
+```
+**Expect** (verified output, from the real 30,043-utterance archive —
+train+valid+test row counts, 23,132+3,118+3,793, match this project's
+own already-cited FSC figure exactly):
+```
+Loaded 30043 records (train+val+test)
+
+Label              matched utterances
+TEMPERATURE                      9374
+LIGHT_ON                         4135
+LIGHT_OFF                        3236
+VOLUME_UP                        3010
+VOLUME_DOWN                      2731
+PLAY_MUSIC                         912
+STOP                               510
+PAUSE                              315
+
+TOTAL: 24223 manifest rows -> data/external/fsc/manifest.csv
+```
+The `LABEL_MAPPING` in
+[`src/vcm/dataset/sources/fsc.py`](../src/vcm/dataset/sources/fsc.py) is
+built from all 31 real `(action, object, location)` combinations found
+in the archive, not guessed — see that module's docstring for how one
+ambiguous combination (`"deactivate"` + `"music"`, which mixes PAUSE
+and STOP phrasing) was resolved by inspecting every transcription in it
+rather than assumed. `"change language"` and `"bring"` (newspaper/
+shoes/socks/juice) commands have no taxonomy equivalent and are
+dropped, not guessed.
+
+This closed the real-coverage gap for **TEMPERATURE, STOP, and PAUSE** —
+the three labels that had zero real coverage anywhere in this project
+before this. **CALL, NEXT, TIMER, and LIST_REMINDERS** remain fully
+synthetic as of this writing (LIST_REMINDERS joined this list later —
+see "Known per-label quality signal" above) — step 8 below is a direct
+attempt to close part of that gap.
+
+## 8. Real recordings for the synthetic-only gap — ARCHIVED, on hold
+
+**Status: paused, not deleted.** The tool below is built, tested, and
+ready, but recording new personal voice data for this project needs
+confirmation from the course adviser first (a permissions question
+separate from, and not yet resolved the way, the synthetic-data
+question in the [original architecture review](archive/original_architecture_review.md) Section 7 was). Do not run
+this until that's confirmed. Left in place (not removed) so it's ready
+to pick back up the moment it's cleared — see EXPERIMENTS.md's parked
+list for the same note.
+
+```bash
+python docs/archive/legacy_code/scripts/record_real_examples.py --speaker-id <your-name> --reps 10   # archived; restore to scripts/ first
+```
+**Why**: live testing found CALL, NEXT, TIMER, and LIST_REMINDERS —
+100% Chatterbox TTS, zero real-human recordings — perform noticeably
+worse on real speech than the validation numbers suggest, plus two
+specific phrasings ("Kill the lights" for LIGHT_OFF, "Message" for
+MESSAGE) that are technically covered but only by the same TTS voices.
+This is the same synthetic-to-real generalization gap already flagged
+in the original architecture review's Section 9 — and the same section
+documents a classmate's own prior finding that adding real recordings
+to a synthetic-only label (CALL) measurably helped. This script
+generalizes that fix: it walks through the ~20 affected `(label,
+phrase)` pairs (see the script's own `TARGET_PHRASES` list) via the
+push-to-talk capture (`vcm.audio.capture`),
+and writes a manifest.csv in the standard schema.
+
+**Runs on your own machine** (Mac or RPi) — this isn't something to run
+on the DGX. The more different people who contribute a few minutes
+each, the better: real research on TTS/real domain gaps (see the
+project's research notes) found **speaker diversity**, not just raw
+volume, is what actually closes this gap. Re-run with a different
+`--speaker-id` per contributor; recordings accumulate in the same
+manifest rather than overwriting.
+
+**Not train/test leakage, by construction**: adding your own voice to
+training and then informally testing with your own voice would
+otherwise conflate two different claims — "this helped recognize me"
+vs. "this generalizes to other people" — only the first of which that
+setup could honestly support. The script automatically holds out the
+last `--holdout-fraction` (default 20%) of each phrase's reps *per
+speaker* to val/test, so every contributor's own recordings include
+real, never-trained-on clips of their own voice — the same 80/10/10
+convention every other source in this dataset already uses (see
+`sources/gsc_background.py`). A held-out accuracy number on those
+clips honestly answers "did this help with my voice." Answering "does
+this generalize to a stranger's voice" needs a contributor who runs
+with `--holdout-fraction 1.0` (pure test, no training contribution) —
+a good role for one volunteer classmate.
+
+## 9. Timers and Such (real TIMER + ALARM audio)
+
+```bash
+pip install remotezip
+python scripts/fetch_timers_and_such.py
+```
+**Why**: live testing found TIMER was 100% Chatterbox TTS — zero real
+human recordings — the clearest case of the synthetic-to-real gap in
+this whole dataset. [Timers and Such](https://zenodo.org/records/4623772)
+(Lugosch et al., NeurIPS 2021 Datasets & Benchmarks,
+[arXiv:2104.01604](https://arxiv.org/abs/2104.01604), license
+"other-open") has real human recordings for exactly this: SetTimer and
+SetAlarm intents, mapped to TIMER and ALARM respectively.
+
+**Only the relevant real subset is downloaded, not the full archive**:
+the source archive is a single 12.2GB zip, and the paper reports only
+2,151 real (non-synthetic) utterances across all 4 of its intents
+combined — most of the 12.2GB is a synthetic portion we don't want
+(more TTS is not the fix for a TTS-only gap). Verified directly (not
+assumed) that Zenodo's file server honors HTTP range requests
+(`curl -H "Range: bytes=0-1023" ... ` returns `206 PARTIAL_CONTENT`
+even though it doesn't advertise `Accept-Ranges`), so
+[`remotezip`](https://pypi.org/project/remotezip/) can read the
+archive's central directory and fetch only the ~1,071 real
+SetTimer/SetAlarm files (~124MB) — checked and confirmed by actually
+running this, not estimated from the file list alone.
+
+**Expect** (verified output from a real run):
+```
+1071 real SetTimer/SetAlarm recordings to fetch
+...
+TOTAL: 1071 recordings -> data/external/timers_and_such/manifest.csv (1444s elapsed)
+```
+717 map to TIMER, 354 to ALARM, from ~90+ unique real speakers combined
+across the train/dev/test splits (counts verified from the real
+per-split CSVs, not the paper's aggregate-only reporting). SimpleMath
+and UnitConversion (the dataset's other 2 intents) have no taxonomy
+equivalent and are dropped, not guessed — see
+[`src/vcm/dataset/sources/timers_and_such.py`](../src/vcm/dataset/sources/timers_and_such.py).
+Takes ~20-25 minutes (latency-bound: ~1,071 individual range requests,
+not a bandwidth bottleneck) — this is expected, not a hung process.
+
+## 10. Combined manifest
+
+```bash
+python scripts/build_manifest.py
+```
+Combines every source above (SLURP, Option B, GSC background, Snips
+lighting, FSC, real recordings, Timers and Such — whichever of steps
+3/4/5/6/7/8/9 you've actually run; missing ones are skipped with a
+note, not an error) into one `data/dataset_manifest.csv`, in the common
+schema every source normalizes into (`audio_path, label, source,
+is_synthetic, speaker_id, split` — see `manifest.py`), and prints a
+real-vs-synthetic breakdown per label. This is the file a training
+script should read from.
+
+## 11. Synthetic-audio QA gate
+
+[`src/vcm/dataset/qa/synthetic_check.py`](../src/vcm/dataset/qa/synthetic_check.py)
+generalizes the transcribe-and-compare pattern from the QA tool used to
+filter the Option B dataset above, so it can screen output from *any*
+generator, not just the one it was built for. It needs a real
+transcriber backend to run for real (`FasterWhisperTranscriber`,
+requires `pip install faster-whisper`, which downloads an ASR model on
+first use — not a default dependency here since it's optional QA
+tooling, not part of the deployed model):
+
+```python
+from pathlib import Path
+from vcm.dataset.qa.synthetic_check import FasterWhisperTranscriber, screen_batch
+
+transcriber = FasterWhisperTranscriber()  # pulls a Whisper model on first run
+pairs = [
+    (Path("synthetic/lights_off_01.wav"), "Lights off"),
+    (Path("synthetic/play_music_03.wav"), "Play a song"),
+]
+results = screen_batch(pairs, transcriber, threshold=0.8)
+for r in results:
+    print(r.audio_path, r.confidence, "PASS" if r.passed else "REVIEW")
+```
+Anything below the threshold is the "route to human spot-check" bucket,
+not automatically discarded.
+
+## Manifest format
+
+[`src/vcm/dataset/manifest.py`](../src/vcm/dataset/manifest.py) is the
+common row shape (`audio_path, label, source, is_synthetic, speaker_id,
+split`) every source normalizes into, via a per-source label-mapping
+layer (`apply_label_mapping()`) so no source is hardcoded to one
+taxonomy. `scripts/build_manifest.py` (step 10) is the concrete example
+of combining sources through it.
+
+## Tests
+
+```bash
+python -m pytest
+```
+The dataset-specific tests are `tests/test_dataset_*.py`,
+`tests/test_slurp_coverage.py`, `tests/test_fsc_coverage.py`,
+`tests/test_option_b.py`, `tests/test_gsc_background.py`,
+`tests/test_snips_lights.py`, `tests/test_timers_and_such.py`, and
+`tests/test_synthetic_check.py` — all pure logic against synthetic
+fixtures, no network or real data files required to pass.
+
+## Acknowledgments
+
+This pipeline is built directly on top of work shared across the class,
+not developed in isolation. Specifically:
+
+- **Mark Macalacad** shared the **working taxonomy** (Section 1 above),
+  adopted here as-is (this project only added a plain-CSV export
+  alongside it for safer downstream tooling), and generated and shared
+  the **synthetic "Option B" dataset** (Section 4, all 19 labels),
+  using a speaker-disjoint voice-cloning methodology that deliberately
+  includes real Filipino-English reference speakers.
+- **Anthony Navarez** built and shared the transcribe-and-compare QA
+  tool that the **QA-screening approach** (Section 9) generalizes,
+  originally used to filter the synthetic dataset above.
+- The idea to check for a precedented public synthetic-command dataset
+  before generating new synthetic data from scratch (avoiding
+  duplicated effort) came from this project's own side, not a shared
+  classmate resource.
+- Several other classmates contributed dataset leads, reference
+  implementations, and corpus-sizing corrections that shaped the
+  candidate-source research in the [original architecture review](archive/original_architecture_review.md) Section 9.
+
+Everything above exists because of this collective effort.
+
+# Appendix B: other records
+
+| Record | What |
+|---|---|
+| [archive/reports/exp32_33_report.md](archive/reports/exp32_33_report.md) | Full report for Experiments 32–33: slot heads, the first "Hey Kiwi" detector |
+| [archive/reports/exp34_report.md](archive/reports/exp34_report.md) | Experiment 34: frozen vs. joint slot heads, wake word v2 |
+| [archive/reports/exp35_report.md](archive/reports/exp35_report.md) | Experiment 35: temperature and reminder slot heads |
+| [archive/reports/exp36_report.md](archive/reports/exp36_report.md) | Experiment 36: the model shipped until the master dataset |
+| [archive/AUDIT.md](archive/AUDIT.md) | Everything we considered and did not ship, and why |
+| [archive/original_architecture_review.md](archive/original_architecture_review.md) | The original architecture plan |
+| [archive/original_model_plan.md](archive/original_model_plan.md) | The pre-training technology survey |
+| [archive/legacy_code/](archive/legacy_code/README.md) | The push-to-talk skeleton the repo started with, and retired scripts |
+| [`results/`](../results/README.md) | Logs, evaluations and launchers for Experiments 37–43, including earlier models scored on the current test set |
+| Branch [`archive/exp36-pre-me2-schema`](https://github.com/quielq/quielq-vcm/tree/archive/exp36-pre-me2-schema), tag `v1-exp36` | The code and commands as of Experiment 36 |
