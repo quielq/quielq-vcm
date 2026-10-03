@@ -3,7 +3,7 @@
 `final_dataset_schema.csv` is the class's **final** schema (Option B),
 exported from the class sheet and agreed on 2026-10-01: one row per
 intent with its 3 variations and, for slotted intents, its 3 values. It
-is the source of truth from Experiment 37 on, together with the class
+is the source of truth for the final model, together with the class
 master dataset (see [docs/DATASET.md](../../docs/DATASET.md)). A test
 (`tests/test_dataset_schema_loader.py`) checks that the code below
 matches it.

@@ -1,6 +1,14 @@
-# Results: Experiments 37–43 (class master dataset)
+# Results: training logs and evaluations
 
-Everything behind the numbers in the docs, copied from the DGX by
+**The final model is Experiment 43b seed 1** (`train_logs/exp43b_supplemental_s1.log`,
+checkpoint `models/vcm_intent.pt`); the wake word is Experiment 43 seed 1
+(`train_logs/exp43w_wake_s1.log`, `eval/exp43w_eval_wake_*.txt`, checkpoint
+`models/kiwi_wakeword.pt`). The shipped ONNX files' scores are in
+`eval/final43_onnx_eval_<split>.txt`, and the Pi measurements in `bench_pi5.md`.
+
+This folder also keeps the logs of every other experiment on the class master
+dataset (37–43), which are described in the project journal,
+[docs/EXPERIMENTS.md](../docs/EXPERIMENTS.md). Everything behind the numbers in the docs, copied from the DGX by
 `scripts/collect_results.sh` (`logs/` and `checkpoints/` stay out of git).
 
 | Folder / file | What |
@@ -15,10 +23,7 @@ Everything behind the numbers in the docs, copied from the DGX by
 | `bench_pi5.md` | The Raspberry Pi 5 measurements (latency p50/p95, RTF, memory) of the shipped models |
 | `bench_dgx_1core_*.json` | `scripts/benchmark_pi.py` on one DGX CPU core (latency p50/p95, RTF), for comparison with the Pi |
 
-The shipped wake word is Experiment 43 seed 1 (`train_logs/exp43w_wake_s1.log`, `eval/exp43w_eval_wake_*.txt`, checkpoint `models/kiwi_wakeword.pt`).
-The shipped intent model is Experiment 43b seed 1 (`train_logs/exp43b_supplemental_s1.log`);
-its checkpoint is `models/vcm_intent.pt`. What each config changes is in
-[docs/EXPERIMENTS.md](../docs/EXPERIMENTS.md), Part 2.
+What each config changes is in [docs/EXPERIMENTS.md](../docs/EXPERIMENTS.md), Part 2.
 
 Experiments 37–42 used the dataset's first revision (`25111444`); Experiment 43 the current one (`da92a79`). Their test numbers are not comparable.
 

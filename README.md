@@ -12,10 +12,8 @@ thermostat, timers, alarms, reminders, music and call log.
 
 **Data:** trained and tested only on the class's shared master dataset and
 final Dataset Schema (19 commands, 6 with slot values), as the class agreed
-on 2026-10-01. The project's earlier version, trained on its own 70k-clip
-dataset (Experiments 1–36), is on the branch
-[`archive/exp36-pre-me2-schema`](https://github.com/quielq/quielq-vcm/tree/archive/exp36-pre-me2-schema)
-(tag `v1-exp36`).
+on 2026-10-01. The shipped model is **Experiment 43b** (seed 1); every
+number in this README is for it unless stated otherwise.
 
 ## Submission summary
 
@@ -44,12 +42,12 @@ Mic · 16 kHz → log-mel 40 × 501 (5.0 s, silence-trimmed) → CRNN encoder �
 | Input representation | 16 kHz mono audio, trimmed of leading and trailing silence (30 dB below peak) and padded or cut to 5.0 s, then a 40-band **log-mel spectrogram** (25 ms window, 10 ms hop): **40 × 501**. The mel scale follows the ear's coarser resolution at high frequencies, and the log compresses loudness differences, giving a compact time–frequency image. Features are standardized with a fixed mean and variance from the training set. Trimming silence makes training clips look like live recordings, which start right after the wake word |
 | Encoder: convolutional front end | A 10×4 convolution with stride 2, then 4 **depthwise-separable** blocks (80 channels; blocks 2 and 4 stride by 2). Each block splits a 3×3 convolution into a per-channel spatial filter and a 1×1 channel mixer (as in MobileNet), using about 8 times fewer parameters. The strides grow the receptive field geometrically and shorten the time axis to 63 steps of ~80 ms. A 1×1 projection then folds the remaining frequency axis into a 96-dim vector per step |
 | Encoder: recurrent layers | **2-layer bidirectional GRU**, 96 units per direction (192-dim per step). The gated recurrence models word order, so commands that differ by one word ("volume up" / "volume down") separate. Running in both directions gives every step context from the whole utterance. This is the main difference from purely convolutional keyword spotters (DS-CNN, BC-ResNet), which average over time and lose order. The encoder is therefore **non-causal**: it classifies once the command ends, and the wake word handles streaming |
-| Temporal pooling | **4-head attention pooling.** Each head learns a relevance score for every time step, normalizes the scores with a softmax over time, and returns the weighted mean of the steps; the 4 results are concatenated (768-dim). Unlike global average pooling, this lets the few frames carrying the deciding word dominate the summary. Replacing it with mean pooling costs 5.6 points of real-speech validation accuracy ([Exp 39h](docs/EXPERIMENTS.md)) |
+| Temporal pooling | **4-head attention pooling.** Each head learns a relevance score for every time step, normalizes the scores with a softmax over time, and returns the weighted mean of the steps; the 4 results are concatenated (768-dim). Unlike global average pooling, this lets the few frames carrying the deciding word dominate the summary. Replacing it with mean pooling costs 5.6 points of real-speech validation accuracy |
 | Intent head | Dropout 0.1, then a linear layer → **20 classes** (19 intents + `OUT_OF_SCOPE`). The explicit reject class, together with a 0.6 softmax-confidence threshold at run time, lets the closed-set classifier decline speech that is not a command |
 | Slot heads | **Multi-task learning:** 6 heads (TIMER, ALARM, TEMPERATURE, BRIGHTNESS, COLOR, CREATE_REMINDER) share the encoder. Each has its own single-head attention pooling and a 3-way classifier over the schema's values. Separate pooling lets each head attend to where the value is said ("thirty seconds", "blue") instead of the words that identify the intent. Slots are classified over a fixed vocabulary rather than tagged as spans, and a value is used only when its intent is predicted |
 | Actuator | `vcm.home` server: lamp, thermostat, timers, alarms, reminders, Spotify/local music, volume, weather, calls/messages via phone bridge; spoken reply |
-| Parameters / weights | **0.372 M** parameters · **1.46 MB** fp32 ONNX (`models/vcm_intent.onnx`) · 91.7 M multiply-adds per command; three quarters of the parameters are in the GRU. Kept at fp32 because dynamic int8 quantization cost 6.8 points of real-speech accuracy and was no faster ([Exp 32](docs/EXPERIMENTS.md)). The wake word adds 0.025 M · 0.11 MB (`models/kiwi_wakeword.onnx`) |
-| Wake word ("Hey Kiwi") | The same CRNN design at a smaller width: 32 channels, a 1-layer bidirectional GRU of 32, **25,475 parameters**, 107 KB fp32, 5.3 M multiply-adds per 1.5 s window. It scores a sliding window every 100 ms as a binary classifier. Near-miss phrases ("hey kitty") are hard negatives; since Experiment 42 the master dataset's speech and noise are the background negatives (retrained on the current revision in Experiment 43). Same architecture and size as before |
+| Parameters / weights | **0.372 M** parameters · **1.46 MB** fp32 ONNX (`models/vcm_intent.onnx`) · 91.7 M multiply-adds per command; three quarters of the parameters are in the GRU. Kept at fp32 because dynamic int8 quantization cost 6.8 points of real-speech accuracy when tested on an earlier CRNN, and was no faster. The wake word adds 0.025 M · 0.11 MB (`models/kiwi_wakeword.onnx`) |
+| Wake word ("Hey Kiwi") | The same CRNN design at a smaller width: 32 channels, a 1-layer bidirectional GRU of 32, **25,475 parameters**, 107 KB fp32, 5.3 M multiply-adds per 1.5 s window. It scores a sliding window every 100 ms as a binary classifier. Near-miss phrases ("hey kitty") are hard negatives; the master dataset's commands, out-of-scope speech, noise and numerals are the background negatives (Experiment 43, seed 1) |
 
 ### Dataset
 
@@ -73,7 +71,7 @@ by speaker; test and holdout are only used for reporting.
 ### Training on the A100 cluster
 
 The final model is trained with a **composite objective**. Each term
-addresses a specific weakness found in earlier experiments:
+addresses a specific weakness found during development:
 
 ```
 L = CE_w(intent) + α · p(confusable classes) + 0.3 · Σ CE(slot) + T² · KL(teacher_T ‖ student_T)
@@ -120,8 +118,8 @@ real time.
 |---|---|
 | Keyword / intent acc | Wake word: 96.2% of held-out "hey kiwi" clips caught (92.8% with 10 dB noise, 10/10 of the author's held-out takes) · Intent: **95.50%** on the class test set (78.64% real speech), **96.04%** on the Pi holdout set |
 | False-accept rate | Wake word: 12.9 false wake-ups per hour while streaming the master test split plus near-miss phrases, threshold 0.6 · Commands: 17.1% of out-of-scope test clips acted on (confidence ≥ 0.6), see [Out of scope](#out-of-scope) |
-| Latency p95 / RTF | **15.2 ms / 0.0061** end to end per command on the Raspberry Pi 5 (p50 13.9 ms: features 3.8 + model 10.1); wake word 2.0 ms per 100 ms hop at p95, 1.9% of one core. Measured with the shipped Experiment 43b weights. `vcm_intent_small.onnx`: 12.1 ms / 0.0048 (Experiment 40b weights, same architecture as 43c) ([results/bench_pi5.md](results/bench_pi5.md)) |
-| Runtime | onnxruntime (CPU) · **1 thread** · Raspberry Pi 5 (8 GB): 100 MB peak RSS for the listener, 604 MB used system-wide with both services |
+| Latency p95 / RTF | **15.2 ms / 0.0061** end to end per command on the Raspberry Pi 5 (p50 13.9 ms: features 3.8 + model 10.1); wake word 2.0 ms per 100 ms hop at p95, 1.9% of one core. Measured with the shipped Experiment 43b weights. `vcm_intent_small.onnx`: ~12 ms / 0.0048 ([results/bench_pi5.md](results/bench_pi5.md)) |
+| Runtime | onnxruntime (CPU) · **1 thread** · Raspberry Pi 5 (8 GB): 99 MB peak RSS for the listener, 719 MB used system-wide with both services |
 
 ### To be submitted
 
@@ -138,10 +136,10 @@ real time.
 |---|---|---|
 | 1 | Repo public, one-command reproduction | `bash scripts/reproduce.sh` (data → train → evaluate → ONNX → benchmark); on the DGX it reads the class's shared copy `/data/ai231` after checking it against the committed dataset fingerprint |
 | 2 | Dataset licensed and citable (DOI) | Licensed per source on the dataset card; DOI pending, to be minted by the dataset owner |
-| 3 | Training logs + final checkpoint committed | [`results/`](results/) (logs, evaluations, launchers for Experiments 37–43) and `models/vcm_intent.pt` |
+| 3 | Training logs + final checkpoint committed | [`results/`](results/) (training logs, evaluations and launchers; the final model's are `exp43b_supplemental_s*`) and `models/vcm_intent.pt` |
 | 4 | Pi latency reproduced by the posted script | `python scripts/benchmark_pi.py --json bench_pi.json` on the Pi 5: 15.2 ms p95 with the shipped weights ([results/bench_pi5.md](results/bench_pi5.md)) |
 | 5 | Held-out test set, unseen speakers | Class-fixed test split (4,443 clips, 144 speakers) and holdout (202); no speaker or synthetic voice in two splits |
-| 6 | Baseline of comparable size compared | DS-CNN 99.6K and BC-ResNet 89K params, same data and recipe, on the current test set: 89.5% / 81.3% against 93.1% for the CRNN of the same size ([Experiment 38](docs/EXPERIMENTS.md#experiment-38--comparable-size-baselines)) |
+| 6 | Baseline of comparable size compared | DS-CNN 99.6K and BC-ResNet 89K params, same data and recipe as a 99K CRNN, on the test set: 89.5% / 81.3% against 92.4% for the CRNN (57.1% / 41.6% against 69.7% on real speech) ([MODEL.md](docs/MODEL.md#4-baselines)) |
 
 ## What the percentages mean
 
@@ -178,67 +176,34 @@ the dashboard. Recognition runs offline. The internet is used only by some
 actions: weather, Spotify, and calls that go through a Mac to an iPhone.
 The full design is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-## The final model, and how we chose it
+## The final model
 
-**The shipped model is a CRNN** (convolutional recurrent neural network),
-checkpoint `exp43b_supplemental_s1.pt` (Experiment 43b, seed 1), exported
-as `models/vcm_intent.onnx`. Details are in [docs/MODEL.md](docs/MODEL.md).
+**The shipped model is a CRNN** (convolutional recurrent neural network):
+Experiment 43b, seed 1, checkpoint `exp43b_supplemental_s1.pt`, exported
+as `models/vcm_intent.onnx` (also `models/vcm_intent.pt`). The wake word
+is `models/kiwi_wakeword.onnx` (Experiment 43, seed 1). Details are in
+[docs/MODEL.md](docs/MODEL.md).
 
-**How we got there.** We developed the recipe on the dataset's first
-revision (Experiments 37–42) and retrained it on the current revision
-(Experiment 43). Every setting was chosen on our val split. All numbers
-below are on the **current** test set (mean of 3 seeds; every experiment is
-in [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md)):
+| Model file | Params | Size | test all | test real | holdout |
+|---|---:|---:|---:|---:|---:|
+| **`models/vcm_intent.onnx`** (43b seed 1, the default) | 372K | 1.46 MB | **95.50%** | **78.64%** | **96.04%** |
+| `models/vcm_intent_small.onnx` (43c seed 0, narrower, optional) | 182K | 722 KB | 94.53% | 76.06% | 93.07% |
 
-| Model | Params | test all | test real | holdout |
-|---|---:|---:|---:|---:|
-| BC-ResNet baseline, same size (38)\* | 89K | 81.3% | 41.6% | — |
-| DS-CNN baseline, same size (38)\* | 100K | 89.5% | 57.1% | — |
-| CRNN, the Experiment 36 recipe (43t, 80 epochs) | 99K | 93.1% | 70.3% | 92.9% |
-| + 2-layer GRU, 4-head attention pooling, frequency-only SpecAugment, numerals as out-of-scope, distillation (43c) | 182K | 94.6% | 75.9% | 94.2% |
-| + wider: 80 channels, GRU 96 (43a) | 372K | 95.0% | 77.5% | 94.9% |
-| + the dataset's supplemental synthetic clips (**43b, shipped**) | 372K | **95.3%** | **77.6%** | **95.4%** |
+**How it was chosen.** Every setting was chosen on our validation split,
+never on test: the recipe that scored best on val (mean of 3 seeds), then
+the best of its 3 seeds on val. The 3 seeds of the final recipe score
+95.00 / 95.50 / 95.32% on test. Same-size DS-CNN and BC-ResNet baselines
+trained the same way score 89.5% and 81.3%
+([MODEL.md](docs/MODEL.md#4-baselines)).
 
-\*Trained on the first revision; none of the current test clips were in
-it.
+**Size.** The shipped model is 1.46 MB fp32 (1.57 MB with the wake word),
+above a 1 MB budget. It is still 0.37 M parameters and runs in 15 ms on the
+Pi. To stay under 1 MB, pass `--intent-model models/vcm_intent_small.onnx`
+to the listener; it costs 1 point on test and 2.6 on real speech.
 
-The shipped file is seed 1 of 43b, the best seed on val: **95.50%** on the
-class test set, **78.64%** on its real speech, **96.04%** on the holdout
-set. `models/vcm_intent_small.onnx` (43c seed 0, 722 KB) is the smaller
-alternative: 94.53% / 76.06% / 93.07%.
-
-**Size.** The shipped model is 1.46 MB fp32, above the 1 MB that the
-earlier models kept to. It is still 0.37 M parameters, and on the Pi it is
-3.7 ms slower than the small one. Pick
-`--intent-model models/vcm_intent_small.onnx` to stay under 1 MB.
-
-**Compared with the previous models.** The model we shipped before the
-dataset update (Experiment 41d, trained on the first revision) scores
-94.80% / 79.15% real / 93.07% holdout on the current test set, but gets
-only 31.6% of the out-of-scope clips right against 69.7% now. The
-original model (Experiment 36, our own 70k-clip dataset,
-`models/vcm_intent_exp36.onnx`) had trained on most of the class test set,
-so it can't be compared fairly.
-
-What helped and what didn't (Experiments 39–41, one change at a time,
-on the first revision):
-
-- **Helped:** a 2-layer GRU; 4-head attention pooling; SpecAugment with
-  frequency masks only; bare numbers from the numerals set as
-  out-of-scope examples. All four together added 9.7 points of real
-  speech on the first revision's test set (Experiment 40a). Distillation
-  from an ensemble of our own CRNNs (40b) and a wider model (41d) then
-  raised real-speech accuracy on val further.
-- **Attention pooling is needed:** plain mean pooling loses 5.6 points of
-  real speech.
-- **Hurt:** numerals as background talk, an EMA of the weights. Label
-  smoothing, a wider speed range and more epochs did nothing.
-
-**Before the master dataset** we ran 36 experiments on our own data: the
-CRNN beat DS-CNN and BC-ResNet by 11 points, and waveform augmentation
-added 5. An ASR cascade (Whisper + text classifier) was more accurate but
-~280× bigger and 150× slower ([docs/FOOTPRINT.md](docs/FOOTPRINT.md)), and
-the assignment rules out ASR on the device.
+The path from the first DS-CNN to this model, every experiment, and the
+earlier models are in the project journal,
+[docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
 
 ## Dataset
 
@@ -254,15 +219,12 @@ steps: [docs/DATASET.md](docs/DATASET.md).
 | **test** | **4,443** | 824 | 3,619 | 203 | 76 | 144 | **Reported results** |
 | holdout | 202 | 96 | 106 | 87 | 16 | 7 | Raspberry Pi live test; also scored offline |
 | numerals | 66,390 | all | — | — | all | 2,547 | Bare numbers as out-of-scope examples (1,500 sampled) |
-| supplemental | 3,461 | — | 3,461 | — | — | 60 | Extra synthetic clips of train voices (tested in Experiment 43b) |
+| supplemental | 3,461 | — | 3,461 | — | — | 60 | Extra synthetic clips of train voices (from `supplemental_synth`), used in training |
 
-**Dataset revision.** Everything from Experiment 43 on uses the
-2026-10-02 revision (`da92a79`, pinned in every download command). It
-replaced 743 free-form real clips (fixed commands that also named a song,
-room or contact) with synthetic ones, added synthetic out-of-scope clips,
-and added the `supplemental_synth` set. Experiments 37–42 used the
-2026-10-01 revision; their numbers are on the older test set. Details:
-[docs/DATASET.md](docs/DATASET.md#revisions).
+**Dataset revision.** Everything uses the 2026-10-02 revision
+(`da92a79`), pinned in every download command. On the DGX the class's
+shared copy `/data/ai231` is used instead, after checking it is identical
+([docs/DATASET.md](docs/DATASET.md#the-shared-copy-on-the-dgx-dataai231)).
 
 Slot values are exactly the schema's: 10 s / 30 s / 1 min, 6:00 AM /
 8:00 AM / 9:00 PM, 18 / 22 / 26 degrees, 20 / 60 / 100 percent, red /
@@ -282,8 +244,8 @@ PyTorch on one A100 of UP's shared DGX. The final recipe:
 - Loss: class-weighted cross-entropy, plus an extra penalty for confusing
   VOLUME_UP/VOLUME_DOWN/TEMPERATURE and LIGHT_ON/LIGHT_OFF, plus slot
   cross-entropy at weight 0.3, plus distillation (KL at temperature 3,
-  weight 1) toward the averaged predictions of 9 CRNNs trained on the same
-  split with the Experiment 36 recipe (43t).
+  weight 1) toward the averaged predictions of 9 smaller CRNNs (99K
+  parameters) trained on the same split (Experiment 43t).
 - Augmentation: background noise, speed 0.9–1.1×, reverb and start shift
   on the waveform; 2 frequency masks on the log-mel (no time masks).
 - 3 seeds, all on one A100; checkpoints and settings chosen on val.
@@ -327,8 +289,7 @@ commands ("please repeat") and is right on 87% of those it accepts.
 **Latency on the Raspberry Pi 5** (`scripts/benchmark_pi.py`, 1 thread):
 13.9 ms p50 / 15.2 ms p95 per command end to end, RTF 0.0061 at p95; the
 wake word uses 1.9% of one core. Measured with the shipped Experiment 43b
-weights. `vcm_intent_small.onnx` takes 12.1 ms p95 (Experiment 40b weights,
-same architecture as 43c). Details:
+weights. `vcm_intent_small.onnx` takes about 12 ms p95. Details:
 [results/bench_pi5.md](results/bench_pi5.md).
 
 ### Out of scope
@@ -367,14 +328,10 @@ near-miss phrases:
 | 0.85 | 8.2% | 12.5% | 0/10 | 7.2 |
 | 0.95 | 13.8% | 23.3% | 0/10 | 2.0 |
 
-Same architecture and size as the earlier detectors (25,475 parameters,
-107 KB); only the training data changed. On the same stream the
-Experiment 42 detector (first revision) misses 4.1% / 4.9% with 12.3
-false wake-ups per hour, and the Experiment 34 one (our old dataset,
-`models/kiwi_wakeword_exp34.onnx`) is in [docs/TESTING.md](docs/TESTING.md).
-The device uses 0.6, and 0.4 while music plays.
+25,475 parameters, 107 KB. The device uses 0.6, and 0.4 while music
+plays. Details: [docs/TESTING.md](docs/TESTING.md#wake-word-modelskiwi_wakewordonnx).
 
-**Automated tests.** 244 unit tests run without any hardware
+**Automated tests.** 245 unit tests run without any hardware
 (`python -m pytest`).
 
 ## Course concepts applied
@@ -388,11 +345,11 @@ The device uses 0.6, and 0.4 while music plays.
 | RNN | A 2-layer bidirectional GRU reads the command frame by frame, so word order matters. | same |
 | Attention | Multi-head attention pooling weights the frames that matter; removing it costs 5.6 points of real speech. | same, [MODEL.md](docs/MODEL.md) |
 | Optimization | Adam, warm-up and cosine decay, 3 seeds per setting. | `src/vcm/train/train.py` |
-| Regularization and augmentation | Waveform noise, speed, reverb and shift; frequency-only SpecAugment (time masks can erase the one word that matters); dropout 0.1. EMA and label smoothing tested, not kept. | [EXPERIMENTS.md](docs/EXPERIMENTS.md) Exp 39 |
-| Class imbalance | Inverse-frequency class weights; extra out-of-scope examples from the numerals set. | Exp 39d |
-| Knowledge distillation | An ensemble of our own CRNNs (same data) teaches a single CRNN. | Exp 40–43 |
+| Regularization and augmentation | Waveform noise, speed, reverb and shift; frequency-only SpecAugment (time masks can erase the one word that matters); dropout 0.1. EMA and label smoothing tested, not kept. | [MODEL.md](docs/MODEL.md#5-training-recipe-final-model) |
+| Class imbalance | Inverse-frequency class weights; extra out-of-scope examples from the numerals set. | `src/vcm/train/losses.py` |
+| Knowledge distillation | An ensemble of 9 smaller CRNNs (same data) teaches the final CRNN. | `scripts/generate_ensemble_labels.py`, [MODEL.md](docs/MODEL.md#5-training-recipe-final-model) |
 | Evaluation | Overall, real-speech, per-class, per-accent and per-source accuracy; confusion pairs; slot accuracy; reject threshold. | `scripts/evaluate_checkpoint.py` |
-| Efficiency | Accuracy against parameters, file size, latency and memory; comparable-size baselines. | [FOOTPRINT.md](docs/FOOTPRINT.md), Exp 38 |
+| Efficiency | Accuracy against parameters, file size, latency and memory; comparable-size baselines. | [FOOTPRINT.md](docs/FOOTPRINT.md), [MODEL.md](docs/MODEL.md#4-baselines) |
 | Model packaging | PyTorch → ONNX with labels and slot values in its metadata, then ONNX Runtime on the Pi's CPU. | `src/vcm/deploy/`, `scripts/export_onnx.py` |
 
 ## Codebase structure
@@ -409,10 +366,9 @@ The device uses 0.6, and 0.4 while music plays.
 │   ├── vcm_intent.onnx          ★ shipped intent + slot model (ONNX, runs on the Pi)
 │   ├── vcm_intent.pt            ★ its PyTorch checkpoint
 │   ├── kiwi_wakeword.onnx       ★ shipped wake word (Experiment 43), and kiwi_wakeword.pt
-│   ├── vcm_intent_small.onnx    smaller intent model (Experiment 43c, 722 KB)
-│   ├── vcm_intent_exp36.onnx, kiwi_wakeword_exp34.onnx   the previous models (old dataset), for comparison
-│   └── vcm_intent_frozen.onnx   older variant, not used
-├── results/                   training logs, evaluation outputs and launchers, Experiments 37–43
+│   ├── vcm_intent_small.onnx    smaller intent model (Experiment 43c, 722 KB), optional
+│   └── *_exp36, *_exp34, *_frozen.onnx   earlier models, kept for the project history only
+├── results/                   training logs, evaluation outputs, launchers and Pi measurements
 ├── src/vcm/                   the Python package
 │   ├── audio/                 microphone capture, log-mel features, numpy DSP, resampling
 │   ├── wakeword/              "Hey Kiwi" streaming detector
@@ -438,7 +394,7 @@ The device uses 0.6, and 0.4 while music plays.
 | **Laptop** | `deploy_pi.sh` (deploy to the Pi), `mac_phone_bridge.py`, `spotify_auth.py`, `record_wakeword.py` |
 | **Data** (DGX) | `build_me2_manifest.py` (master dataset → manifest, slot labels, metadata; `--shared-cache /data/ai231` for the class's copy), `verify_shared_dataset.py` (checks a copy against the committed fingerprint) |
 | **Train and evaluate** (DGX) | `reproduce.sh` (all steps), `python -m vcm.train.train`, `generate_ensemble_labels.py` (distillation teacher), `evaluate_checkpoint.py`, `summarize_experiments.py`, `export_onnx.py`, `train_wakeword.py`, `evaluate_wakeword.py` |
-| **Old dataset** (Experiments 1–36) | `build_manifest.py`, `fetch_*.py`, `process_fsc.py`, `qa_filter_option_b.py`, `generate_targeted_synthetic.py`, `build_slot_labels.py`, cascade scripts; see the archive branch |
+| **Earlier dataset** (history only, not needed for the final model) | `build_manifest.py`, `fetch_*.py`, `process_fsc.py`, `qa_filter_option_b.py`, `generate_targeted_synthetic.py`, `build_slot_labels.py`, cascade scripts; see [EXPERIMENTS.md](docs/EXPERIMENTS.md#appendix-a-the-projects-own-dataset-experiments-136) |
 
 ## Quick start
 
@@ -449,7 +405,7 @@ pip install -e ".[dev,train,deploy]"
 python -m pytest
 ```
 
-**Reproduce the model** on a GPU machine (downloads ~3 GB):
+**Reproduce the model** on a GPU machine (downloads ~3.6 GB, or reads the shared copy on the DGX):
 ```bash
 bash scripts/reproduce.sh
 ```
@@ -462,94 +418,173 @@ python scripts/vcm_listen.py --server http://127.0.0.1:8000 --show-scores   # te
 ```
 Then say "Hey Kiwi, what time is it".
 
-## Deploy and run on the Raspberry Pi
+## Run it on the Raspberry Pi
 
-This is the short version. The full setup from a blank SD card is in
-[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). Daily use and the demo checklist
-are in [docs/RUNBOOK.md](docs/RUNBOOK.md).
+This section is everything needed to run the demo. The full setup from a
+blank SD card is in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md), and
+troubleshooting and the demo-day checklist are in
+[docs/RUNBOOK.md](docs/RUNBOOK.md). Commands marked **(laptop)** run in
+this repo's folder on your laptop; commands marked **(Pi)** run in an SSH
+session on the Pi (`ssh raspberrypi.local`).
 
-### What this assumes is already set up
+### What runs where
 
-- **The Pi.** A Raspberry Pi 4 or 5 running **64-bit** Raspberry Pi OS,
-  with SSH turned on. We use the hostname `raspberrypi`, so it is reachable
-  as `raspberrypi.local`.
-- **The laptop.** A Mac or Linux laptop with this repo cloned. The commands
-  below run from the repo folder.
-- **SSH without a password.** `ssh raspberrypi.local` logs in with a key.
-  If it asks for a password, run `ssh-copy-id raspberrypi.local` once.
-- **The same network.** The laptop and the Pi are on the same Wi-Fi. Venue
-  Wi-Fi often blocks this, so a phone hotspot works as a backup.
-- **Audio.** A USB microphone and a USB speaker are plugged into the Pi's
-  black USB 2 ports.
-- **Settings.** `configs/settings.toml` exists on the laptop. Copy it from
-  `configs/settings.example.toml`. The weather key, Spotify and phone
-  sections are optional. Without them, those commands say they are not set
-  up and everything else still works.
+| Where | Program | What it does | Needed? |
+|---|---|---|---|
+| Pi | **Home server**: `python -m vcm.home.server` (port 8000), service `vcm-home` | Acts on each command, speaks the reply, serves the dashboard, rings timers and alarms | Yes. Start it **first** |
+| Pi | **Listener**: `scripts/vcm_listen.py --server http://127.0.0.1:8000`, service `vcm` | Microphone → "Hey Kiwi" → records the command → intent + slot model → sends it to the home server | Yes. Start it **second** |
+| Pi | raspotify (its own system service) | Makes the Pi a Spotify speaker for PLAY_MUSIC / PAUSE / STOP / NEXT | Only for Spotify |
+| Mac | **Phone bridge**: `scripts/mac_phone_bridge.py` (port 8765) | Places calls and sends messages through your iPhone | Only for CALL / MESSAGE |
+| Any browser | Dashboard at http://raspberrypi.local:8000 | Shows the lamp, thermostat, timers, alarms, reminders, music and call log | Optional |
 
-### Commands
+The Pi needs a USB microphone and a USB speaker in its black USB 2 ports;
+a Sense HAT (room temperature) and a GPIO 17 pushbutton are optional.
 
-**1. Deploy from the laptop.** This installs the system packages, copies the
-code, the models and your settings, builds the Python environment, runs a
-benchmark, and installs two services that start at boot.
+### Before you start
+
+- A Raspberry Pi 4 or 5 with **64-bit** Raspberry Pi OS and SSH on, named
+  `raspberrypi` (so it is `raspberrypi.local`), on the same Wi-Fi as the
+  laptop. Venue Wi-Fi often blocks device-to-device traffic; a phone
+  hotspot works as a backup.
+- `ssh raspberrypi.local` logs in without a password. If it asks for one,
+  run `ssh-copy-id raspberrypi.local` once **(laptop)**.
+- `configs/settings.toml` exists on the laptop, copied from
+  `configs/settings.example.toml`. The `[weather]`, `[spotify]` and
+  `[phone]` sections are optional: without them those commands say they
+  are not set up, and everything else works.
+
+### Step 1. Deploy (once, and again after every change)
+
+**(laptop)** Installs the system packages, copies the code, the models and
+your settings, builds the Python environment, installs the audio-device
+rules, runs a benchmark, and installs the two services so they start at
+boot:
 ```bash
 scripts/deploy_pi.sh raspberrypi.local --services
 ```
+Add `--settings` to overwrite the Pi's `configs/settings.toml` with the
+laptop's (it is copied only the first time otherwise).
 
-**2. Check that everything is ready.** The last line should say READY.
-```bash
-ssh raspberrypi.local 'cd ~/quielq-vcm && .venv/bin/python scripts/kiwi_doctor.py --beep'
-```
-If the microphone shows as silent right after a deploy, restart the audio
-stack and the services, then run the check again:
-```bash
-ssh raspberrypi.local 'systemctl --user restart pipewire pipewire-pulse wireplumber && sleep 3 && systemctl --user restart vcm-home vcm'
-```
+### Step 2. Check the peripherals
 
-**3. Measure latency on the Pi** (for the deck: p95 and RTF, 1 thread). Copy
-the holdout clips over first, or leave out `--clips` to use a synthetic
-command.
+**(Pi)** The preflight check tests power, the microphone (device and live
+signal), the speaker (with a test beep), both services, the home server,
+the models and the internet. The last line should say **READY**:
 ```bash
-ssh raspberrypi.local 'cd ~/quielq-vcm && .venv/bin/python scripts/benchmark_pi.py --json bench_pi.json'
+cd ~/quielq-vcm && .venv/bin/python scripts/kiwi_doctor.py --beep --fix
 ```
 
-**4. Open the dashboard** at http://raspberrypi.local:8000. On Android, use
-the Pi's IP address instead (`ssh raspberrypi.local hostname -I`).
+To check one peripheral at a time **(Pi)**:
 
-**5. Talk to it.** Say "Hey Kiwi", then a command from the schema, like
-"what time is it" or "start a timer for 30 seconds". The dashboard's
-"Simulate a command" box runs the same actions without speaking.
+| Peripheral | Command | Expect |
+|---|---|---|
+| Microphone (the input in use) | `pactl get-default-source` | The USB mic, not the soundbar |
+| Microphone (hardware) | `arecord -l` | A USB card (the card number can change) |
+| Speaker (the output in use) | `pactl get-default-sink` | The USB speaker / soundbar |
+| Speaker volume | `pactl set-sink-volume @DEFAULT_SINK@ 100%` | Replies are audible |
+| Sense HAT | `~/quielq-vcm/.venv/bin/python -c "from sense_hat import SenseHat; print(SenseHat().get_temperature())"` | A temperature in °C (reads a few degrees warm on the Pi) |
+| Power | `vcgencmd get_throttled` | `throttled=0x0` (no undervoltage) |
 
-**6. Calls and messages (optional).** These go through your Mac and iPhone.
-Keep this running on the Mac:
+If the microphone is silent right after a deploy, restart the audio stack
+and the services, then run the preflight check again **(Pi)**:
+```bash
+systemctl --user restart pipewire pipewire-pulse wireplumber && sleep 3 && systemctl --user restart vcm-home vcm
+```
+
+### Step 3. Start Kiwi
+
+**Option A: as services (the demo setup).** After step 1 with
+`--services`, both programs already run, start at every boot and restart
+3 s after any crash. Nothing else to start on the Pi. To restart them
+**(Pi)**:
+```bash
+systemctl --user restart vcm-home vcm
+```
+
+**Option B: by hand, in two terminals (for debugging).** Stop the services
+first, or two copies fight over port 8000 and the microphone **(Pi)**:
+```bash
+systemctl --user stop vcm vcm-home
+```
+Then open a tmux session so the programs survive a dropped SSH connection
+**(Pi)**:
+```bash
+tmux new -s kiwi
+```
+Terminal 1, the home server **(Pi)**:
+```bash
+cd ~/quielq-vcm && .venv/bin/python -m vcm.home.server
+```
+Press `Ctrl-b c` for a second tmux window. Terminal 2, the listener
+**(Pi)**:
+```bash
+cd ~/quielq-vcm && .venv/bin/python scripts/vcm_listen.py --server http://127.0.0.1:8000 --show-scores
+```
+`Ctrl-b n` switches windows, `Ctrl-b d` detaches (both keep running),
+`tmux attach -t kiwi` comes back, `Ctrl-c` stops a program. When done,
+`systemctl --user start vcm-home vcm` brings the services back.
+
+Useful listener options: `--show-scores` prints the live wake-word score;
+`--wake-threshold 0.7` if it wakes by itself too often (default 0.6, and
+0.4 while music plays); `--intent-model models/vcm_intent_small.onnx` for
+the smaller model; `--trigger button` for push-to-talk on GPIO 17;
+`--save-commands DIR` saves each recorded command as a WAV.
+
+### Step 4. Optional: calls, messages and Spotify
+
+**Calls and messages** go through your Mac and iPhone. Set `[phone]` in
+`configs/settings.toml` (setup in
+[DEPLOYMENT.md § 8b](docs/DEPLOYMENT.md#8b-actions-and-the-web-dashboard)),
+then keep this running on the Mac **(laptop)**:
 ```bash
 .venv/bin/python scripts/mac_phone_bridge.py --token <bridge_token from settings.toml>
 ```
+Add `--dry-run` to print calls and messages instead of sending them.
+
+**Spotify** needs Premium, the `[spotify]` section, and raspotify
+installed on the Pi once (DEPLOYMENT.md § 8b). Check that it runs **(Pi)**:
+```bash
+systemctl status raspotify
+```
+
+### Step 5. Use it
+
+1. Open the dashboard at http://raspberrypi.local:8000. On Android, use
+   the Pi's IP address instead (`ssh raspberrypi.local hostname -I`).
+2. Say **"Hey Kiwi"**, then a command in the schema's wording, like "what
+   time is it" or "start a timer for 30 seconds". The phrasings and slot
+   values that work best are in
+   [RUNBOOK.md](docs/RUNBOOK.md#test-checklist).
+3. The dashboard's **Simulate a command** box runs the same actions
+   without speaking.
 
 ### Everyday commands
 
 | To | Run |
 |---|---|
-| Watch what Kiwi hears | `ssh raspberrypi.local journalctl --user -u vcm -f` |
-| Restart both services | `ssh raspberrypi.local systemctl --user restart vcm-home vcm` |
-| Stop both services | `ssh raspberrypi.local systemctl --user stop vcm vcm-home` |
-| Update the Pi after a change | `git pull`, then `scripts/deploy_pi.sh raspberrypi.local --services` |
-| Push changed settings | `scripts/deploy_pi.sh raspberrypi.local --settings` |
+| Watch what Kiwi hears and does **(laptop)** | `ssh raspberrypi.local journalctl --user -u vcm -f` |
+| Watch the home server's log **(laptop)** | `ssh raspberrypi.local journalctl --user -u vcm-home -f` |
+| Restart both services **(laptop)** | `ssh raspberrypi.local systemctl --user restart vcm-home vcm` |
+| Stop both services **(laptop)** | `ssh raspberrypi.local systemctl --user stop vcm vcm-home` |
+| Stop them starting at boot **(laptop)** | `ssh raspberrypi.local systemctl --user disable vcm vcm-home` |
+| Run the preflight check **(laptop)** | `ssh raspberrypi.local 'cd ~/quielq-vcm && .venv/bin/python scripts/kiwi_doctor.py --beep'` |
+| Measure latency, p95 and RTF **(laptop)** | `ssh raspberrypi.local 'cd ~/quielq-vcm && .venv/bin/python scripts/benchmark_pi.py --json bench_pi.json'` |
+| Update the Pi after a change **(laptop)** | `git pull`, then `scripts/deploy_pi.sh raspberrypi.local --services` |
+| Push changed settings **(laptop)** | `scripts/deploy_pi.sh raspberrypi.local --settings` |
 
 ## Documentation
 
 | Document | What's in it |
 |---|---|
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | The assignment, system design, key decisions, hardware |
-| [MODEL.md](docs/MODEL.md) | The shipped models: features, architecture, training recipe, wake word, export |
-| [DATASET.md](docs/DATASET.md) | The class master dataset and how we use it; the old dataset as history |
-| [TRAINING.md](docs/TRAINING.md) | Training on the shared DGX, and commands to reproduce the shipped models |
-| [EXPERIMENTS.md](docs/EXPERIMENTS.md) | All experiments: 1–36 on the old dataset, 37–43 on the master dataset |
+| [MODEL.md](docs/MODEL.md) | The final models: features, architecture, training recipe, baselines, wake word, export |
+| [DATASET.md](docs/DATASET.md) | The class master dataset and how we use it |
+| [TRAINING.md](docs/TRAINING.md) | Training on the shared DGX, and commands to reproduce the final models |
 | [TESTING.md](docs/TESTING.md) | Final test results, evaluation method, the automated test suite |
-| [FOOTPRINT.md](docs/FOOTPRINT.md) | SD card and RAM use on the Pi, and our pipeline vs. the ASR cascade |
+| [FOOTPRINT.md](docs/FOOTPRINT.md) | SD card and RAM use on the Pi, and our pipeline vs. an ASR cascade |
 | [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Setting up a Raspberry Pi from a blank SD card |
 | [RUNBOOK.md](docs/RUNBOOK.md) | Starting, testing and demoing the system, and troubleshooting |
-| [reports/](docs/reports/) | Detailed reports for Experiments 32 to 36 (old dataset) |
-| [archive/AUDIT.md](docs/archive/AUDIT.md) | Everything we considered and did not ship, and why |
+| [EXPERIMENTS.md](docs/EXPERIMENTS.md) | **Project history** (our journal): every experiment, the earlier models, and how they compare with the final one |
 
 ## Future enhancements
 

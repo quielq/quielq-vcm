@@ -14,37 +14,35 @@ What runs on the Pi is two small ONNX files (fp32), with no torch:
 
 | Model | File | Size | Job |
 |---|---|---:|---|
-| Wake word | `models/kiwi_wakeword.onnx` | 107 KB | Always on: scores a 1.5 s window every 0.1 s (Experiment 43; same size as the Experiment 34 one) |
+| Wake word | `models/kiwi_wakeword.onnx` | 107 KB | Always on: scores a 1.5 s window every 0.1 s (Experiment 43, seed 1) |
 | Intent + slots | `models/vcm_intent.onnx` | 1.46 MB | Runs once per command: 19 intents + OUT_OF_SCOPE, and the TIMER/ALARM/TEMPERATURE/BRIGHTNESS/COLOR/CREATE_REMINDER values (Experiment 43b). `vcm_intent_small.onnx` (722 KB, Experiment 43c) is the smaller alternative |
 
-**Why fp32, not the `.int8.onnx` files:** int8 quantization cost the intent
-model 6.8 points of real-speech accuracy (82.1% → 75.3%, EXPERIMENTS.md
-Experiment 32) and saved only 134 KB. fp32 is 1.57 MB for both models
-(0.83 MB with `vcm_intent_small.onnx`), uses the same memory, and is no
-slower.
+**Why fp32, not int8:** dynamic int8 quantization cost 6.8 points of
+real-speech accuracy when we tested it on an earlier CRNN, and was no
+faster. fp32 is 1.57 MB for both models (0.83 MB with
+`vcm_intent_small.onnx`, if you need to stay under 1 MB).
 
-Together they're well under the 1 MB budget. The runtime needs only
-**numpy, onnxruntime and sounddevice**: features are computed with a numpy
-re-implementation of librosa (`vcm/audio/dsp.py`, tested to match it), so
-there's no librosa/scipy/numba and no torch on the device. The whole
-pipeline peaks at **~90 MB of memory** (measured on an M-series Mac, where a
-command takes ~3.5 ms and the wake word uses ~1% of one core).
-`scripts/benchmark_pi.py` measures the real numbers on the board (step 6).
+The runtime needs only **numpy, onnxruntime and sounddevice**: features
+are computed with a numpy re-implementation of librosa (`vcm/audio/dsp.py`,
+tested to match it), so there's no librosa/scipy/numba and no torch on the
+device. On the Raspberry Pi 5 the listener peaks at **~100 MB of memory**,
+a command takes 15.2 ms (p95) and the wake word uses 1.9% of one core.
+`scripts/benchmark_pi.py` measures these on your board (step 6).
 
 ### Which boards
 
 | Board | RAM | Works? | Notes |
 |---|---:|---|---|
 | Raspberry Pi 5 / 4 (any RAM, incl. 2 GB) | 2–8 GB | Yes | The target. Lots of headroom. |
-| **Raspberry Pi Zero 2 W** | 512 MB | Yes (expected) | Same steps with 64-bit Pi OS Lite. Its 1 GHz Cortex-A53 is roughly 8–15× slower than a Mac core, which is still ~10% of one core for the wake word and ~50 ms per command, by estimate. Measure with step 6. |
+| **Raspberry Pi Zero 2 W** | 512 MB | Yes (expected) | Same steps with 64-bit Pi OS Lite. Its 1 GHz Cortex-A53 is roughly 3–5× slower than a Pi 5 core: about 10% of one core for the wake word and 50–80 ms per command, by estimate. Measure with step 6. |
 | Raspberry Pi Zero / Zero W (original) | 512 MB | No | ARMv6, 32-bit only: no onnxruntime builds exist for it. It would need a pure-numpy model runtime (feasible for a model this small, but not built). |
 
 ### Minimum RAM
 
 | What | Memory |
 |---|---:|
-| Voice pipeline, peak (wake word listening + commands) | **~103 MB** (measured on the Pi 5) |
-| of which the two models themselves | ~8.5 MB |
+| Voice pipeline, peak (wake word listening + commands) | **~100 MB** (measured on the Pi 5) |
+| of which the two models themselves | ~10 MB |
 | Home server + dashboard (`vcm.home.server`, step 8b), espeak-ng voice | **~30 MB** (measured on a Mac) |
 | Home server + dashboard with the Piper voice loaded | **~185 MB** (measured on the Pi 5) |
 | Raspberry Pi OS Lite (64-bit), idle, including SSH | ~60–100 MB (typical; confirm with `free -m`, step 6) |
@@ -54,9 +52,8 @@ command takes ~3.5 ms and the wake word uses ~1% of one core).
 
 So any current Raspberry Pi with 512 MB or more has enough memory; with
 this runtime, the limit is the CPU architecture (64-bit ARM, for
-onnxruntime), not RAM. The process numbers come from an M-series Mac (see
-[FOOTPRINT.md](FOOTPRINT.md)); Linux on the Pi will
-differ somewhat, so step 6 checks them on the board. Things that did *not*
+onnxruntime), not RAM ([FOOTPRINT.md](FOOTPRINT.md)); step 6 checks the
+numbers on your board. Things that did *not*
 shrink it further: turning off ONNX Runtime's memory arena
 (`enable_cpu_mem_arena=False`) saved nothing measurable, because the
 running overhead is Python and numpy working memory, not ONNX Runtime.
@@ -243,26 +240,30 @@ card number changes. That raw device only records at 44.1/48 kHz, so
 also works, but like the card number it can shift.
 
 Say **"Hey Kiwi"**, pause briefly, then say a command. Each result prints
-the intent, the slot value, the confidence, and timing:
+the intent, the slot value, the confidence and timing, then the same
+result as one JSON line (the format the class benchmark reads):
 ```
 [wake word, score 0.97] listening...
-  -> TIMER (0.99)  5m (0.97)   [model 9 ms, 0.12 s after end of command]
+  (recorded 2.6 s, command 1.9 s)
+  -> TIMER (0.99)  30s (0.97)   [model 14 ms, 0.01 s after end of command]
+{"intent": "TIMER", "slot": "30s", "confidence": 0.99, "model_intent": "TIMER", "infer_ms": 14.1, "audio_ms": 1900}
   (2.4 s from wake word to result)
 ```
+With `--server`, a `home:` line with the spoken reply follows.
 - `--show-scores` prints the live wake-word score, which is useful for
   seeing how close near-misses get.
 - `--noisy-wake-threshold` (default 0.4) replaces it while music plays on
   the Pi, from Kiwi or any other app (below 0.5 isn't measured offline).
 - `--wake-threshold` sets the trigger level (default 0.6, lowered after
-  live tests so "Hey Kiwi" works from further away and in noise). On
-  Experiment 34's test set:
+  live tests so "Hey Kiwi" works from further away and in noise). On the
+  test stream ([TESTING.md](TESTING.md#wake-word-modelskiwi_wakewordonnx)):
 
   | Threshold | Missed, clean | Missed, 10 dB noise | Missed, author's real takes | False wake-ups per hour |
   |---:|---:|---:|---:|---:|
-  | **0.6** | 3.1% | 5.6% | 0/10 | 12.7 |
-  | 0.7 | 3.6% | 8.2% | 0/10 | 9.2 |
-  | 0.85 | 6.9% | 11.5% | 0/10 | 4.3 |
-  | 0.95 | 14.1% | 21.5% | 0/10 | 1.3 |
+  | **0.6** | 3.8% | 7.2% | 0/10 | 12.9 |
+  | 0.7 | 4.6% | 8.4% | 0/10 | 9.5 |
+  | 0.85 | 8.2% | 12.5% | 0/10 | 7.2 |
+  | 0.95 | 13.8% | 23.3% | 0/10 | 2.0 |
 
   The false wake-ups are on a test stream heavy in deliberate near-misses
   ("hey kitty", "every week"), so a real room should see fewer. Raise it
@@ -278,16 +279,6 @@ Mac's built-in microphone:
 .venv/bin/python scripts/vcm_listen.py
 ```
 The Mac needs `onnxruntime` in its environment (`pip install -e ".[deploy]"`).
-
-**Checked on the Mac before deploying** (Experiment 34 models, a clean venv
-with only `requirements-pi.txt`, no torch or librosa):
-- `benchmark_pi.py`: 3.2 ms per command, the wake word uses 1% of one
-  core, and the process peaks at 82 MB.
-- The author's recorded takes, streamed through the detector: all 30
-  "hey kiwi" takes trigger at 0.95 (23 of 30 at 0.98), and none of the 12
-  near-misses do.
-- `vcm.home.server`: every simulated command works, and the dashboard
-  serves.
 
 ## 8. Field-test the wake word
 
@@ -309,7 +300,8 @@ Two numbers matter, and both can be measured over SSH:
   podcast or TV on nearby, then count the `[wake word` lines. Target: at
   most 1 per hour.
 
-Compare these with the offline estimates in EXPERIMENTS.md. If false
+Compare these with the offline estimates in
+[TESTING.md](TESTING.md#wake-word-modelskiwi_wakewordonnx). If false
 wake-ups come mostly from one kind of audio, save a sample (step 5's
 `arecord`) and add it to the wake-word training negatives.
 
@@ -468,6 +460,6 @@ spoken replies, a deaf listener, silent music, SSH keys) are in
 |---|---|
 | `PortAudioError: Error querying device` | `libportaudio2` installed (step 3)? Pass `--device` with the index from `sd.query_devices()`. |
 | Never wakes | Run with `--show-scores`. If scores stay low even up close, the mic level is too low (step 5). |
-| Wakes on everything | Raise `--wake-threshold`; check that the value matches EXPERIMENTS.md's recommendation. |
+| Wakes on everything | Raise `--wake-threshold` (0.7 or 0.85; the trade-off is in TESTING.md). |
 | Slow, or results lag | `vcgencmd get_throttled` (anything other than `0x0` means under-voltage or heat throttling); `vcgencmd measure_temp`; use the official 27 W power supply. |
 | `Illegal instruction` on import | Make sure the OS is 64-bit: `uname -m` should print `aarch64`. |

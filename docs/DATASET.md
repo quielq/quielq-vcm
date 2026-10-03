@@ -1,26 +1,24 @@
 # Dataset
 
-**From Experiment 37 on, the source of truth is the class's master
-dataset and the final Dataset Schema (Option B).** The class agreed on
-both on 2026-10-01: the schema is the basis for labeling the 19 intents
-and their slot values, its 93 phrases are the demo benchmark, and every
-group's data is collated into one dataset with one fixed test set. This
-project now trains and tests only on that dataset.
+The final model trains and is tested only on the **class master dataset**
+and the final **Dataset Schema (Option B)**. The class agreed on both on
+2026-10-01: the schema is the basis for labeling the 19 intents and their
+slot values, its 93 phrases are the demo benchmark, and every group's data
+is collated into one dataset with one fixed test set.
 
-The rest of this document, from "Before Experiment 37" on, describes the
-dataset this project built for itself for Experiments 1 to 36. It is
-kept as history. That version of the code is on the
-`archive/exp36-pre-me2-schema` branch (tag `v1-exp36`).
+Dataset development is a **collective effort**. See
+[Acknowledgments](#acknowledgments) at the end of this document. The
+dataset this project built for itself before the master dataset existed is
+documented in [EXPERIMENTS.md, Appendix A](EXPERIMENTS.md#appendix-a-the-projects-own-dataset-experiments-136).
 
-Dataset development is a **collective effort**. See "Acknowledgments"
-at the end of this document.
+## The class master dataset
 
-## The class master dataset (Experiment 37 on)
-
-- **Where:** [huggingface.co/datasets/airimonda/ai231-me2-voice-commands](https://huggingface.co/datasets/airimonda/ai231-me2-voice-commands)
+- **Where:** [huggingface.co/datasets/airimonda/ai231-me2-voice-commands](https://huggingface.co/datasets/airimonda/ai231-me2-voice-commands),
+  revision **`da92a79`** (2026-10-02), pinned in every download command
   (also on the class Google Drive as `ai231-me2-gold-dataset`, and on the
-  DGX as a shared `datasets` cache at **`/data/ai231`**, see below). Collated
-  by Ailene (`airimonda` on Hugging Face). Audit and documentation:
+  DGX as a shared `datasets` cache at **`/data/ai231`**, see below).
+  Collated by Ailene (`airimonda` on Hugging Face). Audit and
+  documentation:
   [claude.ai/artifact/PPNHMWd5rx9qcXTdcukV7s](https://claude.ai/artifact/PPNHMWd5rx9qcXTdcukV7s).
 - **Schema:** [`data/dataset_schema/final_dataset_schema.csv`](../data/dataset_schema/final_dataset_schema.csv) (the class sheet,
   Option B), the same as the dataset's `variations.csv`.
@@ -28,48 +26,24 @@ at the end of this document.
   [`data/dataset_schema/dataset_schema.csv`](../data/dataset_schema/dataset_schema.csv)
   is its export. A test checks all 93 phrases match.
 - **Classes:** the 19 schema commands plus `OUT_OF_SCOPE` (noise,
-  Filipino speech, near-miss requests and general speech). Our old
-  non-command class, `unknown_background`, was noise only. We keep
+  Filipino speech, near-miss requests and general speech). We keep
   OUT_OF_SCOPE as the dataset defines it: a class the model learns and the
   device never acts on ([TESTING.md](TESTING.md#out-of-scope-how-it-is-handled-and-tested)).
 - **Wake word:** the dataset has no "hey kiwi" clips. The wake word's
-  positives stay our own (synthetic voices and the author's recordings);
-  since Experiment 42 all of its other examples come from this dataset.
+  positives are our own (synthetic voices and the author's recordings);
+  all of its negatives (commands, out-of-scope speech, noise, numerals)
+  come from this dataset.
 - **Slot values:** exactly the schema's 3 per slotted command (10 s / 30 s
   / 1 min; 6:00 AM / 8:00 AM / 9:00 PM; 18 / 22 / 26 degrees; 20 / 60 /
   100 percent; red / blue / green; drink water / study / exercise). The
-  model's slot heads now have 3 classes each (`vcm/slots.py`).
+  model's slot heads have 3 classes each (`vcm/slots.py`).
 - **Audio:** 16 kHz mono 16-bit WAV.
+- **`supplemental_synth`:** 5,856 more synthetic clips of the group's
+  voices that are in no split, each tagged with the split its voice
+  belongs to (train 3,983, test 1,612, holdout 261). Only train-voice
+  clips may be added to training; the final model uses them.
 
-### Revisions
-
-The dataset changed once after we started. We train and report on the
-**2026-10-02 revision, `da92a79`** (Experiment 43 on); Experiments 37–42
-used the 2026-10-01 revision `25111444`. Every download command below pins
-the revision.
-
-What the 2026-10-02 revision changed (compared clip by clip, by audio
-hash; no kept clip changed label or slot value):
-
-| | Train | Test | Holdout |
-|---|---:|---:|---:|
-| Clips (old → new) | 10,682 → 10,733 | 4,418 → 4,443 | 196 → 202 |
-| Removed | 517: fixed commands that also carried a value ("play purple haze", "turn on the kitchen lights", "is it sunny today"); 371 SLURP, 80 SNIPS, 37 FSC, 29 class recordings | 226 of the same kind (171 SLURP, 46 SNIPS, 9 FSC) | 57 (45 class recordings, 11 FSC, 1 Common Voice) |
-| Added | 499 synthetic commands of train voices, 69 synthetic out-of-scope | 222 synthetic commands of test voices, 29 synthetic out-of-scope | 56 class recordings, 6 synthetic out-of-scope |
-| Out of scope | 201 → 270 | 47 → 76 | 10 → 16 |
-
-- **Why it matters:** the removed clips were real people phrasing commands
-  their own way, the hardest part of the old test set. On the new test set
-  the same model scores about 2 points higher overall and 6 higher on real
-  speech (TESTING.md), so numbers from the two revisions are not
-  comparable.
-- **New: `supplemental_synth`**, 5,856 more synthetic clips of the group's
-  voices that are in no split, each tagged with the split its voice belongs
-  to (train 3,983, test 1,612, holdout 261). Only train-voice clips may be
-  added to training.
-- `variations.csv` (the 93 phrases) and the numerals set did not change.
-
-### Splits
+## Splits
 
 The dataset's own splits are used as published. No speaker or synthetic
 voice is in more than one split. We only add a validation split, carved
@@ -83,15 +57,15 @@ looks at test.
 | **test** (class-fixed) | **4,443** | 824 | 3,619 | 203 | 76 | 144 | **Headline result** |
 | holdout (class-fixed) | 202 | 96 | 106 | 87 | 16 | 7 | Raspberry Pi live-test set; also scored offline |
 | numerals | 66,390 | all | — | — | all | 2,547 | 1,500 bare numbers sampled as OUT_OF_SCOPE examples |
-| supplemental (ours, from `supplemental_synth`) | 3,461 | — | 3,461 | — | — | 60 | Optional extra training clips (Experiment 43b) |
+| supplemental (ours, from `supplemental_synth`) | 3,461 | — | 3,461 | — | — | 60 | Extra synthetic training clips of train voices |
 
 - **Test** has 47 clips per Option B variation ("Message" 43) plus 76
   out-of-scope clips. 81% of it is the group's synthetic voices; 777 clips
   are real people saying a command.
-- **Validation** takes about 12% of each source's train clips, as whole
-  speakers. Sources with fewer than 5 speakers stay in train, so all
-  class recordings (Filipino speakers) and the noise clips are used for
-  training. Seed 0, `scripts/build_me2_manifest.py`.
+- **Validation** takes 1,448 clips, about 13% of the published train
+  split, as whole speakers. Sources with fewer than 5 speakers stay
+  in train, so all class recordings (Filipino speakers) and the noise
+  clips are used for training. Seed 0, `scripts/build_me2_manifest.py`.
 - **Supplemental** keeps only `supplemental_synth` clips whose voice is in
   our train split; the 2,395 others (voices in our val, test or holdout)
   are dropped, so val is the same with or without them.
@@ -103,7 +77,7 @@ out-of-scope), SLURP 1,010, class recordings 684, SNIPS 331, Fluent Speech
 Commands 256, Common Voice 36, Timers and Such 31, Speech Commands noise 11.
 78% of train is synthetic.
 
-### The shared copy on the DGX (`/data/ai231`)
+## The shared copy on the DGX (`/data/ai231`)
 
 The class uploaded the dataset to the DGX at `/data/ai231`, as a Hugging
 Face `datasets` cache (`load_dataset("airimonda/ai231-me2-voice-commands",
@@ -119,7 +93,7 @@ compared it clip by clip with our pinned download on 2026-10-02:
 | supplemental_synth | 5,856 | identical | identical | identical (added to the shared copy at 17:43) |
 
 Its default splits **are** revision `da92a79` and its `supplemental_synth`
-is the one the shipped model trained on, so building from it gives the same
+is the one the final model trained on, so building from it gives the same
 manifest, slot labels, metadata and audio files as the download (checked),
 and every result in this repo holds for it. **The pipeline reads everything
 from `/data/ai231`; nothing is downloaded on the DGX.**
@@ -143,7 +117,7 @@ the check fails and `scripts/reproduce.sh` falls back to the pinned download.
 python scripts/verify_shared_dataset.py --shared-cache /data/ai231   # expect "identical to the revision every result is on"
 ```
 
-### Build it
+## Build it
 
 ```bash
 # 1. Download the pinned revision: train/test/holdout, numerals, supplemental_synth (about 3.6 GB)
@@ -167,710 +141,17 @@ Step 2 writes, all under `data/me2/` (gitignored):
 | File | What |
 |---|---|
 | `<split>/audio/*.wav` | every clip, by split |
-| `manifest.csv` | `audio_path, label, source, is_synthetic, speaker_id, split` (`vcm/dataset/manifest.py`) |
+| `manifest.csv` | `audio_path, label, source, is_synthetic, speaker_id, split` (the common row shape in [`src/vcm/dataset/manifest.py`](../src/vcm/dataset/manifest.py)) |
 | `slot_labels.csv` | 10,425 slot labels from the dataset's `slot_value`, in `vcm/slots.py`'s value format |
 | `metadata.csv` | accent group, variation, transcript and Whisper check per clip, for evaluation breakdowns |
 
-### What changed from our old dataset
-
-| | Old (Experiments 1–36) | Master dataset (37 on) |
-|---|---|---|
-| Size | 70,641 clips (64% real) | 10,733 train + val clips (22% real), plus optional 3,461 supplemental synthetic |
-| Test set | Each source's own split; real speech only (6,577 clips) | Class-fixed, 4,443 clips, real and synthetic, balanced per variation |
-| Non-command class | `unknown_background`, 600 noise clips | `OUT_OF_SCOPE`, mostly speech |
-| Slot values | 24 timers, 28 alarm times, 12 brightness levels, 14 colors, 3 + 3 | 3 per slot, the schema's |
-| Filipino voices | Only in 16 of Option B's cloned reference speakers | Class recordings (Filipino speakers) in every split |
-| CALL, NEXT, LIST_REMINDERS | Synthetic only | Class recordings too |
-
-## Before Experiment 37: the project's own dataset
-
-### Final training data for Experiments 33 to 36
-
-The shipped model (Experiment 36) trained on
-`data/dataset_manifest_exp36.csv`: **70,641 clips**, built in layers on top
-of the base manifest described in the rest of this document.
-
-| Layer | Clips | Real / synthetic | Added in |
-|---|---:|---|---|
-| Base manifest: SLURP, FSC, Snips, Timers and Such, GSC noise, Option B | 63,476 | 45,818 real + 17,658 synthetic | Steps 1–10 below |
-| Option B after the Whisper QA filter (`scripts/qa_filter_option_b.py`) | −1,158 | synthetic removed | Experiment 25 |
-| Targeted phrasings (pause/stop/play verb pairs, timer durations, colors, brightness levels) | +4,357 | synthetic, QA-passed | Experiment 31 |
-| Slot-value clips "slots2" (every timer, alarm, brightness and color value) | +2,649 | synthetic, QA-passed | Experiment 32 |
-| Slot-value clips "slots3" (temperature and reminder values) | +1,317 | synthetic, QA-passed | Experiments 35–36 |
-| **Total** | **70,641** | **45,218 real speech + 600 noise + 24,823 synthetic** (64% real speech) | |
-
-Snips was also re-split by speaker in Experiment 32
-(`scripts/resplit_snips_by_speaker.py`), because 40 of its 49 speakers had
-been in more than one split. Slot-value labels (`data/slot_labels_exp36.csv`,
-17,920 labels) come from the script for synthetic clips and from Whisper
-transcripts for real ones (`scripts/build_slot_labels.py`). The
-synthetic clips were generated with Chatterbox TTS, cloning real FSC and
-Timers and Such speakers (`scripts/generate_targeted_synthetic.py`), and
-kept only if Whisper heard the intended words.
-
-## Summary — what this is and how it was built
-
-The training dataset is **63,476 labeled audio clips across 20 classes**
-(19 command intents, e.g. `PLAY_MUSIC`, `LIGHT_ON`, `VOLUME_UP`, plus
-`unknown_background` for non-command audio), combined from **6
-independently-sourced datasets** — a mix of real recorded speech and
-class-shared synthetic (voice-cloned) speech — normalized into one
-common manifest schema.
-
-The design principle throughout: **prefer real audio, fill labeled-command
-gaps with synthetic audio, and never guess a label mapping** — every
-source's raw label vocabulary was inspected against real downloaded
-data (not the source's paper/docs) before any label-mapping code was
-written, and every gap in real coverage was checked against every
-known dataset candidate before falling back to synthetic. Three labels
-(`CALL`, `NEXT`, `LIST_REMINDERS`) currently have no real-audio source
-and are synthetic-only — `LIST_REMINDERS` was real-covered until a
-quality audit found its SLURP mapping was semantically wrong (see
-"Known per-label quality signal" below); finding a real source that
-actually covers timed reminders is an open item, not a permanent gap.
-`TIMER` was in this same fully-synthetic bucket until step 9 below
-closed it with real audio.
-
-| Source | Rows | Real / synthetic | Labels covered | Disk size |
-|---|---:|---|---|---:|
-| SLURP | 17,452 | Real | 12 of 19 | ~968 MB (18 MB annotations + 950 MB audio) |
-| Option B (class-shared) | 17,658 | Synthetic, QA-filtered | All 19 | ~1.0 GB |
-| FSC (Zenodo mirror) | 24,223 | Real | 8, incl. TEMPERATURE/STOP/PAUSE | ~2.1 GB |
-| Snips SLU (lighting subset) | 2,472 | Real | 4 (LIGHT_ON/OFF, BRIGHTNESS, COLOR) | ~275 MB |
-| GSC v2 background noise | 600 | Real | `unknown_background` only | ~40 MB |
-| Timers and Such | 1,071 | Real | TIMER + ALARM | ~124 MB |
-| **Total** | **63,476** | — | 17 of 19 with real coverage | **~4.5 GB** |
-
-(SLURP's row count dropped from 19,712 to 17,452 after a quality audit
-removed 2,260 mismatched/junk rows — see "Known per-label quality
-signal" below. No audio files were deleted; disk size is unchanged
-since the same downloaded files are still on disk, just fewer of them
-are referenced by the manifest now.)
-
-(Sizes are the retained on-disk footprint of `data/external/` after
-each source's fetch script runs — transient downloads like FSC's
-1.4GB zip and GSC's 2.4GB full archive are deleted immediately after
-extracting what's needed, per steps 5 and 7 below, so they aren't
-counted here. Timers and Such's 124MB is *not* transient-then-deleted
-like those — it's the real total footprint, made small by selectively
-downloading only the ~1,071 relevant files out of the archive's full
-12.2GB via HTTP range requests rather than the whole thing; see step 9.
-`data/dataset_manifest.csv` itself, the combined output, is a further
-~10 MB of metadata on top of this.)
-
-See "Current status" below for the exact per-label breakdown, and
-steps 1-10 for how to reproduce every source from a clean checkout.
-
-## Setup (same as the main README)
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-```
-
-## Current status
-
-`data/dataset_manifest.csv` (generated by `scripts/build_manifest.py`,
-step 10 below) currently combines **63,476 rows** from 6 sources (a 7th,
-real recordings for the synthetic-only gap, is opt-in per contributor
-— see step 8 — and not yet reflected in this snapshot):
-
-| Label coverage | Source | Rows | Disk size |
-|---|---|---:|---:|
-| 12 of 19 labels | Real audio (SLURP, quality-filtered — see below) | 17,452 | ~968 MB |
-| All 19 labels | Synthetic, QA-filtered audio (class-shared "Option B" dataset) | 17,658 | ~1.0 GB |
-| `unknown_background` only | Real noise, chopped into clips (Google Speech Commands v2) | 600 | ~40 MB |
-| 4 lighting labels only (LIGHT_ON/OFF, BRIGHTNESS, COLOR) | Real audio, text-classified (Snips SLU) | 2,472 | ~275 MB |
-| 8 labels, including TEMPERATURE/STOP/PAUSE | Real audio (FSC, via a verified Zenodo mirror) | 24,223 | ~2.1 GB |
-| TIMER + ALARM | Real audio (Timers and Such, selectively downloaded — see step 9) | 1,071 | ~124 MB |
-| 3 labels with zero real coverage | CALL, NEXT, LIST_REMINDERS — synthetic-only; LIST_REMINDERS lost its SLURP mapping to a quality fix (see below), the other two were checked against every candidate source found so far and none cover them | — | — |
-
-**Total: ~4.5 GB** across all 6 sources' retained data (see the
-Summary section above for what's excluded — transient full-archive
-downloads that get deleted right after extraction).
-
-Every row's `audio_path` resolves to a real local file (verified) — this
-is an actual training-ready manifest, not just row counts.
-
-### Per-label breakdown by source
-
-The label-level view of the table above — computed directly from
-`data/dataset_manifest.csv`, all splits combined. This is the real
-imbalance the training pipeline sees: **22x between the largest label
-(TEMPERATURE, 11,170) and the smallest (CALL, 498)**, motivating the
-class-imbalance work in EXPERIMENTS.md Experiments 18-20.
-
-| Label | SLURP | Option B | FSC | Snips | GSC bg | Timers | **Total** |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| TEMPERATURE | 0 | 1,796 | 9,374 | 0 | 0 | 0 | **11,170** |
-| LIGHT_OFF | 1,025 | 578 | 3,236 | 448 | 0 | 0 | **5,287** |
-| LIGHT_ON | 113 | 570 | 4,135 | 448 | 0 | 0 | **5,266** |
-| PLAY_MUSIC | 3,764 | 568 | 912 | 0 | 0 | 0 | **5,244** |
-| VOLUME_UP | 998 | 566 | 3,010 | 0 | 0 | 0 | **4,574** |
-| BRIGHTNESS | 1,163 | 1,770 | 0 | 1,028 | 0 | 0 | **3,961** |
-| VOLUME_DOWN | 560 | 580 | 2,731 | 0 | 0 | 0 | **3,871** |
-| WEATHER | 3,279 | 544 | 0 | 0 | 0 | 0 | **3,823** |
-| ALARM | 1,486 | 1,754 | 0 | 0 | 0 | 354 | **3,594** |
-| COLOR | 717 | 1,736 | 0 | 548 | 0 | 0 | **3,001** |
-| CREATE_REMINDER | 961 | 1,766 | 0 | 0 | 0 | 0 | **2,727** |
-| TIMER | 0 | 1,750 | 0 | 0 | 0 | 717 | **2,467** |
-| MESSAGE | 1,853 | 528 | 0 | 0 | 0 | 0 | **2,381** |
-| TIME | 1,533 | 548 | 0 | 0 | 0 | 0 | **2,081** |
-| STOP | 0 | 532 | 510 | 0 | 0 | 0 | **1,042** |
-| PAUSE | 0 | 496 | 315 | 0 | 0 | 0 | **811** |
-| unknown_background | 0 | 0 | 0 | 0 | 600 | 0 | **600** |
-| LIST_REMINDERS | 0 | 558 | 0 | 0 | 0 | 0 | **558** |
-| NEXT | 0 | 520 | 0 | 0 | 0 | 0 | **520** |
-| CALL | 0 | 498 | 0 | 0 | 0 | 0 | **498** |
-| **TOTAL** | **17,452** | **17,658** | **24,223** | **2,472** | **600** | **1,071** | **63,476** |
-
-At a glance: CALL/NEXT/LIST_REMINDERS are Option-B-only (the
-zero-real-coverage gap above); TEMPERATURE/LIGHT_ON/LIGHT_OFF/VOLUME_UP/
-VOLUME_DOWN are FSC-heavy; WEATHER/MESSAGE/TIME/PLAY_MUSIC/CREATE_REMINDER
-are SLURP-heavy; TIMER/ALARM are the only labels with any Timers-and-Such
-contribution.
-
-### Known per-label quality signal: source composition correlates with model accuracy
-
-Checked directly against the manifest (not assumed) after several
-training runs (see EXPERIMENTS.md) showed a consistent, reproducible
-weak-class pattern. The labels that train worst split into two
-different root causes by which source dominates them:
-
-- **SLURP-dominated labels train worse**: WEATHER (85% SLURP), TIME
-  (81%), MESSAGE (77%), PLAY_MUSIC (71%), LIST_REMINDERS (69%) are
-  consistently the lowest- or near-lowest-accuracy classes across every
-  architecture tried. SLURP's crowdsourced phrasing is naturalistic and
-  varied (e.g. `"open clock"` for ALARM, `"olly brighten the lights"`
-  for BRIGHTNESS — see step 2 below) rather than matching this
-  project's own scripted command phrasing, which plausibly makes the
-  acoustic-to-label mapping itself noisier to learn for these labels
-  specifically.
-- **Checked and ruled out: this is not a class-imbalance problem.**
-  Pearson correlation between per-label training-set size and
-  per-label accuracy (Experiment 11's real numbers, 20 labels): r ≈
-  -0.16 to +0.18 depending on outlier handling — essentially no
-  relationship. CALL has only 396 training examples and hits 94.4%
-  accuracy; WEATHER has 2,627 (~7x more) and only hits 56.7%. This also
-  makes sense mechanically: training already uses class-weighted
-  cross-entropy (inverse-frequency weighting), which specifically
-  corrects for raw imbalance — it's not the open problem here.
-- **The real problem for WEATHER/TIME/MESSAGE/LIST_REMINDERS is closer
-  to a mapping-purity problem than a phrasing-style problem.** Pulled
-  real example sentences from SLURP's raw `train.jsonl` for each raw
-  intent mapped to these labels and compared against this project's own
-  scripted taxonomy phrasing for the same label:
-
-  | Label | Taxonomy expects | Real SLURP example mapped to it |
-  |---|---|---|
-  | WEATHER | "What's the weather?" | `"do i need a coat"` — indirect, never says "weather" |
-  | TIME | "What time is it?" | `"is today the fourth or the fifth"` — a **date** question |
-  | MESSAGE | "Send a message" | `"between ten pm to nine am all emails received is to be replied to"` — email **scheduling**, not sending |
-  | LIST_REMINDERS | "Show my reminders" | `"pull up the shopping list"` — generic **lists**, conceptually different from timed reminders |
-  | PLAY_MUSIC | "Play music" | `"play only songs by the beatles please"` — reasonably matched, just more specific |
-
-  Four of these five aren't just noisier versions of the intended
-  intent — some of the mapped SLURP examples are arguably **the wrong
-  intent entirely** for what this project means by that label name
-  (PLAY_MUSIC is the exception; its SLURP examples are semantically
-  fine, just lexically varied).
-- **Option-B/FSC-dominated labels train best**: CALL, NEXT, TIMER
-  (100% Option B), TEMPERATURE (83% FSC), PAUSE/STOP/CREATE_REMINDER/
-  COLOR (51-64% Option B) are consistently the strongest classes.
-  Both sources use scripted, on-taxonomy phrasing.
-- **FSC-dominated VOLUME_UP/DOWN and LIGHT_ON/OFF are a separate,
-  already-diagnosed problem** (EXPERIMENTS.md Experiment 1 onward):
-  these underperform not because of source noise but because FSC
-  reuses near-identical "turn up/down" carrier phrasing across VOLUME
-  and TEMPERATURE commands, a structural phrase overlap rather than a
-  source-quality issue.
-
-**Fix applied** (`is_valid_sentence()` and an updated `LABEL_MAPPING` in
-`src/vcm/dataset/sources/slurp.py`, same empirical transcript-driven
-approach already used for Snips SLU (step 6) and FSC's
-"deactivate"+"music" split (step 7)):
-
-- **LIST_REMINDERS**: SLURP mapping dropped entirely. Inspecting all
-  197 unique `lists_query` sentences found only 1 contains the word
-  "reminder" (and even that one is about viewing a list of reminders,
-  not a timed alert) — the rest are shopping lists, to-do lists, and
-  music playlists. A real concept mismatch, not noise, so filtering
-  down wasn't the right fix; the mapping is gone. **-1,265 rows.**
-  LIST_REMINDERS now relies solely on Option B's 558 synthetic rows —
-  see the Summary section's note on this being an open item, not a
-  permanent gap.
-- **TIME**: sentences that are pure date questions with no time
-  content (`"what date is today"`, `"is today march sixth"`) are
-  excluded; mixed date-and-time queries are kept. **-950 rows** (of
-  2,483 SLURP-sourced TIME rows, ~38%).
-- **WEATHER**: a small, surgical list of 13 clearly nonsensical/
-  off-topic sentences excluded (e.g. `"answer email from"`,
-  `"food will be given at the exhibition"`) — the vast majority of
-  WEATHER's SLURP examples, including indirect ones like
-  `"do i need a coat"`, are legitimately on-topic and were kept
-  as-is. **-35 rows** (of 3,314, ~1%).
-- **MESSAGE**: 3 clearly off-topic sentences excluded (e.g.
-  `"how it's come to us"`). **-10 rows** (of 1,863, ~0.5%).
-
-Applying this to already-downloaded audio (no re-fetch needed) via
-`scripts/refilter_slurp_manifest.py`, then rebuilding the combined
-manifest, took SLURP from 19,712 → 17,452 rows and the combined
-dataset from 64,665 → 62,405 rows.
-
-**Verified with a real training run** (EXPERIMENTS.md Experiment 12 —
-same model/config as Experiment 11, only the dataset changed): overall
-val accuracy improved +1.71pp (72.39% → 74.10%). LIST_REMINDERS jumped
-from the weakest class (49.4%) to a perfect 100% once purified down to
-Option B's 558 clean examples; WEATHER improved +6.1pp and TIME +4.9pp.
-MESSAGE unexpectedly dropped -6.4pp despite only 3 sentences being
-removed there — too small a change to be the direct cause, more likely
-a side effect of the overall class-weight/confusion redistribution
-than a flaw in the fix itself; worth re-checking once multiple seeds
-are used to rule out ordinary run-to-run noise.
-
-## 1. The taxonomy (class-shared fixed-vs-slotted schema)
-
-[`src/vcm/dataset/sources/dataset_schema.py`](../src/vcm/dataset/sources/dataset_schema.py)
-holds the 19-label taxonomy (13 fixed-phrase intents, 6 slotted) as plain
-Python data, captured from the class's shared taxonomy sheet's richest
-table ("Option B" phrasing richness — not to be confused with the
-"Option B" *dataset* in step 4 below, same source naming, different
-artifact). It expands into 93 phrases total.
-
-```bash
-python -c "from vcm.dataset.sources.dataset_schema import generate_phrases; print(len(generate_phrases()))"
-```
-**Expect**: `93`.
-
-To regenerate the CSV export at `data/dataset_schema/dataset_schema.csv`
-(already committed, only needed if the taxonomy changes):
-```bash
-python -c "
-from pathlib import Path
-from vcm.dataset.sources.dataset_schema import export_csv
-export_csv(Path('data/dataset_schema/dataset_schema.csv'))
-"
-```
-**Expect**: a 94-line CSV (93 phrases + header). See
-[`data/dataset_schema/README.md`](../data/dataset_schema/README.md) for the
-column format.
-
-## 2. SLURP coverage check (real data, real numbers)
-
-```bash
-python scripts/slurp_coverage.py
-```
-**What it does**: downloads SLURP's `train/devel/test.jsonl` (~13MB of
-annotation text, no audio) from `pswietojanski/slurp` on GitHub into
-`data/external/slurp/` (gitignored, so this doesn't bloat the repo — the
-script re-downloads if that folder isn't there), then prints a table of
-how many real SLURP sentences/recordings map to each of the 19 taxonomy
-labels, using the empirically-verified mapping in
-[`src/vcm/dataset/sources/slurp.py`](../src/vcm/dataset/sources/slurp.py).
-
-**Expect** (verified output, reproduced exactly by running the command
-above from a clean checkout):
-```
-Loaded 16521 sentences / 72396 recordings
-
-Label               sentences  recordings  matched intents
-PLAY_MUSIC                911        3883                1
-WEATHER                   834        3412                1
-TIME                      490        2558                1
-LIGHT_ON                   30         126                1
-LIGHT_OFF                 213        1091                2
-PAUSE                       0           0                0
-STOP                        0           0                0
-NEXT                        0           0                0
-VOLUME_UP                 135        1059                1
-VOLUME_DOWN                71         587                1
-CALL                        0           0                0
-MESSAGE                   523        1925                1
-LIST_REMINDERS              0           0                0
-TIMER                       0           0                0
-ALARM                     253        1503                1
-TEMPERATURE                 0           0                0
-BRIGHTNESS                229        1234                4
-COLOR                     183         751                1
-CREATE_REMINDER           234        1005                1
-
-Zero SLURP coverage: PAUSE, STOP, NEXT, CALL, LIST_REMINDERS, TIMER, TEMPERATURE
-```
-Takes under a minute on a normal connection (13MB download + parsing
-16,521 JSON lines).
-
-**Note on the counts above vs. the final manifest**: this table shows
-raw sentence-to-intent mapping counts, from `LABEL_MAPPING` alone —
-LIST_REMINDERS shows 0 because its mapping was removed entirely (see
-"Known per-label quality signal" below). TIME, WEATHER, and MESSAGE
-still show their full pre-filter counts here, because the additional
-sentence-level quality filter (`is_valid_sentence()`) is applied later,
-during audio fetch (step 3) — this coverage check is metadata-only and
-doesn't download or filter audio, so it can't reflect that step.
-
-### What the three columns mean
-
-- **`sentences`** — a "sentence" in SLURP is one unique text+intent
-  annotation, a single prompt someone was asked to say (e.g. `"wake me
-  up at ten"`, labeled `alarm_set`). This column is a count of *distinct
-  prompts* mapped to that taxonomy label.
-- **`recordings`** — each sentence was recorded multiple times, usually
-  by different crowdworkers, often in paired mic setups (a close-mic
-  `-headset` take plus a room-mic take of the same prompt). This column
-  counts *actual audio files*, always ≥ the sentence count. Concretely:
-  one SLURP sentence (`slurp_id 9024`, text `"event"`, intent
-  `calendar_set`) has 9 separate recordings in the raw data — that's
-  one sentence contributing 9 to a `recordings` total.
-- **`matched intents`** — SLURP has its own internal vocabulary of 93
-  intents, finer-grained (and messier) than this taxonomy's 19 labels.
-  This is how many of SLURP's raw intents got mapped onto one canonical
-  label. Most are 1-to-1; `LIGHT_OFF` is 2 because SLURP has two
-  overlapping intents for it (legacy duplicate, e.g. "turn off the
-  light" vs. "turn off lamp"), and `BRIGHTNESS` is 4 for the same reason
-  across dim-up/dim-down and two legacy naming schemes (e.g. "dim the
-  lights" vs. "the lights are too bright"). See `LABEL_MAPPING` in
-  `sources/slurp.py` for exactly which raw intents feed each label.
-
-**A phrasing-looseness caveat worth knowing before trusting this data
-blindly**: SLURP's crowdsourced sentences aren't clean scripted commands
-the way this project's own taxonomy phrases are — e.g. `"open clock"` is
-labeled `alarm_set` (→ `ALARM`), and `"olly brighten the lights"` maps to
-`BRIGHTNESS`. Real, spoken-in-the-wild phrasing is part of why SLURP is
-useful (Section 9 already notes its sentences run long/natural), but it
-means a "covered" label here doesn't guarantee phrasing anywhere close to
-this project's own command set.
-
-**If the mapping looks wrong for a label**: the raw SLURP→taxonomy
-mapping is the `LABEL_MAPPING` dict at the top of `sources/slurp.py`,
-built by inspecting every one of SLURP's 93 actual `intent` values (not
-guessed from the paper) — edit it there and re-run the script.
-
-## 3. Pulling real SLURP audio
-
-```bash
-pip install datasets soundfile
-python scripts/fetch_slurp_audio.py
-```
-**What it does**: streams real audio for the 12 covered labels from a
-HuggingFace parquet mirror (`yhfang/slurp_dataset_audio_subset`) filtered
-by `slurp_id` against the local metadata from step 2 — no need to
-download SLURP's full 3.9GB Zenodo archive. Also applies
-`is_valid_sentence()` (see "Known per-label quality signal" below) so
-sentences that fail the TIME/WEATHER/MESSAGE quality filter are never
-written at all on a fresh run. Writes real `.flac` files to
-`data/external/slurp_audio/<split>/` plus a `manifest.csv` already in
-this project's common schema (see `manifest.py` below). Takes several
-minutes; run `scripts/slurp_coverage.py` (step 2) first if
-`data/external/slurp/*.jsonl` doesn't exist yet.
-
-**If you already have `data/external/slurp_audio/` populated from
-before the quality filter existed**, don't re-run this script (it would
-re-download ~900MB for no reason) — run
-`python scripts/refilter_slurp_manifest.py` instead, which re-derives
-each already-downloaded file's correct label (or drops it) from the
-local metadata alone, no network access needed.
-
-## 4. Class-shared synthetic dataset ("Option B")
-
-A classmate-contributed synthetic dataset, publicly shared on GitHub:
-17,658 QA-filtered recordings, voice-cloned from 100 real reference
-speakers (84 foreign, 16 genuinely Filipino-English), speaker-disjoint
-train/val/test split, clean + noisy acoustic conditions, generated
-directly against this project's own 19-label taxonomy (so it covers all
-19, including every label SLURP has zero coverage for) and already
-screened through a classmate-built transcribe-and-compare QA tool (942
-of 18,600 originals flagged and excluded).
-
-```bash
-git clone --depth 1 --filter=blob:none --sparse https://github.com/markandrian30/AI231.git /tmp/option_b_repo
-cd /tmp/option_b_repo && git sparse-checkout set MEX2/OptionB
-mkdir -p <repo-root>/data/external/option_b
-mv MEX2/OptionB/manifest.csv <repo-root>/data/external/option_b/
-mkdir -p <repo-root>/data/external/option_b/audio
-mv MEX2/OptionB/*/  <repo-root>/data/external/option_b/audio/
-```
-[`src/vcm/dataset/sources/option_b.py`](../src/vcm/dataset/sources/option_b.py)
-loads it — no label-mapping layer needed, its `intent` column already
-matches our 19 canonical labels 1:1 (verified against the real
-`manifest.csv`, not assumed).
-
-## 5. Background noise -> `unknown_background` (Google Speech Commands v2)
-
-```bash
-python scripts/fetch_gsc_background.py
-```
-Section 3 requires an explicit background/unknown class and Section 9
-already named GSC's background-noise clips as the source, but nothing
-pulled it into the pipeline until this script existed. Downloads the
-official ~2.4GB archive **transiently**, extracts only the ~13MB
-`_background_noise_/` folder (6 long noise recordings — white/pink
-noise, a running tap, an exercise bike, a dishwasher, someone's cat —
-not the 35 keyword classes), deletes the full archive immediately after,
-then chops the noise into 600 fixed-length clips
-([`sources/gsc_background.py`](../src/vcm/dataset/sources/gsc_background.py))
-with an 80/10/10 train/val/test split. Increase coverage with
-`--clips-per-file` if 600 proves too few once training starts.
-
-## 6. Snips SLU lighting subset (real audio for 4 thin labels)
-
-```bash
-pip install datasets soundfile
-python scripts/fetch_snips_lights.py
-```
-Section 9 describes this as a "smart-lights" dataset; that turned out to
-be only half true — streaming and inspecting all 5,886 real transcripts
-found the corpus is roughly half lighting commands and half unrelated
-music requests ("I'd like to listen to `<artist>`"), no other domains.
-[`sources/snips_lights.py`](../src/vcm/dataset/sources/snips_lights.py)
-classifies each transcript by keyword/phrase pattern (there's no
-categorical label in the source data) into `LIGHT_ON`, `LIGHT_OFF`,
-`BRIGHTNESS`, or `COLOR` — see that module's docstring for a real false
-positive caught and fixed during development (a music request for an
-artist named "White Sea" initially matched the color "white"). Only
-matched clips are downloaded (2,472 of 5,886); the rest, including the
-whole music-request chunk, are skipped, not guessed. This is a
-hand-built heuristic classifier, not a ground-truth label the way
-SLURP's `intent` field is — treat it as good-quality, spot-checked, but
-not infallible. Confirmed this dataset has **no** vocabulary relevant to
-any of the 6 zero-real-coverage labels.
-
-## 7. FSC (real audio, resolved)
-
-FSC isn't freely downloadable via its official channel without a Kaggle
-account or a Fluent.ai license request — but a complete, verified
-third-party re-upload exists on Zenodo:
-[record 11106540](https://zenodo.org/records/11106540) ("Fluent speech
-commands dataset", CC BY 4.0, uploaded by Afsara Benazir, University of
-Virginia). Verify before trusting any copy of this — checksum against
-the Zenodo API, not just file size:
-
-```bash
-curl -s "https://zenodo.org/api/records/11106540/files" | python3 -m json.tool
-# expect: fluentai.zip, size 1545730387, md5 625d5dfecef850443955a034d5f892b2
-md5sum data/fluentai.zip   # must match the md5 above exactly
-```
-Download it directly if you don't already have a verified copy:
-```bash
-curl -s -o data/fluentai.zip "https://zenodo.org/api/records/11106540/files/fluentai.zip/content"
-```
-Then extract and process it:
-```bash
-mkdir -p data/external/fsc
-unzip -q data/fluentai.zip -d data/external/fsc/
-python scripts/process_fsc.py
-rm data/fluentai.zip   # redundant once extracted, ~1.4GB, don't keep it around
-```
-**Expect** (verified output, from the real 30,043-utterance archive —
-train+valid+test row counts, 23,132+3,118+3,793, match this project's
-own already-cited FSC figure exactly):
-```
-Loaded 30043 records (train+val+test)
-
-Label              matched utterances
-TEMPERATURE                      9374
-LIGHT_ON                         4135
-LIGHT_OFF                        3236
-VOLUME_UP                        3010
-VOLUME_DOWN                      2731
-PLAY_MUSIC                         912
-STOP                               510
-PAUSE                              315
-
-TOTAL: 24223 manifest rows -> data/external/fsc/manifest.csv
-```
-The `LABEL_MAPPING` in
-[`src/vcm/dataset/sources/fsc.py`](../src/vcm/dataset/sources/fsc.py) is
-built from all 31 real `(action, object, location)` combinations found
-in the archive, not guessed — see that module's docstring for how one
-ambiguous combination (`"deactivate"` + `"music"`, which mixes PAUSE
-and STOP phrasing) was resolved by inspecting every transcription in it
-rather than assumed. `"change language"` and `"bring"` (newspaper/
-shoes/socks/juice) commands have no taxonomy equivalent and are
-dropped, not guessed.
-
-This closed the real-coverage gap for **TEMPERATURE, STOP, and PAUSE** —
-the three labels that had zero real coverage anywhere in this project
-before this. **CALL, NEXT, TIMER, and LIST_REMINDERS** remain fully
-synthetic as of this writing (LIST_REMINDERS joined this list later —
-see "Known per-label quality signal" above) — step 8 below is a direct
-attempt to close part of that gap.
-
-## 8. Real recordings for the synthetic-only gap — ARCHIVED, on hold
-
-**Status: paused, not deleted.** The tool below is built, tested, and
-ready, but recording new personal voice data for this project needs
-confirmation from the course adviser first (a permissions question
-separate from, and not yet resolved the way, the synthetic-data
-question in the [original architecture review](archive/original_architecture_review.md) Section 7 was). Do not run
-this until that's confirmed. Left in place (not removed) so it's ready
-to pick back up the moment it's cleared — see EXPERIMENTS.md's parked
-list for the same note.
-
-```bash
-python docs/archive/legacy_code/scripts/record_real_examples.py --speaker-id <your-name> --reps 10   # archived; restore to scripts/ first
-```
-**Why**: live testing found CALL, NEXT, TIMER, and LIST_REMINDERS —
-100% Chatterbox TTS, zero real-human recordings — perform noticeably
-worse on real speech than the validation numbers suggest, plus two
-specific phrasings ("Kill the lights" for LIGHT_OFF, "Message" for
-MESSAGE) that are technically covered but only by the same TTS voices.
-This is the same synthetic-to-real generalization gap already flagged
-in the original architecture review's Section 9 — and the same section
-documents a classmate's own prior finding that adding real recordings
-to a synthetic-only label (CALL) measurably helped. This script
-generalizes that fix: it walks through the ~20 affected `(label,
-phrase)` pairs (see the script's own `TARGET_PHRASES` list) via the
-push-to-talk capture (`vcm.audio.capture`),
-and writes a manifest.csv in the standard schema.
-
-**Runs on your own machine** (Mac or RPi) — this isn't something to run
-on the DGX. The more different people who contribute a few minutes
-each, the better: real research on TTS/real domain gaps (see the
-project's research notes) found **speaker diversity**, not just raw
-volume, is what actually closes this gap. Re-run with a different
-`--speaker-id` per contributor; recordings accumulate in the same
-manifest rather than overwriting.
-
-**Not train/test leakage, by construction**: adding your own voice to
-training and then informally testing with your own voice would
-otherwise conflate two different claims — "this helped recognize me"
-vs. "this generalizes to other people" — only the first of which that
-setup could honestly support. The script automatically holds out the
-last `--holdout-fraction` (default 20%) of each phrase's reps *per
-speaker* to val/test, so every contributor's own recordings include
-real, never-trained-on clips of their own voice — the same 80/10/10
-convention every other source in this dataset already uses (see
-`sources/gsc_background.py`). A held-out accuracy number on those
-clips honestly answers "did this help with my voice." Answering "does
-this generalize to a stranger's voice" needs a contributor who runs
-with `--holdout-fraction 1.0` (pure test, no training contribution) —
-a good role for one volunteer classmate.
-
-## 9. Timers and Such (real TIMER + ALARM audio)
-
-```bash
-pip install remotezip
-python scripts/fetch_timers_and_such.py
-```
-**Why**: live testing found TIMER was 100% Chatterbox TTS — zero real
-human recordings — the clearest case of the synthetic-to-real gap in
-this whole dataset. [Timers and Such](https://zenodo.org/records/4623772)
-(Lugosch et al., NeurIPS 2021 Datasets & Benchmarks,
-[arXiv:2104.01604](https://arxiv.org/abs/2104.01604), license
-"other-open") has real human recordings for exactly this: SetTimer and
-SetAlarm intents, mapped to TIMER and ALARM respectively.
-
-**Only the relevant real subset is downloaded, not the full archive**:
-the source archive is a single 12.2GB zip, and the paper reports only
-2,151 real (non-synthetic) utterances across all 4 of its intents
-combined — most of the 12.2GB is a synthetic portion we don't want
-(more TTS is not the fix for a TTS-only gap). Verified directly (not
-assumed) that Zenodo's file server honors HTTP range requests
-(`curl -H "Range: bytes=0-1023" ... ` returns `206 PARTIAL_CONTENT`
-even though it doesn't advertise `Accept-Ranges`), so
-[`remotezip`](https://pypi.org/project/remotezip/) can read the
-archive's central directory and fetch only the ~1,071 real
-SetTimer/SetAlarm files (~124MB) — checked and confirmed by actually
-running this, not estimated from the file list alone.
-
-**Expect** (verified output from a real run):
-```
-1071 real SetTimer/SetAlarm recordings to fetch
-...
-TOTAL: 1071 recordings -> data/external/timers_and_such/manifest.csv (1444s elapsed)
-```
-717 map to TIMER, 354 to ALARM, from ~90+ unique real speakers combined
-across the train/dev/test splits (counts verified from the real
-per-split CSVs, not the paper's aggregate-only reporting). SimpleMath
-and UnitConversion (the dataset's other 2 intents) have no taxonomy
-equivalent and are dropped, not guessed — see
-[`src/vcm/dataset/sources/timers_and_such.py`](../src/vcm/dataset/sources/timers_and_such.py).
-Takes ~20-25 minutes (latency-bound: ~1,071 individual range requests,
-not a bandwidth bottleneck) — this is expected, not a hung process.
-
-## 10. Combined manifest
-
-```bash
-python scripts/build_manifest.py
-```
-Combines every source above (SLURP, Option B, GSC background, Snips
-lighting, FSC, real recordings, Timers and Such — whichever of steps
-3/4/5/6/7/8/9 you've actually run; missing ones are skipped with a
-note, not an error) into one `data/dataset_manifest.csv`, in the common
-schema every source normalizes into (`audio_path, label, source,
-is_synthetic, speaker_id, split` — see `manifest.py`), and prints a
-real-vs-synthetic breakdown per label. This is the file a training
-script should read from.
-
-## 11. Synthetic-audio QA gate
-
-[`src/vcm/dataset/qa/synthetic_check.py`](../src/vcm/dataset/qa/synthetic_check.py)
-generalizes the transcribe-and-compare pattern from the QA tool used to
-filter the Option B dataset above, so it can screen output from *any*
-generator, not just the one it was built for. It needs a real
-transcriber backend to run for real (`FasterWhisperTranscriber`,
-requires `pip install faster-whisper`, which downloads an ASR model on
-first use — not a default dependency here since it's optional QA
-tooling, not part of the deployed model):
-
-```python
-from pathlib import Path
-from vcm.dataset.qa.synthetic_check import FasterWhisperTranscriber, screen_batch
-
-transcriber = FasterWhisperTranscriber()  # pulls a Whisper model on first run
-pairs = [
-    (Path("synthetic/lights_off_01.wav"), "Lights off"),
-    (Path("synthetic/play_music_03.wav"), "Play a song"),
-]
-results = screen_batch(pairs, transcriber, threshold=0.8)
-for r in results:
-    print(r.audio_path, r.confidence, "PASS" if r.passed else "REVIEW")
-```
-Anything below the threshold is the "route to human spot-check" bucket,
-not automatically discarded.
-
-## Manifest format
-
-[`src/vcm/dataset/manifest.py`](../src/vcm/dataset/manifest.py) is the
-common row shape (`audio_path, label, source, is_synthetic, speaker_id,
-split`) every source normalizes into, via a per-source label-mapping
-layer (`apply_label_mapping()`) so no source is hardcoded to one
-taxonomy. `scripts/build_manifest.py` (step 10) is the concrete example
-of combining sources through it.
-
-## Tests
-
-```bash
-python -m pytest
-```
-The dataset-specific tests are `tests/test_dataset_*.py`,
-`tests/test_slurp_coverage.py`, `tests/test_fsc_coverage.py`,
-`tests/test_option_b.py`, `tests/test_gsc_background.py`,
-`tests/test_snips_lights.py`, `tests/test_timers_and_such.py`, and
-`tests/test_synthetic_check.py` — all pure logic against synthetic
-fixtures, no network or real data files required to pass.
-
 ## Acknowledgments
 
-This pipeline is built directly on top of work shared across the class,
-not developed in isolation. Specifically:
-
-- **Mark Macalacad** shared the **working taxonomy** (Section 1 above),
-  adopted here as-is (this project only added a plain-CSV export
-  alongside it for safer downstream tooling), and generated and shared
-  the **synthetic "Option B" dataset** (Section 4, all 19 labels),
-  using a speaker-disjoint voice-cloning methodology that deliberately
-  includes real Filipino-English reference speakers.
-- **Anthony Navarez** built and shared the transcribe-and-compare QA
-  tool that the **QA-screening approach** (Section 9) generalizes,
-  originally used to filter the synthetic dataset above.
-- The idea to check for a precedented public synthetic-command dataset
-  before generating new synthetic data from scratch (avoiding
-  duplicated effort) came from this project's own side, not a shared
-  classmate resource.
-- Several other classmates contributed dataset leads, reference
-  implementations, and corpus-sizing corrections that shaped the
-  candidate-source research in the [original architecture review](archive/original_architecture_review.md) Section 9.
-
-Everything above exists because of this collective effort.
+Ailene (`airimonda`) collated the master dataset and its documentation.
+Mark Macalacad shared the Dataset Schema (Option B) and generated the
+group's synthetic set. Xela Ubalde shared her recordings. Every classmate
+who recorded commands made the real-speech test possible. The public
+datasets inside the master dataset are SLURP, Fluent Speech Commands, SNIPS
+SLU, Timers and Such, Common Voice, Google Speech Commands, MLEnd and the
+Multi-Sensor Voice Command dataset; each keeps its own license (see the
+dataset card).

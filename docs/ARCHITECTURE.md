@@ -1,9 +1,9 @@
 # Architecture
 
-How the Voice Command Model (VCM) is built, as shipped. The original
-planning document is archived as
-[archive/original_architecture_review.md](archive/original_architecture_review.md);
-what changed from that plan, and why, is in [archive/AUDIT.md](archive/AUDIT.md).
+How the Voice Command Model (VCM) is built, as shipped: the Experiment 43b
+intent + slot model and the Experiment 43 "Hey Kiwi" wake word. How the
+design got here, including the original plan and the earlier models, is in
+[EXPERIMENTS.md](EXPERIMENTS.md).
 
 Courses: AI222 (Supervised Learning) and AI231 (ML Operations), UP Diliman.
 
@@ -76,14 +76,14 @@ uses a lower wake threshold (0.4 instead of 0.6) while music plays.
 | Decision | Choice | Why |
 |---|---|---|
 | Problem framing | Closed-set intent classification with slot values; no transcript | The assignment rules out ASR on the device. 19 intents cover the 10 command categories. |
-| Model | CRNN, 108K parameters, audio → intent + 6 slot heads | DS-CNN couldn't see whole words (70% real speech); the CRNN reached 85% ([MODEL.md](MODEL.md)) |
-| Slot values | One classification head per slotted intent, over a fixed vocabulary | Small, no transcript needed; covers the class schema's values plus common extras |
+| Model | CRNN, 372K parameters (1.46 MB), audio → intent + 6 slot heads | A bidirectional GRU reads the command in order, so one-word differences ("volume up" / "down") separate. Same-size convolution-only keyword spotters (DS-CNN, BC-ResNet) score 57% and 42% on real speech against 70% for a CRNN of that size ([MODEL.md](MODEL.md#4-baselines)) |
+| Slot values | One classification head per slotted intent, over the schema's 3 values | Small, no transcript needed |
 | Wake word | "Hey Kiwi", a separate 25K-parameter CRNN | Fewest sound-alikes among 11 candidates; a separate tiny model is cheap enough to run always |
-| Export and runtime | fp32 ONNX + ONNX Runtime + numpy features | int8 lost 6.8 accuracy points; numpy features avoid librosa (~330 MB → ~90 MB peak memory) |
-| Benchmark | Real-speech test accuracy (+ macro, per class, confusable pairs), slot accuracy, wake-word misses and false wake-ups per hour, latency and memory on the Pi | Synthetic clips score 94–99% and hide real-speech errors; plain accuracy hides per-class failures |
-| Data | Real speech where it exists (SLURP, FSC, Timers and Such, Snips), class-shared synthetic speech where it doesn't | Three intents have no public real recordings ([DATASET.md](DATASET.md)) |
+| Export and runtime | fp32 ONNX + ONNX Runtime + numpy features | Dynamic int8 cost 6.8 points of real-speech accuracy when tested on an earlier CRNN and was no faster; numpy features avoid librosa (~330 MB → ~100 MB peak memory) |
+| Benchmark | Real-speech test accuracy (+ macro, per class, confusable pairs), slot accuracy, out-of-scope false accepts, wake-word misses and false wake-ups per hour, latency and memory on the Pi | Synthetic clips score ~99.5% and hide real-speech errors; plain accuracy hides per-class failures |
+| Data | The class master dataset (revision `da92a79`), its speaker-disjoint splits as published, plus a val split carved from train | The class agreed on one dataset and one test set ([DATASET.md](DATASET.md)) |
 | Actions | A home server with a virtual lamp and thermostat on a web dashboard | Every command shows a visible result without extra smart-home hardware |
-| Not shipped | ASR cascade (Whisper + text classifier), 90.6% accurate | ~280× the disk and ~150× the latency ([FOOTPRINT.md](FOOTPRINT.md)) |
+| Not shipped | ASR cascade (Whisper + text classifier) | Whisper `base` alone is ~145 MB, about 90× both our model files (1.57 MB), and far too slow to listen continuously ([FOOTPRINT.md](FOOTPRINT.md#part-2-our-pipeline-vs-an-asr-cascade)) |
 
 ## 4. Commands: intents, slots and actions
 
@@ -99,7 +99,7 @@ uses a lower wake threshold (0.4 instead of 0.6) while music plays.
 | 8. Media control | PAUSE, STOP, NEXT, VOLUME_UP, VOLUME_DOWN | — | Spotify / mpv; speaker volume |
 | 9. Reminders | CREATE_REMINDER, LIST_REMINDERS | drink water / study / exercise | Stored and shown on the dashboard; listed aloud |
 | 10. Calls / messages | CALL, MESSAGE | — | Through the Mac bridge to the iPhone (default contact); simulated if the bridge is off |
-| — | `OUT_OF_SCOPE` (`unknown_background` in models before Exp 37) | — | Nothing |
+| — | `OUT_OF_SCOPE` | — | Nothing |
 
 ## 5. Hardware (as built)
 
@@ -121,7 +121,7 @@ steal either role.
 | Layer | Used |
 |---|---|
 | Training | PyTorch on UP's DGX (A100), shared node; [TRAINING.md](TRAINING.md) |
-| Dataset tooling | Hugging Face `datasets`, `remotezip`, faster-whisper (QA and transcripts only), Chatterbox TTS (synthetic clips) |
+| Dataset tooling | `huggingface_hub` and pyarrow (the master dataset), Chatterbox TTS (the synthetic "hey kiwi" clips) |
 | Device runtime | Python 3.11, numpy, ONNX Runtime, sounddevice (PortAudio), requests |
 | Voice replies | Piper (natural voice) or espeak-ng; macOS `say` on the laptop |
 | Home server | Python standard library HTTP server + one static HTML page, updated live over server-sent events |
@@ -135,11 +135,9 @@ and a laptop fallback chosen at start-up, so the same code runs on both.
 ## 7. Open questions
 
 - **"No attention layers."** The original constraint list said no
-  attention/transformer layers. The CRNN's attention pooling is a single
-  linear scorer over time (129 parameters), not self-attention. If the rule
-  is meant literally, average pooling is a drop-in replacement to test.
+  attention/transformer layers. The CRNN's attention pooling is a linear
+  scorer over time (4 heads, 772 parameters), not self-attention. If the
+  rule is meant literally, average pooling is a drop-in replacement; it
+  costs 5.6 points of real-speech accuracy on val ([MODEL.md](MODEL.md#3-architecture-crnn)).
 - **Synthetic data.** The class proceeded on the assumption that synthetic
-  (voice-cloned) data is allowed; it is about 35% of the training data.
-- **Recording classmates.** A tool to record real CALL, NEXT and
-  LIST_REMINDERS commands from classmates is built but on hold until the
-  adviser approves collecting personal voice data.
+  (voice-cloned) data is allowed; it is 78% of the training split.

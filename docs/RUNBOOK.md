@@ -103,25 +103,20 @@ cd ~/quielq-vcm && .venv/bin/python scripts/vcm_listen.py --server http://127.0.
   already at 16 kHz. `--device "USB PnP"` also works: it records the raw
   mic at 48 kHz and resamples.
 
-**Intent model choice.** `--intent-model` picks the file (EXPERIMENTS.md
-Experiments 36, 40 and 41). Accuracy is on the class test set (all clips /
-real speech); slot accuracy on its real speech.
+**Intent model choice.** `--intent-model` picks the file. Accuracy is on
+the class test set (all clips / real speech); slot accuracy on its real
+speech.
 
 | File | Size | Intent | Slot values, real speech (timer / alarm / temperature / brightness / color / reminder) |
 |---|---:|---:|---|
-| `models/vcm_intent.onnx` (default: Experiment 43b seed 1, master dataset) | 1.46 MB | 95.50% / 78.64% | 100 / 90 / 79 / 96 / 82 / 89% |
-| `models/vcm_intent_small.onnx` (Experiment 43c seed 0, master dataset) | 722 KB | 94.53% / 76.06% | |
-| `models/vcm_intent_exp36.onnx` (Experiment 36, old dataset, old slot values) | 432 KB | 84.8% real on the old test set | |
+| `models/vcm_intent.onnx` (default: Experiment 43b seed 1) | 1.46 MB | 95.50% / 78.64% | 100 / 90 / 79 / 96 / 82 / 89% |
+| `models/vcm_intent_small.onnx` (Experiment 43c seed 0) | 722 KB | 94.53% / 76.06% | |
 
 Slot values are the schema's three per command: 10 s / 30 s / 1 min,
 6:00 AM / 8:00 AM / 9:00 PM, 18 / 22 / 26 degrees, 20 / 60 / 100 percent,
-red / blue / green, drink water / study / exercise. The demo benchmark is
+red / blue / green, drink water / study / exercise. Other values ("5
+minutes", "7 AM") are not in the model's vocabulary. The demo benchmark is
 the 93 Option B phrases; the model gets 99% of them right on test.
-
-To compare with the previous default (old dataset; it still outputs `unknown_background`, which the home server accepts):
-```bash
-cd ~/quielq-vcm && .venv/bin/python scripts/vcm_listen.py --intent-model models/vcm_intent_exp36.onnx --server http://127.0.0.1:8000 --show-scores
-```
 
 **3. Mac: open the dashboard** at http://raspberrypi.local:8000. On an
 Android phone, which can't open `.local` names, use the Pi's IP address
@@ -142,48 +137,51 @@ To run everything at boot instead, without steps 2–3, use
 
 | Say | Expect |
 |---|---|
-| "set a timer for five minutes" | TIMER `5m`; a timer appears on the dashboard |
-| "turn the lights blue" / "set brightness to 60 percent" | COLOR `blue` / BRIGHTNESS `60%`; the virtual lamp changes |
-| "turn off the lights" | LIGHT_OFF |
+| "start a timer for 30 seconds" | TIMER `30s`; a timer appears on the dashboard |
+| "set color to blue" / "adjust brightness to 60 percent" | COLOR `blue` / BRIGHTNESS `60%`; the virtual lamp changes |
+| "turn on the lights" / "shut off the lights" | LIGHT_ON / LIGHT_OFF |
 | "what time is it" / "what's the weather" | The spoken or dashboard reply with the time / Quezon City weather |
+| "set an alarm for 8:00 AM" | ALARM `8:00 AM`; the alarm appears on the dashboard |
+| "set the temperature to 22 degrees" | TEMPERATURE `22 degrees`; the thermostat changes |
 | "turn the volume up" | VOLUME_UP (needs a speaker on the Pi) |
-| "remind me to buy milk" | CREATE_REMINDER; appears on the dashboard |
-| "call Mom" / "message Mom" | The Mac bridge terminal prints it; the Mac shows the call prompt (click **Call**) |
+| "remind me to drink water" / "list my reminders" | CREATE_REMINDER `drink water`, shown on the dashboard / the reminders read aloud |
+| "make a call" / "send a message" | The Mac bridge terminal prints it; the Mac shows the call prompt (click **Call**) |
 | "play some music" | Spotify plays on the Pi's speaker |
 | "pause" → "play music" | Pauses, then continues from the same spot |
-| "stop the music" → "play music" | Stops, then starts the song from the beginning |
+| "stop" → "play music" | Stops, then starts the song from the beginning |
 
-**Three phrasings per command.** From the author's 137 saved live
-commands (current model; transcribed offline with Whisper): "right / tried"
-counts a command only if it was acted on (right intent, confidence >= 0.6).
-*Untested* = not said live yet. Avoid the last column; those phrasings stay
-in training because the class benchmark uses them.
+**Three phrasings per command.** These are the class schema's (Option B),
+the phrasings the class benchmark uses; on the test set the model gets
+99.2% of clips with exactly this wording right. Other wordings of the same
+command work less often (73% on test), so use these in a demo.
 
-| Command | Phrasing 1 | Phrasing 2 | Phrasing 3 | Avoid |
-|---|---|---|---|---|
-| PLAY_MUSIC | Play music (7/7) | Start the music (3/3) | Play some music (1/1) | |
-| STOP | Stop the music (4/4, with "Stop music") | Stop (6/8) | Stop playing music *untested* | |
-| PAUSE | Pause (1/1) | Pause the music (1/1) | Pause song (1/1) | Pause audio (1/3) |
-| NEXT | Next song (1/1) | Skip song (1/1) | Go to the next song (1/1) | bare "Next" (fails offline too) |
-| VOLUME_UP | Volume up (3/3, with "Turn the volume up") | Increase the volume (1/1) | Turn the volume up | |
-| VOLUME_DOWN | Volume down (2/2, with "Turn the volume down") | Decrease the volume (1/1) | Lower the volume (1/1) | |
-| WEATHER | Weather (1/1) | What's the weather (1/1) | Tell me the weather (1/1) | |
-| TIME | Time (2/2) | What time is it (1/1) | Tell me the time (1/1) | |
-| LIGHT_ON | Lights on (1/1) | Turn on the lights (2/3) | Switch on the lights *untested* | Power on the lights (0/4) |
-| LIGHT_OFF | Lights off (2/2) | Switch off the lights (2/2) | Turn off the lights (1/1) | Kill the lights (0/1) |
-| BRIGHTNESS | Brightness to 60 percent (5/7; both misses were cut off, fixed) | Adjust brightness to 60 percent (4/5) | Set the brightness to 60 percent *untested* | Brightness level 60 percent (0/2) |
-| COLOR | Color red (3/4) | Change color to red (1/1) | Set the lights to red *untested* | |
-| TEMPERATURE | Temperature 18 degrees (1/1) | Change the temperature to 22 degrees (1/1) | Set the temperature to 26 degrees (2/3) | |
-| ALARM | Set an alarm for 7 AM (6/6) | Wake me up at 6 AM *untested* | Alarm 8 AM *untested* | |
-| TIMER | Set a timer for 5 minutes *untested* | Timer 30 seconds *untested* | Countdown for 1 minute *untested* | |
-| CREATE_REMINDER | Reminder to drink water (3/3) | Remind me to study (2/2) | Create a reminder to exercise (2/2) | "run" (not a value yet) |
-| LIST_REMINDERS | Reminders (2/2) | Show my reminders *untested* | List my reminders *untested* | |
-| CALL | Make a call (1/1) | Call (2/4) | *none reliable yet* | Make a phone call (0/2), Call mom (0/2) |
-| MESSAGE | Send a message (1/1) | Message *untested* | Send my message *untested* | |
+| Command | Phrasing 1 | Phrasing 2 | Phrasing 3 |
+|---|---|---|---|
+| PLAY_MUSIC | Play music | Start music | Play some music |
+| WEATHER | Weather | What's the weather? | Tell me the weather |
+| TIME | Time | What time is it? | Tell me the time |
+| LIGHT_ON | Lights on | Power on the lights | Turn on the lights |
+| LIGHT_OFF | Lights out | Kill the lights | Shut off the lights |
+| PAUSE | Pause | Pause audio | Pause song |
+| STOP | Stop | Stop playing | End playback |
+| NEXT | Next song | Skip song | Play next song |
+| VOLUME_UP | Volume up | Increase the volume | Turn the volume up |
+| VOLUME_DOWN | Volume down | Lower the volume | Turn the volume down |
+| CALL | Call | Make a call | Make a phone call |
+| MESSAGE | Message | Send a message | Send my message |
+| LIST_REMINDERS | Reminders | Show my reminders | List my reminders |
+| TIMER | Timer {duration} | Countdown for {duration} | Start a timer for {duration} |
+| ALARM | Alarm {time} | Wake me up at {time} | Set an alarm for {time} |
+| TEMPERATURE | Temperature {degrees} | Change the temperature to {degrees} | Set the temperature to {degrees} |
+| BRIGHTNESS | Brightness {percent} | Adjust brightness to {percent} | Brightness level {percent} |
+| COLOR | Change color to {color} | Switch color to {color} | Set color to {color} |
+| CREATE_REMINDER | Reminder {task} | Remind me to {task} | Create a reminder to {task} |
 
-Most counts are 1-3 tries, so treat them as a first pass. CALL is the weak
-one: only "Make a call" worked reliably. Adding real recordings of it is
-the planned fix (README, "Future enhancements").
+With {duration} 10 seconds / 30 seconds / 1 minute, {time} 6:00 AM / 8:00
+AM / 9:00 PM, {degrees} 18 / 22 / 26 degrees, {percent} 20 / 60 / 100
+percent, {color} red / blue / green, {task} drink water / study / exercise.
+The weakest commands on real speech are CALL, PLAY_MUSIC, WEATHER and
+MESSAGE ([TESTING.md](TESTING.md#intent-accuracy-shipped-model-modelsvcm_intentonnx)).
 
 The dashboard's **Simulate a command** box runs the same actions without
 speaking. If a command works there but not by voice, the problem is
@@ -236,7 +234,7 @@ It plays a short beep only with `--beep`, and changes nothing without `--fix`.
 1. `ssh raspberrypi.local 'cd ~/quielq-vcm && .venv/bin/python scripts/kiwi_doctor.py --beep --fix'` → READY.
 2. If the mic shows clipping when you speak at normal distance, lower its gain:
    `amixer -c 2 sset Mic 12` (0-16; 16 is the maximum).
-3. Say the phrases from the table above, not the ones in the "Avoid" column.
+3. Say the phrases from the table above, with the schema's slot values.
 4. Dismiss any old alarm or timer banner on the dashboard.
 5. Backup if voice fails in a loud room: the dashboard's **Simulate a
    command** box runs every action.
